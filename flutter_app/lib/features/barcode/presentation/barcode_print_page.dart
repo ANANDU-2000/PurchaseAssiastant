@@ -4,6 +4,7 @@ import 'package:barcode/barcode.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
@@ -19,27 +20,40 @@ import '../../stock/presentation/widgets/edit_item_code_sheet.dart';
 import '../services/barcode_pdf_service.dart';
 
 class BarcodePrintPage extends ConsumerStatefulWidget {
-  const BarcodePrintPage({super.key, required this.itemId});
+  const BarcodePrintPage({super.key, required this.itemId, this.preloadItemId});
 
   final String itemId;
+  final String? preloadItemId;
 
   @override
   ConsumerState<BarcodePrintPage> createState() => _BarcodePrintPageState();
 }
 
 class _BarcodePrintPageState extends ConsumerState<BarcodePrintPage> {
-  LabelSize _size = LabelSize.medium;
+  final LabelSize _size = LabelSize.small;
   int _copies = 1;
-  bool _showLastPurchase = true;
+  final bool _showLastPurchase = true;
   bool _busy = false;
   bool _loadError = false;
   String? _loadErrorMessage;
   Map<String, dynamic>? _data;
 
+  String _resolveItemId() {
+    final fromRoute = widget.itemId.trim();
+    if (fromRoute.isNotEmpty && fromRoute != 'new') return fromRoute;
+    final preload = widget.preloadItemId?.trim();
+    if (preload != null && preload.isNotEmpty) return preload;
+    if (!mounted) return '';
+    final q = GoRouterState.of(context).uri.queryParameters;
+    return (q['preloadItemId'] ?? q['itemId'] ?? '').trim();
+  }
+
   @override
   void initState() {
     super.initState();
-    _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_load());
+    });
   }
 
   Future<void> _load() async {
@@ -52,8 +66,16 @@ class _BarcodePrintPageState extends ConsumerState<BarcodePrintPage> {
     final bid = session.primaryBusiness.id;
     final api = ref.read(hexaApiProvider);
     try {
-      final j =
-          await api.getBarcodeLabel(businessId: bid, itemId: widget.itemId);
+      final itemId = _resolveItemId();
+      if (itemId.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _loadError = true;
+          _loadErrorMessage = 'No item selected for label print.';
+        });
+        return;
+      }
+      final j = await api.getBarcodeLabel(businessId: bid, itemId: itemId);
       if (!mounted) return;
       setState(() => _data = j);
     } catch (e) {
@@ -312,19 +334,6 @@ class _BarcodePrintPageState extends ConsumerState<BarcodePrintPage> {
           ),
         ),
         const SizedBox(height: 20),
-        Text('Label size',
-            style: HexaDsType.label(12, color: HexaDsColors.textMuted)),
-        const SizedBox(height: 8),
-        SegmentedButton<LabelSize>(
-          segments: const [
-            ButtonSegment(value: LabelSize.small, label: Text('S')),
-            ButtonSegment(value: LabelSize.medium, label: Text('M')),
-            ButtonSegment(value: LabelSize.large, label: Text('L')),
-          ],
-          selected: {_size},
-          onSelectionChanged: (s) => setState(() => _size = s.first),
-        ),
-        const SizedBox(height: 12),
         ListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Copies'),
@@ -344,20 +353,6 @@ class _BarcodePrintPageState extends ConsumerState<BarcodePrintPage> {
             ],
           ),
         ),
-        if (_size != LabelSize.small)
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Show last purchase on label'),
-            subtitle: label.lastPurchaseDate != null
-                ? Text(
-                    '${DateFormat('dd MMM yy').format(label.lastPurchaseDate!)}  '
-                    '${label.lastPurchaseQty?.toStringAsFixed(0)} '
-                    '${label.lastPurchaseUnit ?? ''}',
-                  )
-                : const Text('No purchase data yet'),
-            value: _showLastPurchase,
-            onChanged: (v) => setState(() => _showLastPurchase = v),
-          ),
         const SizedBox(height: 16),
         FilledButton.icon(
           onPressed: _busy ? null : (kIsWeb ? _download : _print),

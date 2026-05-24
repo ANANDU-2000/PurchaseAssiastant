@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/features/stock/stock_list_merge.dart';
+import 'package:harisree_warehouse/features/stock/stock_list_merge.dart';
 
 void main() {
   test('mergeStockListPage replaces on page 1', () {

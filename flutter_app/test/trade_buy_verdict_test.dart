@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/core/decision/trade_buy_verdict.dart';
+import 'package:harisree_warehouse/core/decision/trade_buy_verdict.dart';
 
 void main() {
   test('no data when last or avg missing', () {

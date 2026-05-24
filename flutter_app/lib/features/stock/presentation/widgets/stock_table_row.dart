@@ -4,6 +4,7 @@ import '../../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../../core/json_coerce.dart';
 import '../../../../core/utils/unit_utils.dart';
+import '../../../../shared/widgets/stock_number_display.dart';
 import 'stock_status_badge.dart';
 import 'stock_table_layout.dart';
 
@@ -13,12 +14,14 @@ class StockTableRow extends StatelessWidget {
     super.key,
     required this.item,
     required this.onTap,
+    this.onLongPress,
     this.isStaffMode = true,
     this.isFirstRow = false,
   });
 
   final Map<String, dynamic> item;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final bool isStaffMode;
   final bool isFirstRow;
 
@@ -30,19 +33,23 @@ class StockTableRow extends StatelessWidget {
     final cur = coerceToDouble(item['current_stock']);
     final stockUnit =
         item['stock_unit']?.toString() ?? item['unit']?.toString() ?? 'piece';
-    final stockLabel = stockDisplayPrimary(cur, stockUnit);
     final status =
         (item['stock_status']?.toString() ?? 'healthy').toLowerCase();
     final missingBarcode = item['missing_barcode'] == true;
     final updatedAt = item['last_stock_updated_at']?.toString();
     final updatedBy = item['last_stock_updated_by']?.toString();
     final relative = formatStockRelativeTime(updatedAt);
+    final hasPendingOrder = item['has_pending_order'] == true;
+    final pendingDays = (item['pending_order_days'] as num?)?.toInt();
 
     final statusKind = StockStatusBadge.resolve(
       stockStatus: status,
       missingBarcode: missingBarcode,
       updatedAtIso: updatedAt,
     );
+    final displayStatus = stockDisplayStatusFromApi(status);
+    final isLowOrOut = displayStatus == StockDisplayStatus.low ||
+        displayStatus == StockDisplayStatus.out;
 
     final metaParts = <String>[
       if (codeRaw.isNotEmpty) '#$codeRaw',
@@ -69,11 +76,18 @@ class StockTableRow extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
+          onLongPress: onLongPress,
           child: Container(
             constraints: const BoxConstraints(
               minHeight: StockTableLayout.rowMinHeight,
             ),
-            decoration: StockTableLayout.rowDecoration(isFirst: isFirstRow),
+            decoration: StockTableLayout.rowDecoration(isFirst: isFirstRow).copyWith(
+              border: isLowOrOut
+                  ? const Border(
+                      left: BorderSide(color: Color(0xFFDC2626), width: 3),
+                    )
+                  : null,
+            ),
             child: IntrinsicHeight(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -94,9 +108,10 @@ class StockTableRow extends StatelessWidget {
                             name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: HexaDsType.body(13).copyWith(
+                            style: const TextStyle(
+                              fontSize: 14,
                               fontWeight: FontWeight.w800,
-                              color: const Color(0xFF1A1A1A),
+                              color: Color(0xFF1A1A1A),
                             ),
                           ),
                           if (sub.isNotEmpty &&
@@ -139,14 +154,13 @@ class StockTableRow extends StatelessWidget {
                     decoration: StockTableLayout.cellDecoration(),
                     alignment: Alignment.center,
                     padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Text(
-                      stockLabel,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: HexaDsType.body(12).copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                    child: StockNumberDisplay(
+                      qty: cur,
+                      unit: stockUnit,
+                      status: displayStatus,
+                      hasPendingOrder: hasPendingOrder,
+                      pendingDays: pendingDays,
+                      fontSize: 14,
                     ),
                   ),
                   SizedBox(

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/features/purchase/domain/purchase_draft.dart';
-import 'package:hexa_purchase_assistant/features/purchase/state/purchase_draft_provider.dart';
+import 'package:harisree_warehouse/features/purchase/domain/purchase_draft.dart';
+import 'package:harisree_warehouse/features/purchase/state/purchase_draft_provider.dart';
 
 void main() {
   test('purchaseLineSaveBlockReason: empty unit fails', () {

@@ -90,6 +90,12 @@ abstract final class HexaDsWarehouse {
   static const double metricTileMinHeight = 56;
   static const double listRowMinHeight = 52;
   static const double statusBarHeight = 36;
+  static const double tabHeight = 44;
+
+  static const Color lowStockRed = Color(0xFFDC2626);
+  static const Color outStockGrey = Color(0xFF6B7280);
+  static const Color normalStockGreen = Color(0xFF16A34A);
+  static const Color warningAmber = Color(0xFFD97706);
 
   static BorderRadius get card => BorderRadius.circular(radius);
   static EdgeInsets get cardInsets =>

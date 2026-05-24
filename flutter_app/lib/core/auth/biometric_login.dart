@@ -29,6 +29,16 @@ class BiometricLogin {
     }
   }
 
+  /// Device supports biometrics and the user can authenticate with them.
+  static Future<bool> isAvailable() async {
+    if (kIsWeb) return false;
+    try {
+      return await isDeviceSupported() && await canCheckBiometrics();
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<String?> savedEmail() => _storage.read(key: _kBioUserKey);
 
   static Future<void> saveEmail(String email) async {

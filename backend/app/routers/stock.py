@@ -156,6 +156,8 @@ def _item_to_list_row(
     is_perishable: bool = False,
     last_purchase_human_id: str | None = None,
     last_purchase_delivered: bool | None = None,
+    has_pending_order: bool = False,
+    pending_order_days: int | None = None,
 ) -> StockListItemOut:
     cur = catalog_stock_qty(item)
     ro = catalog_reorder(item)
@@ -197,7 +199,44 @@ def _item_to_list_row(
         barcode=getattr(item, "barcode", None),
         last_purchase_human_id=last_purchase_human_id,
         last_purchase_delivered=last_purchase_delivered,
+        has_pending_order=has_pending_order,
+        pending_order_days=pending_order_days,
     )
+
+
+async def _pending_order_meta_map(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    item_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, tuple[bool, int | None]]:
+    """Undelivered purchase lines per catalog item (truck icon on stock UI)."""
+    if not item_ids:
+        return {}
+    r = await db.execute(
+        select(
+            TradePurchaseLine.catalog_item_id,
+            func.min(TradePurchase.purchase_date),
+        )
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.is_delivered.is_(False),
+            TradePurchase.status.notin_(("deleted", "cancelled")),
+            TradePurchaseLine.catalog_item_id.in_(item_ids),
+        )
+        .group_by(TradePurchaseLine.catalog_item_id)
+    )
+    today = date.today()
+    out: dict[uuid.UUID, tuple[bool, int | None]] = {}
+    for cid, oldest in r.all():
+        if cid is None:
+            continue
+        days: int | None = None
+        if oldest is not None:
+            pd = oldest.date() if isinstance(oldest, datetime) else oldest
+            days = max(0, (today - pd).days)
+        out[cid] = (True, days)
+    return out
 
 
 def _parse_period_dates(
@@ -375,7 +414,7 @@ def _sort_stock_rows(
         rows.sort(key=lambda t: catalog_stock_qty(t[0]), reverse=True)
     elif sort == "recent":
         rows.sort(
-            key=lambda t: t[0].last_purchase_at
+            key=lambda t: t[0].last_stock_updated_at
             or datetime.min.replace(tzinfo=timezone.utc),
             reverse=True,
         )
@@ -654,10 +693,12 @@ async def list_stock(
     catalog_items = [item for item, _, _ in rows]
     trade_meta = await _last_trade_meta_map(db, catalog_items)
     ledger_map = await _ledger_variance_map(db, business_id, catalog_items)
+    pending_meta = await _pending_order_meta_map(db, business_id, item_ids)
     items: list[StockListItemOut] = []
     for item, cat_name, type_name in rows:
         sup = await _supplier_name(db, item)
         meta = trade_meta.get(item.id, (None, None))
+        pend = pending_meta.get(item.id, (False, None))
         purchased = period_map.get(item.id) if include_period else None
         usage = period_usage_map.get(item.id) if include_period else None
         cur = catalog_stock_qty(item)
@@ -685,6 +726,8 @@ async def list_stock(
                 is_perishable=perishable,
                 last_purchase_human_id=meta[0],
                 last_purchase_delivered=meta[1],
+                has_pending_order=pend[0],
+                pending_order_days=pend[1],
             )
         )
     return StockListOut(items=items, total=total, page=page, per_page=per_page)

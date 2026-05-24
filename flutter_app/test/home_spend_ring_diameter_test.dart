@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/features/home/presentation/home_spend_ring_diameter.dart';
+import 'package:harisree_warehouse/features/home/presentation/home_spend_ring_diameter.dart';
 
 void main() {
   test('ring diameter never exceeds 200 (hard UI cap)', () {

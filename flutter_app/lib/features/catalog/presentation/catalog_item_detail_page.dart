@@ -29,7 +29,9 @@ import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/business_write_revision.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
+import '../../../core/providers/staff_home_providers.dart';
 import '../../../core/providers/stock_providers.dart';
+import '../../../shared/widgets/stock_number_display.dart';
 import '../../../core/services/reports_pdf.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/form_field_scroll.dart';
@@ -161,6 +163,11 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
           );
       ref.invalidate(catalogItemDetailProvider(widget.itemId));
       ref.invalidate(stockItemDetailProvider(widget.itemId));
+      ref.invalidate(stockListProvider);
+      ref.invalidate(lowStockByCategoryProvider);
+      ref.invalidate(staffLowStockAlertsProvider);
+      ref.invalidate(stockStatusCountsProvider);
+      ref.invalidate(stockOnHandTotalsProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Reorder level set to $v ${unit.toUpperCase()}')),
@@ -1966,6 +1973,48 @@ class _ItemWarehouseHeroHeader extends StatelessWidget {
         ),
         if (stock != null && stock!.isNotEmpty) ...[
           const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  statusColor.withValues(alpha: 0.14),
+                  statusColor.withValues(alpha: 0.04),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: statusColor.withValues(alpha: 0.35)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'STOCK ON HAND',
+                  style: HexaDsType.label(11, color: HexaDsColors.textMuted),
+                ),
+                const SizedBox(height: 6),
+                StockNumberDisplay(
+                  qty: curN,
+                  unit: unitForDisplay,
+                  status: stockDisplayStatusFromApi(st),
+                  hasPendingOrder: stock!['has_pending_order'] == true,
+                  pendingDays: (stock!['pending_order_days'] as num?)?.toInt(),
+                  fontSize: 28,
+                ),
+                if (onHandSecondary != null && onHandSecondary.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    onHandSecondary,
+                    style: HexaDsType.body(12, color: HexaDsColors.textMuted),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/features/stock/presentation/widgets/stock_status_badge.dart';
+import 'package:harisree_warehouse/features/stock/presentation/widgets/stock_status_badge.dart';
 
 void main() {
   group('StockStatusBadge.resolve', () {

@@ -139,12 +139,22 @@ class ReportsItemDetailPage extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '${i + 1}. ${df.format(t.date)} — ${t.supplierName}',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: const Color(0xFF1A1A1A),
+                    RichText(
+                      text: TextSpan(
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              color: const Color(0xFF1A1A1A),
+                            ),
+                        children: [
+                          TextSpan(
+                            text: '${i + 1}. ${df.format(t.date)} — ',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
+                          TextSpan(
+                            text: t.supplierName,
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/core/calc_engine.dart';
-import 'package:hexa_purchase_assistant/core/utils/unit_classifier.dart';
-import 'package:hexa_purchase_assistant/features/purchase/domain/purchase_draft.dart';
+import 'package:harisree_warehouse/core/calc_engine.dart';
+import 'package:harisree_warehouse/core/utils/unit_classifier.dart';
+import 'package:harisree_warehouse/features/purchase/domain/purchase_draft.dart';
 
 /// Master rebuild package rules — the spec calls these out as non-negotiable
 /// so they all need explicit assertions:

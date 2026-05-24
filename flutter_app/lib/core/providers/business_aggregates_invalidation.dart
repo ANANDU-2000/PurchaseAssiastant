@@ -21,6 +21,7 @@ import 'reports_prior_period_provider.dart';
 import 'suppliers_list_provider.dart';
 import 'trade_purchases_provider.dart';
 import 'business_users_provider.dart';
+import 'staff_home_providers.dart';
 import 'stock_providers.dart';
 import 'warehouse_alerts_provider.dart';
 
@@ -135,6 +136,9 @@ void invalidateWarehouseSurfaces(dynamic ref) {
   // Family provider: invalidating the family root busts all period keys.
   ref.invalidate(stockTotalsProvider);
   ref.invalidate(stockOnHandTotalsProvider);
+  ref.invalidate(staffLowStockAlertsProvider);
+  ref.invalidate(lowStockByCategoryProvider);
+  ref.invalidate(stockStatusCountsProvider);
   ref.invalidate(stockItemIntelligenceProvider);
   ref.invalidate(warehouseAlertsProvider);
   ref.invalidate(homeRecentActivityFeedProvider);

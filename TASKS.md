@@ -1,6 +1,57 @@
 # Purchase Assistant — Living task board
 
-**Last updated:** 2026-05-23 (Stock/staff UX overhaul + unit normalization)
+**Last updated:** 2026-05-24 (Harisree Warehouse Master Fix v3 waves 6–8)
+
+---
+
+## Harisree Warehouse Master Fix v3 (2026-05-24)
+
+### Wave 1 — Branding & splash (§1–3)
+- [x] Full package rename `harisree_warehouse` + import sweep
+- [x] App name Harisree Warehouse (pubspec, Android, iOS, web manifest)
+- [x] Splash animated logo + brand gradient
+- [x] HexaColors app name constants + `StockNumberDisplay` widget
+
+### Wave 2 — Typography & purchase flow (§3–5)
+- [x] Global typography / spacing tokens in touched UI
+- [x] Purchase item creation flow fixes (wizard + sheets)
+- [x] Supplier/category pre-fill on add-more
+
+### Wave 3 — Keyboard & suggestions (§6–7)
+- [x] Keyboard-safe sheets on key entry pages
+- [x] Suggestion dropdown tap/scroll fixes
+
+### Wave 4 — Stock list & status (§8–9)
+- [x] Stock sort recent / latest updated top
+- [x] Status colors, bag numbers, bold tags on rows
+
+### Wave 5 — Low stock & reorder (§10–16)
+- [x] Owner low-stock category tree
+- [x] Staff low-stock + reorder level display
+- [x] Reorder level per item (detail + API)
+- [x] Pending delivery / truck icon (`has_pending_order`, `pending_order_days`)
+- [x] Staff dashboard tabs & badges
+- [x] Staff purchase history tabs
+- [x] Low-stock local notifications on patch
+
+### Wave 6 — Barcode PDF & reports PDF (§17–19, §21)
+- [x] Bulk barcode: small thermal only; PDF errors 6s snackbar
+- [x] Small label layout: barcode left, name/date/qty right; no price/unit text
+- [x] Supplier/broker/reports PDF bold names + qty with units
+- [x] Reports category/subcategory drill: bold items, qty+units
+
+### Wave 7 — Item detail & auth (§20, §26–28)
+- [x] Catalog item detail hero stock card + StockNumberDisplay
+- [x] Reorder level edit dialog (existing API)
+- [x] `item_quick_view_sheet.dart` DraggableScrollableSheet
+- [x] Barcode print `preloadItemId` query + route
+- [x] Login prominent biometric when `BiometricLogin.isAvailable`
+
+### Wave 8 — Sync & errors (§22, §24, §29)
+- [x] Invalidate warehouse providers after stock patch & catalog add
+- [x] Error snackbars 6s on bulk barcode PDF paths
+- [x] Backend stock list pending-order fields (undelivered purchases join)
+- [x] Full §29 file audit — waves 1–8 implemented; deploy QA on Vercel
 
 ---
 

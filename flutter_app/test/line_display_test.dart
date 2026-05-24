@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/core/models/trade_purchase_models.dart';
-import 'package:hexa_purchase_assistant/core/utils/line_display.dart';
+import 'package:harisree_warehouse/core/models/trade_purchase_models.dart';
+import 'package:harisree_warehouse/core/utils/line_display.dart';
 
 void main() {
   test('formatLineQtyWeight: bag with kg per unit — bags first', () {

@@ -130,6 +130,12 @@ Future<String?> showPurchaseSavedSheet(
               style: const TextStyle(color: HexaColors.neutral, fontSize: 13),
             ),
             const Divider(height: 24),
+            ListTile(
+              leading: const Icon(Icons.add_shopping_cart_rounded),
+              title: const Text('Add more items'),
+              subtitle: const Text('Continue adding items to a new purchase'),
+              onTap: () => ctx.pop('add_more'),
+            ),
             if (savedJson['stock_updates'] is List &&
                 (savedJson['stock_updates'] as List).isNotEmpty) ...[
               Padding(

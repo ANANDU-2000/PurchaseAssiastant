@@ -1,5 +1,5 @@
-import 'package:hexa_purchase_assistant/core/models/trade_purchase_models.dart';
-import 'package:hexa_purchase_assistant/core/reporting/trade_report_aggregate.dart';
+import 'package:harisree_warehouse/core/models/trade_purchase_models.dart';
+import 'package:harisree_warehouse/core/reporting/trade_report_aggregate.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 TradePurchase _purchase({

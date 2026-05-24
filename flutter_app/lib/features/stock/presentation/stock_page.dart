@@ -12,6 +12,7 @@ import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/list_skeleton.dart';
 import '../stock_list_merge.dart';
 import '../stock_period_utils.dart';
+import '../../catalog/presentation/widgets/item_quick_view_sheet.dart';
 import 'stock_compact_update_sheet.dart';
 import 'widgets/stock_list_column_header.dart';
 import 'widgets/stock_pagination_bar.dart';
@@ -57,9 +58,9 @@ class _StockPageState extends ConsumerState<StockPage> {
     }
 
     final q = ref.read(stockListQueryProvider);
-    if (q.perPage != 50) {
+    if (q.perPage != 50 || q.sort != 'recent') {
       ref.read(stockListQueryProvider.notifier).state =
-          q.copyWith(perPage: 50, page: 1);
+          q.copyWith(perPage: 50, page: 1, sort: 'recent');
     }
   }
 
@@ -223,6 +224,7 @@ class _StockPageState extends ConsumerState<StockPage> {
               filterCount: filterCount,
             ),
           ),
+          SliverToBoxAdapter(child: _StockStatusFilterChips(isStaffMode: _isStaffMode)),
           if (items.isNotEmpty) ...[
             const SliverToBoxAdapter(child: StockListColumnHeader()),
             SliverList(
@@ -233,6 +235,19 @@ class _StockPageState extends ConsumerState<StockPage> {
                     isStaffMode: _isStaffMode,
                     isFirstRow: i == 0,
                     onTap: () => unawaited(_openUpdateSheet(items[i])),
+                    onLongPress: () {
+                      final id = items[i]['id']?.toString() ?? '';
+                      final name = items[i]['name']?.toString() ?? 'Item';
+                      if (id.isEmpty) return;
+                      unawaited(
+                        showItemQuickView(
+                          context: context,
+                          ref: ref,
+                          itemId: id,
+                          itemName: name,
+                        ),
+                      );
+                    },
                   ),
                 ),
                 childCount: items.length,
@@ -333,6 +348,103 @@ class _StockPageState extends ConsumerState<StockPage> {
         onOpenFilters: _openFilters,
       ),
       body: body,
+    );
+  }
+}
+
+class _StockStatusFilterChips extends ConsumerWidget {
+  const _StockStatusFilterChips({required this.isStaffMode});
+
+  final bool isStaffMode;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final countsAsync = ref.watch(stockStatusCountsProvider);
+    final q = ref.watch(stockListQueryProvider);
+    final op = ref.watch(stockOperationalFiltersProvider);
+
+    return countsAsync.when(
+      loading: () => const SizedBox(height: 40),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (counts) {
+        void applyStatus(String status) {
+          ref.read(stockListQueryProvider.notifier).state = q.copyWith(
+                status: status,
+                page: 1,
+              );
+          ref.read(stockOperationalFiltersProvider.notifier).state =
+              const StockOperationalFilters();
+          ref.invalidate(stockListProvider);
+        }
+
+        void applyMissingCode() {
+          ref.read(stockListQueryProvider.notifier).state =
+              q.copyWith(status: 'all', page: 1);
+          ref.read(stockOperationalFiltersProvider.notifier).state =
+              op.copyWith(missingItemCodeOnly: true, clearMissingItemCode: false);
+          ref.invalidate(stockListProvider);
+        }
+
+        void applyMissingBarcode() {
+          ref.read(stockListQueryProvider.notifier).state =
+              q.copyWith(status: 'all', page: 1);
+          ref.read(stockOperationalFiltersProvider.notifier).state =
+              op.copyWith(missingBarcodeOnly: true);
+          ref.invalidate(stockListProvider);
+        }
+
+        final chips = <({String label, bool selected, VoidCallback onTap})>[
+          (
+            label: 'All (${counts['all'] ?? 0})',
+            selected: q.status == 'all' &&
+                !op.missingBarcodeOnly &&
+                !op.missingItemCodeOnly,
+            onTap: () => applyStatus('all'),
+          ),
+          (
+            label: 'Low (${counts['low'] ?? 0})',
+            selected: q.status == 'low',
+            onTap: () => applyStatus('low'),
+          ),
+          (
+            label: 'Out (${counts['out'] ?? 0})',
+            selected: q.status == 'out',
+            onTap: () => applyStatus('out'),
+          ),
+          (
+            label: 'Missing code (${counts['missing_code'] ?? 0})',
+            selected: op.missingItemCodeOnly,
+            onTap: applyMissingCode,
+          ),
+          (
+            label: 'Missing barcode (${counts['missing_barcode'] ?? 0})',
+            selected: op.missingBarcodeOnly,
+            onTap: applyMissingBarcode,
+          ),
+        ];
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+          child: SizedBox(
+            height: 36,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: chips.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 6),
+              itemBuilder: (ctx, i) {
+                final c = chips[i];
+                return FilterChip(
+                  label: Text(c.label, style: const TextStyle(fontSize: 11)),
+                  selected: c.selected,
+                  onSelected: (_) => c.onTap(),
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 }

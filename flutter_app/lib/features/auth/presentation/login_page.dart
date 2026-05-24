@@ -54,7 +54,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   Future<void> _loadBiometricState() async {
     final email = await BiometricLogin.savedEmail();
-    final can = await BiometricLogin.canCheckBiometrics();
+    final can = await BiometricLogin.isAvailable();
     final t = await ref.read(tokenStoreProvider).read();
     final hasTokens = t.access != null && t.refresh != null;
     if (!mounted) return;
@@ -335,7 +335,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           size: 36,
                           color: HexaColors.brandPrimary,
                         ),
-                        const SizedBox(width: HexaDsLayout.inlineGap),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -357,7 +357,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: HexaDsLayout.blockGap),
+                    const SizedBox(height: 16),
                     Text(
                       'Sign In',
                       textAlign: TextAlign.center,
@@ -431,16 +431,38 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       ),
                     ],
                     if (_bioReady) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 12),
                       SizedBox(
                         width: double.infinity,
-                        height: 48,
-                        child: OutlinedButton.icon(
+                        height: 56,
+                        child: FilledButton.tonalIcon(
                           onPressed: _loading ? null : _signInWithBiometric,
-                          icon: const Icon(Icons.fingerprint),
-                          label: const Text('Sign in with biometrics'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor:
+                                HexaColors.brandPrimary.withValues(alpha: 0.12),
+                            foregroundColor: HexaColors.brandPrimary,
+                          ),
+                          icon: const Icon(Icons.fingerprint, size: 28),
+                          label: const Text(
+                            'Sign in with fingerprint / Face ID',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
                       ),
+                      if (_bioEmail != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          _bioEmail!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                      ],
                     ],
                     const SizedBox(height: 12),
                     SizedBox(

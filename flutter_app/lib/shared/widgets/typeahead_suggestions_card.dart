@@ -29,8 +29,9 @@ class TypeaheadSuggestionsCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: maxHeight),
+            constraints: BoxConstraints(maxHeight: maxHeight, minHeight: 0),
             child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
               child: child,
             ),
           ),

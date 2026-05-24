@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:hexa_purchase_assistant/core/cloud/cloud_payment_local_repository.dart';
-import 'package:hexa_purchase_assistant/core/providers/prefs_provider.dart'
+import 'package:harisree_warehouse/core/cloud/cloud_payment_local_repository.dart';
+import 'package:harisree_warehouse/core/providers/prefs_provider.dart'
     show sharedPreferencesProvider;
 
 class CloudPaymentLocalView {

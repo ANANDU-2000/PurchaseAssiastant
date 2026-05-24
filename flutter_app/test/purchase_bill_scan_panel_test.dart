@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:hexa_purchase_assistant/core/providers/suppliers_list_provider.dart';
-import 'package:hexa_purchase_assistant/features/purchase/presentation/widgets/purchase_bill_scan_panel.dart';
+import 'package:harisree_warehouse/core/providers/suppliers_list_provider.dart';
+import 'package:harisree_warehouse/features/purchase/presentation/widgets/purchase_bill_scan_panel.dart';
 
 Finder _fieldByLabel(String label) {
   return find.byWidgetPredicate(

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:hexa_purchase_assistant/core/design_system/design_system.dart';
+import 'package:harisree_warehouse/core/design_system/design_system.dart';
 
 /// Visual password strength (client-side hint only).
 class PasswordStrengthMeter extends StatelessWidget {

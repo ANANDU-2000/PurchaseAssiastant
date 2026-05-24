@@ -1,7 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/core/reporting/trade_report_aggregate.dart';
+import 'package:harisree_warehouse/core/reporting/trade_report_aggregate.dart';
 
 void main() {
   test('reports list ops: 5000 rows filter+sort under 300ms', () {

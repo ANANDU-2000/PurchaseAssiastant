@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/features/barcode/services/barcode_pdf_service.dart';
+import 'package:harisree_warehouse/features/barcode/services/barcode_pdf_service.dart';
 
 void main() {
   group('BarcodeLabelData.finiteQty', () {

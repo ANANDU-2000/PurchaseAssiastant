@@ -452,24 +452,56 @@ class _CatalogAddItemPageState extends ConsumerState<CatalogAddItemPage> {
       }
       ref.invalidate(catalogItemsListProvider);
       invalidateBusinessAggregates(ref);
+      invalidateWarehouseSurfaces(ref);
       if (mounted) {
-        final code = created['item_code']?.toString() ?? '';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${_name.text.trim()} created${code.isNotEmpty ? ' · $code' : ''}',
-            ),
-            action: nid.isNotEmpty
-                ? SnackBarAction(
-                    label: 'Print label',
-                    onPressed: () => context.push(
-                      '/barcode/print/${Uri.encodeComponent(nid)}',
-                    ),
-                  )
-                : null,
+        final catRows =
+            ref.read(itemCategoriesListProvider).valueOrNull ?? const [];
+        final categoryName =
+            _nameFromRows(catRows, _categoryId) ?? 'this category';
+        final addAnother = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Item saved!'),
+            content: Text('Add another item in $categoryName?'),
+            actions: [
+              if (nid.isNotEmpty)
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(ctx, false);
+                    context.push('/barcode/print/${Uri.encodeComponent(nid)}');
+                  },
+                  child: const Text('Print label'),
+                ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('No, done'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Yes, add more'),
+              ),
+            ],
           ),
         );
-        context.pop(<String, dynamic>{'id': nid, 'name': _name.text.trim()});
+        if (addAnother == true && mounted) {
+          _name.clear();
+          _kg.clear();
+          _itemCode.clear();
+          _hsn.clear();
+          _tax.clear();
+          setState(() {
+            _saving = false;
+            _touched = false;
+            _step = 0;
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _nameFocus.requestFocus();
+          });
+          return;
+        }
+        if (mounted) {
+          context.pop(<String, dynamic>{'id': nid, 'name': _name.text.trim()});
+        }
       }
     } on DioException catch (e) {
       final existing = _existingItemIdFrom409(e);

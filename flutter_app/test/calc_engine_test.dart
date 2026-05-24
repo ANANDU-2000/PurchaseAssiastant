@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/core/calc_engine.dart';
-import 'package:hexa_purchase_assistant/core/strict_decimal.dart';
+import 'package:harisree_warehouse/core/calc_engine.dart';
+import 'package:harisree_warehouse/core/strict_decimal.dart';
 
 void main() {
   test('lineMoney plain', () {

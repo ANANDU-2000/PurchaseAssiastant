@@ -1,5 +1,5 @@
 {
-  "name": "Harisree Purchases",
+  "name": "Harisree Warehouse",
   "short_name": "Harisree",
   "id": "/",
   "lang": "en",
@@ -8,9 +8,9 @@
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "browser"],
-  "background_color": "#F5F7FA",
-  "theme_color": "#14523E",
-  "description": "Purchase intelligence for Harisree Agency",
+  "background_color": "#0E4F46",
+  "theme_color": "#0E4F46",
+  "description": "Warehouse stock & purchase management",
   "orientation": "portrait-primary",
   "prefer_related_applications": false,
   "categories": ["business", "finance", "productivity"],
@@ -52,22 +52,10 @@
       "url": "/purchase/new"
     },
     {
-      "name": "Resume draft",
-      "short_name": "Draft",
-      "description": "Continue saved purchase draft",
-      "url": "/purchase/new?resumeDraft=true"
-    },
-    {
-      "name": "Voice note",
-      "short_name": "Voice",
-      "description": "Record a voice note",
-      "url": "/voice"
-    },
-    {
-      "name": "Purchase history",
-      "short_name": "History",
-      "description": "Purchase list",
-      "url": "/purchase"
+      "name": "Stock",
+      "short_name": "Stock",
+      "description": "Warehouse stock list",
+      "url": "/stock"
     }
   ]
 }

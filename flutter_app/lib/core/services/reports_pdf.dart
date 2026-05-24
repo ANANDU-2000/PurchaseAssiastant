@@ -526,15 +526,22 @@ Future<Uint8List> buildTradeStatementSsotPdfBytes({
   );
   final money2 = NumberFormat('#,##,##0.00', 'en_IN');
 
-  pw.Widget cell(String t, {bool hdr = false, bool right = false}) =>
+  pw.Widget cell(
+    String t, {
+    bool hdr = false,
+    bool bold = false,
+    bool right = false,
+  }) =>
       pw.Padding(
         padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 2),
         child: pw.Text(
           safePdfText(t),
           textAlign: right ? pw.TextAlign.right : pw.TextAlign.left,
           style: pw.TextStyle(
-            fontSize: hdr ? 8 : 7.5,
-            fontWeight: hdr ? pw.FontWeight.bold : pw.FontWeight.normal,
+            fontSize: hdr ? 8 : (bold ? 8 : 7.5),
+            fontWeight: (hdr || bold)
+                ? pw.FontWeight.bold
+                : pw.FontWeight.normal,
           ),
         ),
       );
@@ -544,7 +551,6 @@ Future<Uint8List> buildTradeStatementSsotPdfBytes({
     'Supplier',
     'Item',
     'Qty',
-    'Unit',
     'Bags',
     'Kg',
     'Rate',
@@ -595,10 +601,9 @@ Future<Uint8List> buildTradeStatementSsotPdfBytes({
               pw.TableRow(
                 children: [
                   cell(r[0]),
-                  cell(r[1]),
-                  cell(r[2]),
-                  cell(r[3]),
-                  cell(r[4], right: true),
+                  cell(r[1], bold: true),
+                  cell(r[2], bold: true),
+                  cell('${r[3]} ${r[4]}'.trim(), right: true),
                   cell(r[5]),
                   cell(r[6], right: true),
                   cell(r[7], right: true),

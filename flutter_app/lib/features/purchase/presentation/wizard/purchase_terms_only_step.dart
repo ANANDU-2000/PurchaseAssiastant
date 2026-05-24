@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/widgets/form_field_scroll.dart';
+import '../../../../shared/widgets/keyboard_safe_form_viewport.dart';
 import '../../domain/purchase_draft.dart';
 import '../../state/purchase_draft_provider.dart';
 import 'purchase_wizard_shared.dart';
@@ -419,9 +420,17 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
       ],
     );
 
-    return FocusTraversalGroup(
-      policy: OrderedTraversalPolicy(),
-      child: column,
+    return KeyboardSafeFormViewport(
+      dismissKeyboardOnTap: true,
+      horizontalPadding: 0,
+      topPadding: 0,
+      bottomExtraInset: MediaQuery.viewInsetsOf(context).bottom,
+      minFieldsHeight: 0,
+      fields: FocusTraversalGroup(
+        policy: OrderedTraversalPolicy(),
+        child: column,
+      ),
+      footer: const SizedBox.shrink(),
     );
   }
 }

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:hexa_purchase_assistant/features/barcode/presentation/warehouse_scan_action_sheet.dart';
+import 'package:harisree_warehouse/features/barcode/presentation/warehouse_scan_action_sheet.dart';
 
 void main() {
   test('formatQty rounds whole numbers', () {

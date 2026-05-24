@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/core/calc_engine.dart';
-import 'package:hexa_purchase_assistant/core/models/trade_purchase_models.dart';
-import 'package:hexa_purchase_assistant/core/services/purchase_invoice_pdf_layout.dart';
+import 'package:harisree_warehouse/core/calc_engine.dart';
+import 'package:harisree_warehouse/core/models/trade_purchase_models.dart';
+import 'package:harisree_warehouse/core/services/purchase_invoice_pdf_layout.dart';
 
 void main() {
   test('tradeCalcRequestFromTradePurchase matches sample total (no billty)', () {

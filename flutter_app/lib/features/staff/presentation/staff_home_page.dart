@@ -81,7 +81,7 @@ Future<void> _showStaffProfileSheet(BuildContext context, WidgetRef ref) async {
                 final ok = await showDialog<bool>(
                   context: context,
                   builder: (dCtx) => AlertDialog(
-                    title: const Text('Log out of Harisree?'),
+                    title: Text('Log out of ${HexaColors.appName}?'),
                     content: const Text('You will need to sign in again to continue.'),
                     actions: [
                       TextButton(
@@ -319,11 +319,9 @@ class StaffHomePage extends ConsumerWidget {
                   _StaffActionTile(
                     label: 'Low stock',
                     icon: Icons.warning_amber_rounded,
-                    onTap: () {
-                      ref.read(stockListQueryProvider.notifier).state =
-                          const StockListQuery(status: 'low', page: 1);
-                      context.go('/staff/stock');
-                    },
+                    badge: lowAsync.valueOrNull?.length ?? 0,
+                    badgeColor: const Color(0xFFDC2626),
+                    onTap: () => context.push('/staff/low-stock'),
                   ),
                 ],
               ),
@@ -672,40 +670,69 @@ class _StaffActionTile extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.onTap,
+    this.badge = 0,
+    this.badgeColor = const Color(0xFFDC2626),
   });
 
   final String label;
   final IconData icon;
   final VoidCallback onTap;
+  final int badge;
+  final Color badgeColor;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: HexaColors.brandPrimary, size: 28),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13,
-                  color: Color(0xFF0F172A),
-                ),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, color: HexaColors.brandPrimary, size: 28),
+                  const SizedBox(height: 8),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
-      ),
+        if (badge > 0)
+          Positioned(
+            top: 6,
+            right: 6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: badgeColor,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                badge > 99 ? '99+' : '$badge',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

@@ -11,12 +11,14 @@ class OperationalSection extends StatelessWidget {
     this.trailing,
     required this.child,
     this.dense = true,
+    this.onTitleTap,
   });
 
   final String title;
   final Widget? trailing;
   final Widget child;
   final bool dense;
+  final VoidCallback? onTitleTap;
 
   @override
   Widget build(BuildContext context) {
@@ -34,10 +36,24 @@ class OperationalSection extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    title,
-                    style: HexaDsType.heading(14, color: HexaDsColors.textPrimary),
-                  ),
+                  child: onTitleTap == null
+                      ? Text(
+                          title,
+                          style: HexaDsType.heading(
+                            14,
+                            color: HexaDsColors.textPrimary,
+                          ),
+                        )
+                      : InkWell(
+                          onTap: onTitleTap,
+                          child: Text(
+                            title,
+                            style: HexaDsType.heading(
+                              14,
+                              color: HexaColors.brandPrimary,
+                            ),
+                          ),
+                        ),
                 ),
                 if (trailing != null) trailing!,
               ],

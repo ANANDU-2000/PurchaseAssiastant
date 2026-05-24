@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/core/models/trade_purchase_models.dart';
-import 'package:hexa_purchase_assistant/core/units/dynamic_unit_label_engine.dart' as unit_lbl;
+import 'package:harisree_warehouse/core/models/trade_purchase_models.dart';
+import 'package:harisree_warehouse/core/units/dynamic_unit_label_engine.dart' as unit_lbl;
 
 TradePurchaseLine _line({
   required String unit,

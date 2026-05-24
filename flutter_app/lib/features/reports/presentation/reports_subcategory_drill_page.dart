@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/json_coerce.dart';
 import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import 'reports_drill_format.dart';
 
 String _inr0(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
@@ -25,12 +27,14 @@ class ReportsSubcategoryDrillPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(analyticsTypesTableProvider);
+    final itemsAsync = ref.watch(analyticsItemsTableProvider);
     return Scaffold(
       appBar: AppBar(
         title: Text(
           subcategoryName,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w800),
         ),
       ),
       body: async.when(
@@ -54,13 +58,69 @@ class ReportsSubcategoryDrillPage extends ConsumerWidget {
           final amount =
               (match?['total_purchase'] ?? match?['total_amount'] ?? 0) as num;
           final qty = (match?['total_qty'] ?? match?['qty'] ?? 0) as num;
+          final unit = match?['unit']?.toString();
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              Text(
+                subcategoryName,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 12),
               _metric('Purchase value', _inr0(amount)),
-              _metric('Quantity', qty.toString()),
+              _metric(
+                'Quantity',
+                reportsQtyWithUnit(qty, unit),
+                valueBold: true,
+              ),
               if (typeId != null && typeId!.isNotEmpty)
                 _metric('Type id', typeId!),
+              const SizedBox(height: 16),
+              itemsAsync.when(
+                loading: () => const LinearProgressIndicator(minHeight: 2),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (items) {
+                  final filtered =
+                      reportsItemsForSubcategory(items, subcategoryName);
+                  final list = filtered.isNotEmpty
+                      ? filtered
+                      : (List<Map<String, dynamic>>.from(items)
+                        ..sort(
+                          (a, b) => coerceToDouble(b['total_purchase'])
+                              .compareTo(coerceToDouble(a['total_purchase'])),
+                        ));
+                  final top = list.take(20).toList();
+                  if (top.isEmpty) return const SizedBox.shrink();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'ITEMS IN PERIOD',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.8,
+                          color: HexaColors.textBody.withValues(alpha: 0.7),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...top.map(
+                        (r) => ReportsDrillItemTile(
+                          itemName: (r['item_name'] ?? 'Item').toString(),
+                          qtyLine: reportsItemQtyLine(r),
+                          supplierName: r['supplier_name']?.toString(),
+                          amountLine: reportsInr0(
+                            coerceToDouble(r['total_purchase']),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
               const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed: () {
@@ -86,7 +146,7 @@ class ReportsSubcategoryDrillPage extends ConsumerWidget {
     );
   }
 
-  Widget _metric(String label, String value) {
+  Widget _metric(String label, String value, {bool valueBold = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -102,8 +162,8 @@ class ReportsSubcategoryDrillPage extends ConsumerWidget {
           ),
           Text(
             value,
-            style: const TextStyle(
-              fontWeight: FontWeight.w900,
+            style: TextStyle(
+              fontWeight: valueBold ? FontWeight.w900 : FontWeight.w800,
               color: HexaColors.brandPrimary,
             ),
           ),

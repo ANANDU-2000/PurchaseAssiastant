@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 
-/// Premium green + gold brand palette — Harisree Purchases.
+/// Premium green + gold brand palette — Harisree Warehouse.
 abstract final class HexaColors {
+  /// App display name constants
+  static const appName = 'Harisree Warehouse';
+  static const appTagline = 'Stock · Purchase · Delivery';
+
   // ── BRAND ──────────────────────────────────────────────────────────────────
   static const brandPrimary    = Color(0xFF0E4F46);
   static const brandSecondary  = Color(0xFF065F4F);

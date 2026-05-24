@@ -42,28 +42,28 @@ class StockStatusBadge extends StatelessWidget {
   (String label, Color fg, Color bg) get _style => switch (kind) {
         StockRowStatusKind.ok => (
             'OK',
-            const Color(0xFF2E7D32),
-            const Color(0xFFE8F5E9),
+            Colors.white,
+            const Color(0xFF16A34A),
           ),
         StockRowStatusKind.low => (
             'LOW',
-            const Color(0xFFE65100),
-            const Color(0xFFFFF3E0),
+            Colors.white,
+            const Color(0xFFDC2626),
           ),
         StockRowStatusKind.out => (
             'OUT',
-            const Color(0xFFC62828),
-            const Color(0xFFFFEBEE),
+            const Color(0xFF6B7280),
+            const Color(0xFFE5E7EB),
           ),
         StockRowStatusKind.missingBarcode => (
             'NO CODE',
+            Colors.white,
             const Color(0xFF6A1B9A),
-            const Color(0xFFF3E5F5),
           ),
         StockRowStatusKind.recent => (
             'RECENT',
+            Colors.white,
             const Color(0xFF1565C0),
-            const Color(0xFFE3F2FD),
           ),
       };
 
@@ -77,8 +77,7 @@ class StockStatusBadge extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: fg.withValues(alpha: 0.25)),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         label,

@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/core/models/business_profile.dart';
-import 'package:hexa_purchase_assistant/core/models/trade_purchase_models.dart';
-import 'package:hexa_purchase_assistant/core/services/pdf_purchase_fonts.dart';
-import 'package:hexa_purchase_assistant/core/services/purchase_invoice_pdf_layout.dart';
-import 'package:hexa_purchase_assistant/core/utils/trade_purchase_rate_display.dart';
-import 'package:hexa_purchase_assistant/shared/widgets/trade_intel_cards.dart';
+import 'package:harisree_warehouse/core/models/business_profile.dart';
+import 'package:harisree_warehouse/core/models/trade_purchase_models.dart';
+import 'package:harisree_warehouse/core/services/pdf_purchase_fonts.dart';
+import 'package:harisree_warehouse/core/services/purchase_invoice_pdf_layout.dart';
+import 'package:harisree_warehouse/core/utils/trade_purchase_rate_display.dart';
+import 'package:harisree_warehouse/shared/widgets/trade_intel_cards.dart';
 
 void main() {
   test('kPurchaseOrderPdfTitle constant', () {

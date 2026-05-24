@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:hexa_purchase_assistant/core/maintenance/maintenance_month_record.dart';
-import 'package:hexa_purchase_assistant/core/maintenance/maintenance_payment_constants.dart';
+import 'package:harisree_warehouse/core/maintenance/maintenance_month_record.dart';
+import 'package:harisree_warehouse/core/maintenance/maintenance_payment_constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Local JSON storage for maintenance months (append-only history, capped).

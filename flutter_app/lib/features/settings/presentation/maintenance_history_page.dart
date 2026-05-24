@@ -3,12 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import 'package:hexa_purchase_assistant/core/maintenance/maintenance_month_record.dart';
-import 'package:hexa_purchase_assistant/core/maintenance/maintenance_payment_repository.dart';
-import 'package:hexa_purchase_assistant/core/providers/prefs_provider.dart';
-import 'package:hexa_purchase_assistant/core/router/navigation_ext.dart';
-import 'package:hexa_purchase_assistant/core/theme/hexa_colors.dart';
-import 'package:hexa_purchase_assistant/core/theme/theme_context_ext.dart';
+import 'package:harisree_warehouse/core/maintenance/maintenance_month_record.dart';
+import 'package:harisree_warehouse/core/maintenance/maintenance_payment_repository.dart';
+import 'package:harisree_warehouse/core/providers/prefs_provider.dart';
+import 'package:harisree_warehouse/core/router/navigation_ext.dart';
+import 'package:harisree_warehouse/core/theme/hexa_colors.dart';
+import 'package:harisree_warehouse/core/theme/theme_context_ext.dart';
 
 class MaintenanceHistoryPage extends ConsumerWidget {
   const MaintenanceHistoryPage({super.key});

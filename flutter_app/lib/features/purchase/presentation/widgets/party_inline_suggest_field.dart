@@ -605,6 +605,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
 
   Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
     void commit() => _pick(it, keepFocus: false);
+
     return Semantics(
       button: true,
       label: it.label,
@@ -613,6 +614,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
         type: MaterialType.transparency,
         color: cs.surface,
         child: GestureDetector(
+          onTapDown: (_) => _pick(it, keepFocus: false),
           onTap: commit,
           behavior: HitTestBehavior.opaque,
           child: ConstrainedBox(

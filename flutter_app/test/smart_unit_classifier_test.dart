@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/core/unit_engine/smart_unit_classifier.dart';
-import 'package:hexa_purchase_assistant/core/unit_engine/unit_rules_loader.dart';
+import 'package:harisree_warehouse/core/unit_engine/smart_unit_classifier.dart';
+import 'package:harisree_warehouse/core/unit_engine/unit_rules_loader.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

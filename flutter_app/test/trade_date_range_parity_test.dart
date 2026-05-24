@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hexa_purchase_assistant/core/providers/analytics_kpi_provider.dart'
+import 'package:harisree_warehouse/core/providers/analytics_kpi_provider.dart'
     show analyticsDateRangeProvider;
-import 'package:hexa_purchase_assistant/core/providers/home_dashboard_provider.dart'
+import 'package:harisree_warehouse/core/providers/home_dashboard_provider.dart'
     show
         homeCustomDateRangeProvider,
         homePeriodProvider,

@@ -1,5 +1,5 @@
-import 'package:hexa_purchase_assistant/core/maintenance/maintenance_month_record.dart';
-import 'package:hexa_purchase_assistant/core/maintenance/maintenance_payment_repository.dart';
+import 'package:harisree_warehouse/core/maintenance/maintenance_month_record.dart';
+import 'package:harisree_warehouse/core/maintenance/maintenance_payment_repository.dart';
 
 /// Home card + alerts: single source for copy and colors.
 enum MaintenanceUiStatus {

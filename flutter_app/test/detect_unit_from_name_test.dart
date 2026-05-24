@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/core/unit_engine/smart_validation_engine.dart';
+import 'package:harisree_warehouse/core/unit_engine/smart_validation_engine.dart';
 
 void main() {
   test('detectUnitFromName maps common suffixes', () {

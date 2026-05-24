@@ -1,5 +1,5 @@
-name: hexa_purchase_assistant
-description: Harisree Purchases — owner/staff client
+name: harisree_warehouse
+description: Harisree Warehouse — stock, purchase & delivery management
 publish_to: "none"
 version: 0.1.4+5
 

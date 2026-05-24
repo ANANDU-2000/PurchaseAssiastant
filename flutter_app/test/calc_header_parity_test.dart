@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/core/calc_engine.dart';
+import 'package:harisree_warehouse/core/calc_engine.dart';
 
 /// Mirrors `backend/tests/test_trade_header_totals_parity.py`:
 /// `test_header_percent_discount_applies_before_freight_and_commission`.

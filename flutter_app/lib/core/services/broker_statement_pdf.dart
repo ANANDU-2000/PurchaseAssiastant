@@ -124,11 +124,11 @@ pw.Document _buildBrokerStatementDocument({
           children: [
             _pcell(i == 0 ? _df.format(p.purchaseDate) : ''),
             _pcell(i == 0 ? p.humanId : ''),
-            _pcell(i == 0 ? _safe(p.supplierName) : ''),
-            _pcell(_safe(l.itemName)),
+            _pcell(i == 0 ? _safe(p.supplierName) : '', supplierBold: i == 0),
+            _pcell(_safe(l.itemName), nameBold: true),
             _pcell(_safe(l.unit)),
             _pcell(
-              l.qty % 1 == 0 ? '${l.qty.toInt()}' : l.qty.toStringAsFixed(1),
+              '${l.qty % 1 == 0 ? l.qty.toInt() : l.qty.toStringAsFixed(1)} ${_safe(l.unit)}',
               right: true,
             ),
             _pcell(kgLine > 1e-6 ? kgLine.toStringAsFixed(0) : '—',
@@ -170,8 +170,10 @@ pw.Document _buildBrokerStatementDocument({
             ),
           ),
           pw.SizedBox(height: 6),
-          pw.Text('Broker: ${_safe(brokerName)}',
-              style: const pw.TextStyle(fontSize: 10)),
+          pw.Text(
+            'Broker: ${_safe(brokerName)}',
+            style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+          ),
           if (brokerPhone != null && brokerPhone.trim().isNotEmpty)
             pw.Text('Phone: ${_safe(brokerPhone)}',
                 style: const pw.TextStyle(fontSize: 9)),
@@ -279,15 +281,27 @@ Future<void> shareBrokerStatementPdfForChat({
   );
 }
 
-pw.Widget _pcell(String t, {bool bold = false, bool right = false}) =>
+pw.Widget _pcell(
+  String t, {
+  bool bold = false,
+  bool nameBold = false,
+  bool supplierBold = false,
+  bool right = false,
+}) =>
     pw.Padding(
       padding: const pw.EdgeInsets.all(4),
       child: pw.Text(
         t,
         textAlign: right ? pw.TextAlign.right : pw.TextAlign.left,
         style: pw.TextStyle(
-          fontSize: 8,
-          fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+          fontSize: nameBold
+              ? 12
+              : supplierBold
+                  ? 11
+                  : 8,
+          fontWeight: (bold || nameBold || supplierBold)
+              ? pw.FontWeight.bold
+              : pw.FontWeight.normal,
         ),
       ),
     );

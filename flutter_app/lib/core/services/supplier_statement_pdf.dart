@@ -68,8 +68,10 @@ Future<void> shareSupplierStatementPdf({
             ),
           ),
           pw.SizedBox(height: 6),
-          pw.Text('Supplier: ${_safe(supplierName)}',
-              style: const pw.TextStyle(fontSize: 10)),
+          pw.Text(
+            'Supplier: ${_safe(supplierName)}',
+            style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+          ),
           if (supplierAddress != null && supplierAddress.trim().isNotEmpty)
             pw.Text('Address: ${_safe(supplierAddress)}',
                 style: const pw.TextStyle(fontSize: 9)),
@@ -117,7 +119,7 @@ Future<void> shareSupplierStatementPdf({
                   children: [
                     _pcell(i == 0 ? _df.format(p.purchaseDate) : ''),
                     _pcell(i == 0 ? p.humanId : ''),
-                    _pcell(_safe(p.lines[i].itemName)),
+                    _pcell(_safe(p.lines[i].itemName), nameBold: true),
                     _pcell(
                       '${p.lines[i].qty % 1 == 0 ? p.lines[i].qty.toInt() : p.lines[i].qty.toStringAsFixed(1)} ${p.lines[i].unit}',
                       right: true,
@@ -150,15 +152,22 @@ Future<void> shareSupplierStatementPdf({
   );
 }
 
-pw.Widget _pcell(String t, {bool bold = false, bool right = false}) =>
+pw.Widget _pcell(
+  String t, {
+  bool bold = false,
+  bool nameBold = false,
+  bool right = false,
+}) =>
     pw.Padding(
       padding: const pw.EdgeInsets.all(4),
       child: pw.Text(
         t,
         textAlign: right ? pw.TextAlign.right : pw.TextAlign.left,
         style: pw.TextStyle(
-          fontSize: 8,
-          fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+          fontSize: nameBold ? 12 : 8,
+          fontWeight: (bold || nameBold)
+              ? pw.FontWeight.bold
+              : pw.FontWeight.normal,
         ),
       ),
     );

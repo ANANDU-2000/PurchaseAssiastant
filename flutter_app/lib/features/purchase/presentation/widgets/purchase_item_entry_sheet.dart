@@ -2025,15 +2025,16 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
   }
 
   String _sellingRateLabel(bool _) {
+    const optional = 'Selling rate (optional)';
     final resolved = _resolvedUnitContext();
     if (!_showPerKgLandingLabels && resolved.unitConfidence >= 60) {
-      return resolved.sellingRateFieldLabel;
+      return optional;
     }
     final sfx = unit_lbl.sellingRateSuffix(_draftLineForLabelsOnly());
     if (widget.fullPage) {
-      return 'Selling Rate (₹/$sfx)';
+      return 'Selling rate (optional) (₹/$sfx)';
     }
-    return 'Selling price (₹/$sfx)';
+    return 'Selling rate (optional) (₹/$sfx)';
   }
 
   String _catalogSearchSuggestionSubtitle(Map<String, dynamic> row) {
@@ -4155,19 +4156,25 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                 mainAxisSize: MainAxisSize.min,
                 children: formChildren,
               ),
-              footer: Material(
-                elevation: kbd ? 8 : 0,
-                color: theme.colorScheme.surface,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    10,
-                    kbd ? 4 : 8,
-                    10,
-                    kbd
-                        ? 4
-                        : (homeBottomInset > 0 ? homeBottomInset + 10.0 : 12.0),
+              footer: AnimatedPadding(
+                duration: const Duration(milliseconds: 150),
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+                ),
+                child: Material(
+                  elevation: kbd ? 8 : 0,
+                  color: theme.colorScheme.surface,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      10,
+                      kbd ? 4 : 8,
+                      10,
+                      kbd
+                          ? 4
+                          : (homeBottomInset > 0 ? homeBottomInset + 10.0 : 12.0),
+                    ),
+                    child: kbd ? _buildKeyboardAccessoryRow(theme) : footer,
                   ),
-                  child: kbd ? _buildKeyboardAccessoryRow(theme) : footer,
                 ),
               ),
             );

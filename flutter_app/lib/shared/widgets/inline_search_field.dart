@@ -86,8 +86,11 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
   final Object _suggestionTapGroup = Object();
 
   bool _pickInProgress = false;
+  InlineSearchItem? _pendingSelection;
   String? _lastPickFingerprint;
   int _lastPickMs = 0;
+
+  bool get _hasPendingSelection => _pendingSelection != null;
 
   @override
   void initState() {
@@ -110,6 +113,16 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
   void _onFocusChange() {
     if (!mounted) return;
     if (_focus.hasFocus) return;
+    if (_hasPendingSelection) {
+      final pending = _pendingSelection!;
+      _pendingSelection = null;
+      _pick(pending, keepFocus: false);
+      return;
+    }
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (!mounted || _focus.hasFocus || _hasPendingSelection) return;
+      setState(() {});
+    });
     if (!_pickInProgress) {
       final q = _ctrl.text.trim().toLowerCase();
       if (q.isNotEmpty) {
@@ -368,9 +381,15 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
                               ),
                               itemBuilder: (BuildContext ctx, int i) {
                                 final it = opts[i];
-                                void commit() => onSelected(it);
-                                return InkWell(
+                                void commit() {
+                                  _pendingSelection = null;
+                                  onSelected(it);
+                                }
+
+                                return GestureDetector(
+                                  onTapDown: (_) => _pendingSelection = it,
                                   onTap: commit,
+                                  behavior: HitTestBehavior.opaque,
                                   child: ConstrainedBox(
                                     constraints: const BoxConstraints(
                                       minHeight: 44,

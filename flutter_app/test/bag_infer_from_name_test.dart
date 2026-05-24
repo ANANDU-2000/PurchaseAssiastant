@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/core/utils/line_display.dart';
+import 'package:harisree_warehouse/core/utils/line_display.dart';
 
 void main() {
   test('parseKgPerBagHintFromItemName finds weight token', () {

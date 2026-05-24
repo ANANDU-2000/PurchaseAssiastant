@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/router/post_auth_route.dart';
 import '../../../core/theme/hexa_colors.dart';
-import '../../../core/theme/theme_context_ext.dart';
 
 class SplashPage extends ConsumerStatefulWidget {
   const SplashPage({super.key});
@@ -27,7 +26,9 @@ class _SplashPageState extends ConsumerState<SplashPage>
   void initState() {
     super.initState();
     _anim = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 600));
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
     _fade = CurvedAnimation(parent: _anim, curve: Curves.easeOut);
     _anim.forward();
     WidgetsBinding.instance.addPostFrameCallback((_) => _boot());
@@ -68,7 +69,7 @@ class _SplashPageState extends ConsumerState<SplashPage>
       setState(() {
         _busy = false;
         _error =
-            "We couldn't refresh your session. You're still signed in—check your connection and tap Retry.";
+            "We couldn't refresh your session. Check your connection and tap Retry.";
       });
       return;
     }
@@ -77,62 +78,115 @@ class _SplashPageState extends ConsumerState<SplashPage>
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: context.adaptiveScaffold,
-      body: FadeTransition(
-        opacity: _fade,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: RadialGradient(
-              center: const Alignment(0, -0.65),
-              radius: 1.15,
-              colors: isDark
-                  ? [
-                      HexaColors.accentPurple.withValues(alpha: 0.12),
-                      HexaColors.accentBlue.withValues(alpha: 0.05),
-                      HexaColors.canvas,
-                    ]
-                  : [
-                      Colors.white,
-                      const Color(0xFFE8ECF2),
-                      cs.surface,
-                    ],
-              stops: const [0.0, 0.4, 1.0],
+      backgroundColor: HexaColors.brandPrimary,
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFF062E28),
+                  Color(0xFF0E4F46),
+                  Color(0xFF159A8A),
+                ],
+                stops: [0.0, 0.5, 1.0],
+              ),
             ),
           ),
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
+          Center(
+            child: FadeTransition(
+              opacity: _fade,
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
+                  Container(
+                    width: 96,
+                    height: 96,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(22),
+                      child: Image.asset(
+                        'assets/images/app_logo.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.warehouse_rounded,
+                          color: Colors.white,
+                          size: 48,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    HexaColors.appName,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    HexaColors.appTagline,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 48),
                   if (_busy)
-                    const SizedBox(
-                        width: 28,
-                        height: 28,
-                        child: CircularProgressIndicator(strokeWidth: 2.5)),
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.white.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    ),
                   if (_error != null) ...[
-                    const SizedBox(height: 20),
-                    Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: tt.bodyMedium?.copyWith(
-                        color: cs.onSurfaceVariant,
-                        height: 1.4,
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 40),
+                      child: Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontSize: 13,
+                          height: 1.45,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
                     FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.white.withValues(alpha: 0.2),
+                        foregroundColor: Colors.white,
+                      ),
                       onPressed: _busy ? null : _boot,
-                      icon: const Icon(Icons.refresh_rounded),
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
                       label: const Text('Retry'),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     TextButton(
                       onPressed: () => context.go('/login'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                      ),
                       child: const Text('Use another account'),
                     ),
                   ],
@@ -140,7 +194,21 @@ class _SplashPageState extends ConsumerState<SplashPage>
               ),
             ),
           ),
-        ),
+          Positioned(
+            bottom: 24 + MediaQuery.paddingOf(context).bottom,
+            left: 0,
+            right: 0,
+            child: Text(
+              '${HexaColors.appName} v1.0',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.4),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

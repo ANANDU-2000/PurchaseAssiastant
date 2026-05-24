@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/core/json_coerce.dart';
-import 'package:hexa_purchase_assistant/features/purchase/domain/purchase_draft.dart';
+import 'package:harisree_warehouse/core/json_coerce.dart';
+import 'package:harisree_warehouse/features/purchase/domain/purchase_draft.dart';
 
 void main() {
   test('coerceToDouble parses string decimals', () {

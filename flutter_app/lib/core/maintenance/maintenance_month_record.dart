@@ -1,4 +1,4 @@
-import 'package:hexa_purchase_assistant/core/maintenance/maintenance_payment_constants.dart';
+import 'package:harisree_warehouse/core/maintenance/maintenance_payment_constants.dart';
 
 /// One calendar month of maintenance payment state (local device only).
 class MaintenanceMonthRecord {

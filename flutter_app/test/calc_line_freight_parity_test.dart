@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/core/calc_engine.dart';
+import 'package:harisree_warehouse/core/calc_engine.dart';
 
 /// Mirrors backend `test_trade_header_totals_parity.py`:
 /// `test_header_freight_skipped_when_line_has_delivered_only`.

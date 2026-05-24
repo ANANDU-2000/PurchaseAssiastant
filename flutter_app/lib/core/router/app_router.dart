@@ -65,6 +65,7 @@ import '../../features/barcode/presentation/barcode_scan_history_page.dart';
 import '../../features/barcode/presentation/stock_audit_session_page.dart';
 import '../../features/barcode/presentation/stock_audit_summary_page.dart';
 import '../../features/stock/presentation/stock_page.dart';
+import '../../features/stock/presentation/low_stock_owner_page.dart';
 import '../../features/stock/presentation/stock_changes_page.dart';
 import '../../features/stock/presentation/reorder_list_page.dart';
 import '../../features/stock/presentation/stock_history_page.dart';
@@ -76,6 +77,7 @@ import '../../features/settings/presentation/ai_usage_page.dart';
 import '../../features/staff/presentation/staff_shell_screen.dart';
 import '../../features/staff/presentation/staff_activity_page.dart';
 import '../../features/staff/presentation/staff_purchase_history_page.dart';
+import '../../features/staff/presentation/staff_low_stock_page.dart';
 import '../../features/staff/presentation/staff_purchase_order_detail_page.dart';
 import '../../features/shell/shell_screen.dart';
 import '../../features/splash/presentation/splash_page.dart';
@@ -323,10 +325,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/barcode/print/:itemId',
         name: 'barcode_print',
         pageBuilder: (context, state) {
-          final itemId = state.pathParameters['itemId']!;
+          final itemId = state.pathParameters['itemId'] ?? '';
+          final preload = state.uri.queryParameters['preloadItemId'] ??
+              state.uri.queryParameters['itemId'];
           return iosPushPage(
             key: state.pageKey,
-            child: BarcodePrintPage(itemId: itemId),
+            child: BarcodePrintPage(
+              itemId: itemId,
+              preloadItemId: preload,
+            ),
           );
         },
       ),
@@ -466,6 +473,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const ReorderListPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/stock/low-stock',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const LowStockOwnerPage(),
         ),
       ),
       GoRoute(
@@ -670,6 +684,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const SuperAdminPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/staff/low-stock',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const StaffLowStockPage(),
         ),
       ),
       GoRoute(

@@ -34,7 +34,7 @@ class BulkBarcodePrintPage extends ConsumerStatefulWidget {
 class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
   final _searchCtrl = TextEditingController();
   Timer? _searchDebounce;
-  static const LabelSize _thermalSize = LabelSize.medium;
+  static const LabelSize _thermalSize = LabelSize.small;
   int _copies = 1;
   final int _perRow = 2;
   bool _busy = false;
@@ -254,6 +254,7 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
+        duration: const Duration(seconds: 6),
         backgroundColor: Colors.red.shade700,
         action: SnackBarAction(
           label: 'Retry',

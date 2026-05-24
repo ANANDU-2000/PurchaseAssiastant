@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/features/purchase/domain/purchase_draft.dart';
-import 'package:hexa_purchase_assistant/features/purchase/mapping/ai_scan_purchase_draft_map.dart';
+import 'package:harisree_warehouse/features/purchase/domain/purchase_draft.dart';
+import 'package:harisree_warehouse/features/purchase/mapping/ai_scan_purchase_draft_map.dart';
 
 void main() {
   group('purchaseDraftFromScanResultJson', () {

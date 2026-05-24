@@ -6,6 +6,7 @@ import '../api/hexa_api.dart';
 import '../auth/session_notifier.dart';
 import 'app_period_provider.dart';
 import 'home_dashboard_provider.dart';
+import 'staff_home_providers.dart';
 
 /// Query for GET `/v1/businesses/{id}/stock/list`.
 class StockListQuery {
@@ -17,7 +18,7 @@ class StockListQuery {
     this.subcategory = '',
     this.supplier = '',
     this.status = 'all',
-    this.sort = 'name',
+    this.sort = 'recent',
     this.includePeriod = false,
     this.periodStart,
     this.periodEnd,
@@ -157,7 +158,7 @@ int countOperationalActiveFilters(StockListQuery q, StockOperationalFilters op) 
   if (q.subcategory.isNotEmpty) n++;
   if (q.supplier.isNotEmpty) n++;
   if (q.status != 'all') n++;
-  if (q.sort != 'name') n++;
+  if (q.sort != 'recent') n++;
   if (op.missingBarcodeOnly) n++;
   if (op.missingItemCodeOnly) n++;
   if (op.reorderOnly) n++;
@@ -347,3 +348,102 @@ final stockItemAuditProvider =
         );
   },
 );
+
+/// Status bucket counts for stock filter chips (server totals + client scans).
+final stockStatusCountsProvider =
+    FutureProvider.autoDispose<Map<String, int>>((ref) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return {};
+  final api = ref.read(hexaApiProvider);
+  final bid = session.primaryBusiness.id;
+
+  Future<int> totalFor(String status) async {
+    final res = await api.listStock(
+      businessId: bid,
+      page: 1,
+      perPage: 1,
+      status: status,
+      sort: 'recent',
+    );
+    return (res['total'] as num?)?.toInt() ?? 0;
+  }
+
+  final results = await Future.wait([
+    totalFor('all'),
+    totalFor('low'),
+    totalFor('out'),
+  ]);
+  var missingBarcode = 0;
+  var page = 1;
+  while (page <= 8) {
+    final res = await api.listStock(
+      businessId: bid,
+      page: page,
+      perPage: 200,
+      status: 'all',
+      sort: 'recent',
+    );
+    final raw = (res['items'] as List?) ?? const [];
+    if (raw.isEmpty) break;
+    for (final e in raw) {
+      if (e is! Map) continue;
+      if (e['missing_barcode'] == true) missingBarcode++;
+    }
+    final total = (res['total'] as num?)?.toInt() ?? 0;
+    if (page * 200 >= total) break;
+    page++;
+  }
+  final missingCode =
+      ref.watch(missingCodeItemsProvider).valueOrNull?.length ?? 0;
+
+  return {
+    'all': results[0],
+    'low': results[1],
+    'out': results[2],
+    'missing_code': missingCode,
+    'missing_barcode': missingBarcode,
+  };
+});
+
+/// Low-stock items grouped category → subcategory → rows.
+typedef LowStockByCategoryMap =
+    Map<String, Map<String, List<Map<String, dynamic>>>>;
+
+final lowStockByCategoryProvider =
+    FutureProvider.autoDispose<LowStockByCategoryMap>((ref) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return {};
+  final api = ref.read(hexaApiProvider);
+  final bid = session.primaryBusiness.id;
+  var page = 1;
+  final merged = <Map<String, dynamic>>[];
+  while (page <= 10) {
+    final res = await api.listStock(
+      businessId: bid,
+      page: page,
+      perPage: 200,
+      status: 'low',
+      sort: 'stock_asc',
+    );
+    final total = (res['total'] as num?)?.toInt() ?? 0;
+    final raw = (res['items'] as List?) ?? const [];
+    if (raw.isEmpty) break;
+    for (final e in raw) {
+      if (e is Map) merged.add(Map<String, dynamic>.from(e));
+    }
+    if (merged.length >= total) break;
+    page++;
+  }
+
+  final result = <String, Map<String, List<Map<String, dynamic>>>>{};
+  for (final item in merged) {
+    final cat = item['category_name']?.toString().trim();
+    final catKey = (cat != null && cat.isNotEmpty) ? cat : 'Unknown';
+    final sub = item['subcategory_name']?.toString().trim();
+    final subKey = (sub != null && sub.isNotEmpty) ? sub : 'Other';
+    result.putIfAbsent(catKey, () => {});
+    result[catKey]!.putIfAbsent(subKey, () => []);
+    result[catKey]![subKey]!.add(item);
+  }
+  return result;
+});

@@ -186,7 +186,7 @@ class BarcodePdfService {
 
   static Future<Uint8List> generateSingleLabel({
     required BarcodeLabelData data,
-    LabelSize size = LabelSize.medium,
+    LabelSize size = LabelSize.small,
     int copies = 1,
     bool showLastPurchase = true,
     bool hideFinancials = false,
@@ -215,7 +215,7 @@ class BarcodePdfService {
 
   static Future<Uint8List> generateBatch({
     required List<BarcodeLabelData> items,
-    LabelSize size = LabelSize.medium,
+    LabelSize size = LabelSize.small,
     int copiesPerItem = 1,
     bool showLastPurchase = true,
     bool hideFinancials = false,
@@ -303,7 +303,7 @@ class BarcodePdfService {
   /// 50×25 (M), 80×40 (L). Runs off the UI thread on VM via [Isolate.run].
   static Future<Uint8List> generateBatchA4Dense({
     required List<BarcodeLabelData> items,
-    LabelSize size = LabelSize.medium,
+    LabelSize size = LabelSize.small,
     int copiesPerItem = 1,
     bool showLastPurchase = true,
     bool hideFinancials = false,
@@ -529,6 +529,16 @@ class BarcodePdfService {
     BarcodeSymbolMode symbol = BarcodeSymbolMode.code128WithQr,
     bool compact = false,
   }) {
+    if (size == LabelSize.small) {
+      return [
+        _smallThermalLabelRow(
+          data: data,
+          symbol: symbol,
+          showLastPurchase: showLastPurchase,
+          compact: compact,
+        ),
+      ];
+    }
     final code = data.symbologyValue.isEmpty
         ? sanitizePrintPayload(data.itemName, forQr: symbol == BarcodeSymbolMode.qrCode)
         : data.symbologyValue;
@@ -641,6 +651,84 @@ class BarcodePdfService {
     }
 
     return children;
+  }
+
+  /// Thermal small: barcode left; name + date + qty right — no price, no unit text.
+  static pw.Widget _smallThermalLabelRow({
+    required BarcodeLabelData data,
+    required BarcodeSymbolMode symbol,
+    required bool showLastPurchase,
+    bool compact = false,
+  }) {
+    final code = data.symbologyValue.isEmpty
+        ? sanitizePrintPayload(data.itemName, forQr: symbol == BarcodeSymbolMode.qrCode)
+        : data.symbologyValue;
+    final codeLine = data.itemCode.trim().isEmpty ? code : data.itemCode.trim();
+    final bcH = compact ? 12.0 : 22.0;
+    final nameSize = compact ? 5.0 : 7.0;
+    final metaSize = compact ? 5.0 : 6.0;
+
+    final qtyStr = pdfQtyDisplayString(data.lastPurchaseQty);
+    String? dateStr;
+    if (showLastPurchase && data.lastPurchaseDate != null) {
+      final d = data.lastPurchaseDate!;
+      dateStr =
+          '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${(d.year % 100).toString().padLeft(2, '0')}';
+    }
+
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        pw.Expanded(
+          flex: compact ? 2 : 3,
+          child: pw.Column(
+            mainAxisAlignment: pw.MainAxisAlignment.center,
+            children: [
+              _safeBarcodeWidget(
+                qr: symbol == BarcodeSymbolMode.qrCode,
+                data: code,
+                height: bcH,
+                width: compact ? bcH : bcH * 1.6,
+              ),
+              if (!compact)
+                pw.Text(
+                  codeLine.length > 18 ? '${codeLine.substring(0, 18)}…' : codeLine,
+                  style: pw.TextStyle(fontSize: metaSize - 0.5),
+                  maxLines: 1,
+                ),
+            ],
+          ),
+        ),
+        pw.SizedBox(width: compact ? 1 : 2),
+        pw.Expanded(
+          flex: compact ? 3 : 4,
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                data.itemName,
+                maxLines: compact ? 1 : 2,
+                style: pw.TextStyle(
+                  fontSize: nameSize,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              if (dateStr != null)
+                pw.Text(dateStr, style: pw.TextStyle(fontSize: metaSize)),
+              if (qtyStr != null)
+                pw.Text(
+                  'Qty: $qtyStr',
+                  style: pw.TextStyle(
+                    fontSize: metaSize + (compact ? 0 : 1),
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   static String? _lastPurchaseLine(

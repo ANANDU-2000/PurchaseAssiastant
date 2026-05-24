@@ -3,11 +3,11 @@ import 'dart:async' show scheduleMicrotask, unawaited;
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:hexa_purchase_assistant/core/maintenance/maintenance_month_record.dart';
-import 'package:hexa_purchase_assistant/core/maintenance/maintenance_payment_repository.dart';
-import 'package:hexa_purchase_assistant/core/maintenance/maintenance_ui_status.dart';
-import 'package:hexa_purchase_assistant/core/notifications/local_notifications_service.dart';
-import 'package:hexa_purchase_assistant/core/providers/prefs_provider.dart'
+import 'package:harisree_warehouse/core/maintenance/maintenance_month_record.dart';
+import 'package:harisree_warehouse/core/maintenance/maintenance_payment_repository.dart';
+import 'package:harisree_warehouse/core/maintenance/maintenance_ui_status.dart';
+import 'package:harisree_warehouse/core/notifications/local_notifications_service.dart';
+import 'package:harisree_warehouse/core/providers/prefs_provider.dart'
     show sharedPreferencesProvider;
 
 const _loadErr = 'Unable to load maintenance data';

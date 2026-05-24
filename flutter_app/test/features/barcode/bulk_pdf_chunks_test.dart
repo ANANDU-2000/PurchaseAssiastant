@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/features/barcode/services/barcode_pdf_service.dart';
-import 'package:hexa_purchase_assistant/features/barcode/services/bulk_pdf_chunks.dart';
+import 'package:harisree_warehouse/features/barcode/services/barcode_pdf_service.dart';
+import 'package:harisree_warehouse/features/barcode/services/bulk_pdf_chunks.dart';
 
 BarcodeLabelData _label(String code) => BarcodeLabelData(
       itemCode: code,

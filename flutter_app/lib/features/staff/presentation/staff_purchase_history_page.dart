@@ -6,15 +6,17 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../core/json_coerce.dart';
 import '../../../core/models/trade_purchase_models.dart';
+import '../../../core/providers/staff_home_providers.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/utils/line_display.dart';
+import '../../../core/utils/unit_utils.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/list_skeleton.dart';
-import '../../../shared/widgets/operational_ui.dart';
 
-/// Staff purchase list — search, period/status filters, qty and delivery only.
+/// Staff purchase list — Today / Week / All time / Low stock items tabs.
 class StaffPurchaseHistoryPage extends ConsumerStatefulWidget {
   const StaffPurchaseHistoryPage({super.key});
 
@@ -23,23 +25,24 @@ class StaffPurchaseHistoryPage extends ConsumerStatefulWidget {
       _StaffPurchaseHistoryPageState();
 }
 
-class _StaffPurchaseHistoryPageState
-    extends ConsumerState<StaffPurchaseHistoryPage> {
+class _StaffPurchaseHistoryPageState extends ConsumerState<StaffPurchaseHistoryPage>
+    with SingleTickerProviderStateMixin {
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
-  String _period = 'week';
-  String? _statusFilter;
+  late final TabController _tabs;
   String _query = '';
 
   @override
   void initState() {
     super.initState();
+    _tabs = TabController(length: 4, vsync: this);
     _searchCtrl.addListener(_onSearchChanged);
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _tabs.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -52,25 +55,26 @@ class _StaffPurchaseHistoryPageState
     });
   }
 
-  DateTime get _from {
+  bool _inPeriod(TradePurchase p, int tabIndex) {
     final now = DateTime.now();
-    if (_period == 'month') {
-      return DateTime(now.year, now.month, 1);
-    }
-    final w = now.subtract(Duration(days: now.weekday - 1));
-    return DateTime(w.year, w.month, w.day);
+    final today = DateTime(now.year, now.month, now.day);
+    final d = DateTime(
+      p.purchaseDate.year,
+      p.purchaseDate.month,
+      p.purchaseDate.day,
+    );
+    return switch (tabIndex) {
+      0 => d == today,
+      1 => !d.isBefore(today.subtract(Duration(days: now.weekday - 1))),
+      2 => true,
+      _ => true,
+    };
   }
 
-  List<TradePurchase> _filter(List<TradePurchase> all) {
+  List<TradePurchase> _filterPurchases(List<TradePurchase> all) {
+    final tab = _tabs.index;
     return all.where((p) {
-      final d = DateTime(
-        p.purchaseDate.year,
-        p.purchaseDate.month,
-        p.purchaseDate.day,
-      );
-      if (d.isBefore(_from)) return false;
-      if (_statusFilter == 'pending' && p.isDelivered) return false;
-      if (_statusFilter == 'delivered' && !p.isDelivered) return false;
+      if (tab < 3 && !_inPeriod(p, tab)) return false;
       if (_query.isEmpty) return true;
       final hay = [
         p.humanId,
@@ -84,6 +88,8 @@ class _StaffPurchaseHistoryPageState
   @override
   Widget build(BuildContext context) {
     final listAsync = ref.watch(tradePurchasesParsedProvider);
+    final lowAsync = ref.watch(staffLowStockAlertsProvider);
+    final tab = _tabs.index;
 
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
@@ -91,100 +97,152 @@ class _StaffPurchaseHistoryPageState
         title: const Text('Purchase orders'),
         backgroundColor: Colors.transparent,
         foregroundColor: HexaColors.brandPrimary,
+        bottom: TabBar(
+          controller: _tabs,
+          isScrollable: true,
+          onTap: (_) => setState(() {}),
+          tabs: [
+            const Tab(text: 'Today'),
+            const Tab(text: 'Week'),
+            const Tab(text: 'All time'),
+            Tab(
+              text: lowAsync.maybeWhen(
+                data: (rows) => 'Low stock (${rows.length})',
+                orElse: () => 'Low stock',
+              ),
+            ),
+          ],
+        ),
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                hintText: 'Search supplier, order no., item…',
-                isDense: true,
-                prefixIcon: const Icon(Icons.search, size: 20),
-                suffixIcon: _query.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close, size: 18),
-                        onPressed: () => _searchCtrl.clear(),
-                      ),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFFE0DDD8)),
+          if (tab < 3) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: TextField(
+                controller: _searchCtrl,
+                decoration: InputDecoration(
+                  hintText: 'Search supplier, order no., item…',
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () => _searchCtrl.clear(),
+                        ),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFFE0DDD8)),
+                  ),
                 ),
               ),
             ),
-          ),
-          OperationalPillRow(
-            labels: const ['This week', 'This month'],
-            selected: _period == 'month' ? 'This month' : 'This week',
-            height: 32,
-            onSelected: (label) {
-              setState(() => _period = label == 'This month' ? 'month' : 'week');
-            },
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final s in <String?>[null, 'pending', 'delivered'])
-                  FilterChip(
-                    label: Text(
-                      s == null
-                          ? 'All'
-                          : s == 'pending'
-                              ? 'Pending'
-                              : 'Delivered',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    selected: _statusFilter == s,
-                    onSelected: (_) => setState(() => _statusFilter = s),
-                    visualDensity: VisualDensity.compact,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-              ],
-            ),
-          ),
+          ],
           Expanded(
-            child: listAsync.when(
-              loading: () => const ListSkeleton(rowCount: 8, rowHeight: 72),
-              error: (_, __) => FriendlyLoadError(
-                message: 'Could not load purchase history',
-                onRetry: () => ref.invalidate(tradePurchasesListProvider),
-              ),
-              data: (rows) {
-                final filtered = _filter(rows);
-                if (filtered.isEmpty) {
-                  return Center(
-                    child: Text(
-                      _query.isEmpty
-                          ? 'No purchase orders in this period'
-                          : 'No orders match your search',
-                      style: HexaDsType.body(14, color: HexaDsColors.textMuted),
+            child: tab == 3
+                ? lowAsync.when(
+                    loading: () =>
+                        const ListSkeleton(rowCount: 8, rowHeight: 72),
+                    error: (_, __) => FriendlyLoadError(
+                      message: 'Could not load low stock items',
+                      onRetry: () =>
+                          ref.invalidate(staffLowStockAlertsProvider),
                     ),
-                  );
-                }
-                return ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (ctx, i) {
-                    final p = filtered[i];
-                    return _StaffPurchaseRow(
-                      purchase: p,
-                      onTap: () => context.push(
-                        '/staff/purchase-history/${p.id}',
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
+                    data: (rows) {
+                      if (rows.isEmpty) {
+                        return Center(
+                          child: Text(
+                            'No low stock items',
+                            style: HexaDsType.body(
+                              14,
+                              color: HexaDsColors.textMuted,
+                            ),
+                          ),
+                        );
+                      }
+                      return ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
+                        itemCount: rows.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (ctx, i) {
+                          final item = rows[i];
+                          final name = item['name']?.toString() ?? '—';
+                          final cur = coerceToDouble(item['current_stock']);
+                          final reorder =
+                              coerceToDouble(item['reorder_level']);
+                          final unit = item['unit']?.toString() ?? '';
+                          return Material(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            child: ListTile(
+                              title: Text(
+                                name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              subtitle: Text(
+                                '${formatStockQtyNumber(cur)} / '
+                                '${formatStockQtyNumber(reorder)} $unit',
+                              ),
+                              trailing: const Icon(
+                                Icons.warning_amber_rounded,
+                                color: Color(0xFFDC2626),
+                              ),
+                              onTap: () {
+                                final id = item['id']?.toString();
+                                if (id != null && id.isNotEmpty) {
+                                  context.push('/catalog/item/$id');
+                                }
+                              },
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  )
+                : listAsync.when(
+                    loading: () =>
+                        const ListSkeleton(rowCount: 8, rowHeight: 72),
+                    error: (_, __) => FriendlyLoadError(
+                      message: 'Could not load purchase history',
+                      onRetry: () => ref.invalidate(tradePurchasesListProvider),
+                    ),
+                    data: (rows) {
+                      final filtered = _filterPurchases(rows);
+                      if (filtered.isEmpty) {
+                        return Center(
+                          child: Text(
+                            _query.isEmpty
+                                ? 'No purchase orders in this period'
+                                : 'No orders match your search',
+                            style: HexaDsType.body(
+                              14,
+                              color: HexaDsColors.textMuted,
+                            ),
+                          ),
+                        );
+                      }
+                      return ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (ctx, i) {
+                          final p = filtered[i];
+                          return _StaffPurchaseRow(
+                            purchase: p,
+                            onTap: () => context.push(
+                              '/staff/purchase-history/${p.id}',
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -232,8 +290,8 @@ class _StaffPurchaseRow extends StatelessWidget {
                 child: Text(
                   initials,
                   style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF0D9488),
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F766E),
                   ),
                 ),
               ),
@@ -243,51 +301,47 @@ class _StaffPurchaseRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${purchase.humanId} · $sup',
-                      style: HexaDsType.bodyPrimary(context).copyWith(
+                      purchase.humanId,
+                      style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
                     Text(
-                      '${DateFormat('d MMM yyyy').format(date)}${ago != null ? ' · $ago' : ''}',
-                      style: HexaDsType.bodySm(context),
-                    ),
-                    if (summary.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        summary,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: HexaDsType.bodySm(context).copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: HexaColors.brandPrimary,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        statusLabel,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: statusColor,
-                        ),
+                      '$sup · ${DateFormat('dd MMM').format(date)} · $ago',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
                       ),
                     ),
+                    if (summary.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          summary,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                      ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: statusColor,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -296,12 +350,12 @@ class _StaffPurchaseRow extends StatelessWidget {
   }
 }
 
-String? _relativeAge(DateTime d) {
+String _relativeAge(DateTime date) {
   final now = DateTime.now();
+  final d = DateTime(date.year, date.month, date.day);
   final today = DateTime(now.year, now.month, now.day);
-  final day = DateTime(d.year, d.month, d.day);
-  final days = today.difference(day).inDays;
-  if (days == 0) return 'today';
-  if (days == 1) return 'yesterday';
-  return '$days days ago';
+  final diff = today.difference(d).inDays;
+  if (diff == 0) return 'Today';
+  if (diff == 1) return 'Yesterday';
+  return '$diff d ago';
 }

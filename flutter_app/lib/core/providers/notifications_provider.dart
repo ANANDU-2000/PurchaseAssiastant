@@ -2,9 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/app_config.dart';
 import '../models/trade_purchase_models.dart';
-import 'package:hexa_purchase_assistant/core/maintenance/maintenance_month_record.dart';
-import 'package:hexa_purchase_assistant/core/maintenance/maintenance_ui_status.dart';
-import 'package:hexa_purchase_assistant/core/providers/maintenance_payment_provider.dart';
+import 'package:harisree_warehouse/core/maintenance/maintenance_month_record.dart';
+import 'package:harisree_warehouse/core/maintenance/maintenance_ui_status.dart';
+import 'package:harisree_warehouse/core/providers/maintenance_payment_provider.dart';
 
 import 'cloud_expense_provider.dart';
 import 'server_notifications_provider.dart';

@@ -6,7 +6,7 @@ Install [Flutter](https://docs.flutter.dev/get-started/install) (includes Dart).
 
 ```bash
 cd flutter_app
-flutter create . --project-name hexa_purchase_assistant
+flutter create . --project-name harisree_warehouse
 ```
 
 This adds `android/`, `ios/`, `web/`, etc., without overwriting `lib/` (confirm when prompted).

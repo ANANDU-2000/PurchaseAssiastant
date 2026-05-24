@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../../core/providers/home_owner_dashboard_providers.dart';
-import '../../../../core/providers/stock_providers.dart';
 import '../../../../core/widgets/friendly_load_error.dart';
 import '../../../../shared/widgets/operational_ui.dart';
 
@@ -40,11 +39,7 @@ class _HomeLowStockSectionState extends ConsumerState<HomeLowStockSection> {
           child: const Text('Reorder', style: TextStyle(fontSize: 12)),
         ),
         TextButton(
-          onPressed: () {
-            ref.read(stockListQueryProvider.notifier).state =
-                const StockListQuery(status: 'low', sort: 'stock_asc');
-            context.go('/stock');
-          },
+          onPressed: () => context.push('/stock/low-stock'),
           child: const Text('All', style: TextStyle(fontSize: 12)),
         ),
       ],
@@ -141,11 +136,7 @@ class _HomeLowStockSectionState extends ConsumerState<HomeLowStockSection> {
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton(
-                    onPressed: () {
-                      ref.read(stockListQueryProvider.notifier).state =
-                          const StockListQuery(status: 'low', sort: 'stock_asc');
-                      context.go('/stock');
-                    },
+                    onPressed: () => context.push('/stock/low-stock'),
                     child: Text(
                       'View all ${rows.length} low stock items',
                       style: const TextStyle(fontSize: 12),
@@ -168,6 +159,7 @@ class _HomeLowStockSectionState extends ConsumerState<HomeLowStockSection> {
       title: 'Low stock',
       dense: true,
       trailing: trailing,
+      onTitleTap: () => context.push('/stock/low-stock'),
       child: body,
     );
   }

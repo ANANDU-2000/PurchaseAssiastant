@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/core/models/trade_purchase_models.dart';
+import 'package:harisree_warehouse/core/models/trade_purchase_models.dart';
 
 void main() {
   test('fromJson maps line_total and line_landing_gross independently', () {

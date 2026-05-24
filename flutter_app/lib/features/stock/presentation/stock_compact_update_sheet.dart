@@ -7,6 +7,7 @@ import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/json_coerce.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/home_owner_dashboard_providers.dart';
+import '../../../core/notifications/local_notifications_service.dart';
 import '../../../core/providers/stock_providers.dart';
 import '../../../core/utils/unit_utils.dart';
 
@@ -116,6 +117,15 @@ class _StockCompactUpdateBodyState extends ConsumerState<_StockCompactUpdateBody
       ref.invalidate(stockChangesFeedProvider);
       if (_itemId.isNotEmpty) {
         ref.invalidate(stockItemIntelligenceProvider(_itemId));
+      }
+      final reorder = coerceToDouble(widget.item['reorder_level']);
+      if (reorder > 0 && parsed <= reorder) {
+        final unitLabel = _unit.isNotEmpty ? _unit.toUpperCase() : '';
+        await LocalNotificationsService.instance.showLowStockItem(
+          itemName: _name,
+          detail:
+              '${formatStockQtyNumber(parsed)} $unitLabel (reorder ${formatStockQtyNumber(reorder)})',
+        );
       }
       if (context.mounted) Navigator.of(context).pop(true);
     } catch (e) {

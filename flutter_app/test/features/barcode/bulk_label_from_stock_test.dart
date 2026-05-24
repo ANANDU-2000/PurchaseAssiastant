@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexa_purchase_assistant/features/barcode/services/bulk_label_from_stock.dart';
+import 'package:harisree_warehouse/features/barcode/services/bulk_label_from_stock.dart';
 
 void main() {
   test('labelDataFromStockRow uses item_code when barcode empty', () {
