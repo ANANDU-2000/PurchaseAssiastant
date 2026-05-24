@@ -153,30 +153,15 @@ class StaffWarehouseTotalsCard extends ConsumerWidget {
           margin: EdgeInsets.zero,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  'Warehouse stock',
-                  style: HexaDsType.heading(15),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'On hand · tap for subcategories',
-                  style: HexaDsType.body(11, color: HexaDsColors.textMuted),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    unitTile('Bags', bags, HexaColors.brandPrimary),
-                    const SizedBox(width: 6),
-                    unitTile('KG', kg, const Color(0xFF1565C0)),
-                    const SizedBox(width: 6),
-                    unitTile('Boxes', boxes, const Color(0xFF6A1B9A)),
-                    const SizedBox(width: 6),
-                    unitTile('Tins', tins, const Color(0xFFE65100)),
-                  ],
-                ),
+                unitTile('Bags', bags, HexaColors.brandPrimary),
+                const SizedBox(width: 6),
+                unitTile('KG', kg, const Color(0xFF1565C0)),
+                const SizedBox(width: 6),
+                unitTile('Boxes', boxes, const Color(0xFF6A1B9A)),
+                const SizedBox(width: 6),
+                unitTile('Tins', tins, const Color(0xFFE65100)),
               ],
             ),
           ),
