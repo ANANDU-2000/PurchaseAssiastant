@@ -266,6 +266,9 @@ final stockListProvider = FutureProvider.autoDispose((ref) async {
 /// Selected catalog item ids for bulk barcode PDF (stable across list rebuilds).
 final bulkBarcodeSelectionProvider = StateProvider<Set<String>>((ref) => {});
 
+/// Item ids successfully downloaded/printed this session (bulk barcode page).
+final bulkBarcodeDownloadedIdsProvider = StateProvider<Set<String>>((ref) => {});
+
 final bulkStockListProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final session = ref.watch(sessionProvider);

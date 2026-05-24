@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' show min;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -137,36 +138,153 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
 
   static const int _kMaxLabelsPerPdf = 100;
 
+  int _pdfBatchCount(int selectedCount) =>
+      (selectedCount + _kMaxLabelsPerPdf - 1) ~/ _kMaxLabelsPerPdf;
+
+  List<List<String>> _chunkItemIds(List<String> ids) {
+    final out = <List<String>>[];
+    for (var i = 0; i < ids.length; i += _kMaxLabelsPerPdf) {
+      out.add(ids.sublist(i, min(i + _kMaxLabelsPerPdf, ids.length)));
+    }
+    return out;
+  }
+
+  void _markIdsDownloaded(Iterable<String> ids) {
+    final prev = ref.read(bulkBarcodeDownloadedIdsProvider);
+    ref.read(bulkBarcodeDownloadedIdsProvider.notifier).state = {
+      ...prev,
+      ...ids,
+    };
+  }
+
   Future<void> _runPdfFlow({
-    required Future<void> Function(List<Uint8List> pdfs) action,
+    required Future<void> Function(
+      List<Uint8List> pdfs,
+      List<String> batchItemIds,
+    ) action,
     required Future<void> Function() retry,
+    bool multiBatch = false,
+    bool previewMode = false,
   }) async {
     if (_selected.isEmpty || _busy) return;
     _lastPdfRetry = retry;
+    _pdfCancelled = false;
     setState(() => _busy = true);
     try {
-      var targetIds = ref.read(bulkBarcodeSelectionProvider).toList();
-      if (targetIds.length > _kMaxLabelsPerPdf) {
+      var allIds = ref.read(bulkBarcodeSelectionProvider).toList();
+      if (!multiBatch && allIds.length > _kMaxLabelsPerPdf) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Select at most $_kMaxLabelsPerPdf labels per PDF. '
-              'You have ${targetIds.length} selected.',
-            ),
-            action: SnackBarAction(
-              label: 'Use first $_kMaxLabelsPerPdf',
-              onPressed: () {
-                _setSelected(targetIds.take(_kMaxLabelsPerPdf).toSet());
-              },
+              previewMode
+                  ? 'Preview shows the first $_kMaxLabelsPerPdf of ${allIds.length} selected.'
+                  : 'Processing first $_kMaxLabelsPerPdf of ${allIds.length} selected.',
             ),
           ),
         );
-        return;
+        allIds = allIds.sublist(0, _kMaxLabelsPerPdf);
       }
+
+      final idBatches = multiBatch ? _chunkItemIds(allIds) : [allIds];
+      var batchesDone = 0;
+
+      for (var bi = 0; bi < idBatches.length; bi++) {
+        if (_pdfCancelled) break;
+        final targetIds = idBatches[bi];
+        if (idBatches.length > 1 && mounted) {
+          setState(() {
+            _pdfStatus =
+                'Batch ${bi + 1} of ${idBatches.length} (${targetIds.length} items)…';
+          });
+        }
+        final ok = await _runOnePdfBatch(
+          targetIds: targetIds,
+          action: action,
+          previewMode: previewMode,
+          quietReadySnack: idBatches.length > 1,
+        );
+        if (!ok || _pdfCancelled) break;
+        if (!previewMode) {
+          _markIdsDownloaded(targetIds);
+        }
+        batchesDone++;
+        if (multiBatch &&
+            bi < idBatches.length - 1 &&
+            mounted &&
+            !_pdfCancelled) {
+          if (kIsWeb) {
+            final cont = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: Text('Batch ${bi + 1} of ${idBatches.length} ready'),
+                content: Text(
+                  '${targetIds.length} labels in this batch. '
+                  'Continue to batch ${bi + 2}?',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Stop'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Next batch'),
+                  ),
+                ],
+              ),
+            );
+            if (cont != true) break;
+          } else {
+            await Future<void>.delayed(const Duration(milliseconds: 400));
+          }
+        }
+      }
+
+      if (!mounted || _pdfCancelled || batchesDone == 0) return;
+      if (multiBatch && idBatches.length > 1) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Finished $batchesDone of ${idBatches.length} batches. '
+              'Use Select remaining for the next set.',
+            ),
+          ),
+        );
+      }
+    } on BarcodeOperationException catch (e) {
+      if (!mounted) return;
+      _showError(e.message);
+    } catch (e, st) {
+      logBarcodeOperationError(e, st);
+      if (!mounted) return;
+      _showError(barcodeMessageForUser(e));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _pdfStatus = null;
+          _labelProgressDone = 0;
+          _labelProgressTotal = 0;
+        });
+      }
+    }
+  }
+
+  /// Returns false if user cancelled or generation failed before [action].
+  Future<bool> _runOnePdfBatch({
+    required List<String> targetIds,
+    required Future<void> Function(
+      List<Uint8List> pdfs,
+      List<String> batchItemIds,
+    ) action,
+    required bool previewMode,
+    bool quietReadySnack = false,
+  }) async {
+    try {
       final batch = await _loadLabels(ids: targetIds);
       if (batch.labels.isEmpty) {
-        if (!mounted) return;
+        if (!mounted) return false;
         _showError(
           batch.isTotalFailure
               ? (batch.failuresById.values.isNotEmpty
@@ -174,21 +292,21 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
                   : 'Could not load labels. Sign in, check network, or pick items with barcodes.')
               : 'No printable labels in selection.',
         );
-        return;
+        return false;
       }
       if (batch.isTotalFailure) {
-        if (!mounted) return;
+        if (!mounted) return false;
         final hint = batch.failuresById.values.isNotEmpty
             ? batch.failuresById.values.first
             : 'Check barcodes and try again.';
         _showError(
           '${batch.failedIds.length} items could not be loaded. $hint',
         );
-        return;
+        return false;
       }
       if (batch.hasPartialFailure) {
         final cont = await showPartialLabelFailureDialog(context, batch);
-        if (cont != true) return;
+        if (cont != true) return false;
       }
       var denseA4 = _denseA4;
       if (!denseA4 && batch.labels.length > 25) {
@@ -203,9 +321,8 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
           );
         }
       }
-      _pdfCancelled = false;
       _pdfProgressDialogContext = null;
-      if (!mounted) return;
+      if (!mounted) return false;
       unawaited(
         showDialog<void>(
           context: context,
@@ -239,6 +356,8 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
           },
         ).whenComplete(() => _pdfProgressDialogContext = null),
       );
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      if (!mounted) return false;
       setState(() => _pdfStatus = 'Generating PDF…');
       final symbol = bulkPrintSymbolMode(denseA4: denseA4, useQr: _useQr);
       List<Uint8List>? pdfs;
@@ -254,42 +373,38 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
           thermalSize: _thermalSize,
           labelsPerFile: _labelsPerPdfFile.count,
         );
-        if (_pdfCancelled) return;
-        await action(pdfs);
+        if (_pdfCancelled) return false;
+        await action(pdfs, targetIds);
       } finally {
         _dismissPdfProgressDialog();
       }
-      if (!mounted || _pdfCancelled) return;
-      final perFile = _labelsPerPdfFile.count;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _denseA4
-                ? (pdfs.length == 1
-                    ? 'One A4 PDF ready — up to $perFile labels per page. Print once and cut.'
-                    : '${pdfs.length} A4 PDFs ready — up to $perFile labels each file.')
-                : (pdfs.length == 1
-                    ? 'PDF ready (up to $perFile labels per file).'
-                    : '${pdfs.length} PDFs ready (up to $perFile labels each).'),
+      if (!mounted || _pdfCancelled) return false;
+      if (!previewMode && !quietReadySnack) {
+        final perFile = _labelsPerPdfFile.count;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _denseA4
+                  ? (pdfs.length == 1
+                      ? 'One A4 PDF ready — up to $perFile labels per page. Print once and cut.'
+                      : '${pdfs.length} A4 PDFs ready — tap each download button on web.')
+                  : (pdfs.length == 1
+                      ? 'PDF ready (up to $perFile labels per file).'
+                      : '${pdfs.length} PDFs ready (up to $perFile labels each).'),
+            ),
           ),
-        ),
-      );
+        );
+      }
+      return true;
     } on BarcodeOperationException catch (e) {
-      if (!mounted) return;
+      if (!mounted) return false;
       _showError(e.message);
+      return false;
     } catch (e, st) {
       logBarcodeOperationError(e, st);
-      if (!mounted) return;
+      if (!mounted) return false;
       _showError(barcodeMessageForUser(e));
-    } finally {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _pdfStatus = null;
-          _labelProgressDone = 0;
-          _labelProgressTotal = 0;
-        });
-      }
+      return false;
     }
   }
 
@@ -380,11 +495,99 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
     );
   }
 
+  /// Web: one preview or a sheet with explicit per-file download buttons.
+  Future<void> _deliverPdfParts(
+    List<Uint8List> pdfs, {
+    required int labelCount,
+    bool forPrint = false,
+  }) async {
+    if (!mounted || pdfs.isEmpty) return;
+    final n = pdfs.length;
+    final names = List.generate(
+      n,
+      (i) => _bulkBarcodeFilename(part: i + 1, partCount: n),
+    );
+    if (kIsWeb) {
+      if (!forPrint && n == 1) {
+        await _openPdfPage(
+          pdfs.first,
+          title: 'Labels ($labelCount)',
+          filename: names.first,
+        );
+        return;
+      }
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (ctx) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  forPrint ? '$n PDFs to print' : '$n PDF files ready',
+                  style: Theme.of(ctx).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  forPrint
+                      ? 'Download each file, then print from your browser.'
+                      : 'Tap each button to download. Browsers block automatic multi-downloads.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                ),
+                const SizedBox(height: 12),
+                for (var i = 0; i < n; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: FilledButton.icon(
+                      onPressed: () =>
+                          unawaited(_sharePdfSafe(pdfs[i], names[i])),
+                      icon: Icon(
+                        forPrint
+                            ? Icons.print_rounded
+                            : Icons.download_rounded,
+                      ),
+                      label: Text(
+                        forPrint
+                            ? 'Download part ${i + 1} of $n to print'
+                            : 'Download part ${i + 1} of $n',
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+    for (var i = 0; i < n; i++) {
+      if (forPrint) {
+        await guardWebPrint(
+          () => Printing.layoutPdf(
+            name: names[i],
+            onLayout: (_) async => pdfs[i],
+          ),
+        );
+      } else {
+        final ok = await _sharePdfSafe(pdfs[i], names[i]);
+        if (!ok) return;
+      }
+      if (i < n - 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+    }
+  }
+
   Future<void> _preview() => _runPdfFlow(
         retry: _preview,
-        action: (pdfs) async {
+        previewMode: true,
+        action: (pdfs, batchIds) async {
           if (!mounted || pdfs.isEmpty) return;
-          final total = _selected.length * _copies;
+          final total = batchIds.length * _copies;
           await _openPdfPage(
             pdfs.first,
             title: pdfs.length == 1
@@ -397,72 +600,23 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
 
   Future<void> _downloadPdf() => _runPdfFlow(
         retry: _downloadPdf,
-        action: (pdfs) async {
+        multiBatch: true,
+        action: (pdfs, batchIds) async {
           if (!mounted) return;
-          final n = pdfs.length;
-          for (var i = 0; i < n; i++) {
-            final name = _bulkBarcodeFilename(part: i + 1, partCount: n);
-            if (kIsWeb && n == 1) {
-              await _openPdfPage(
-                pdfs[i],
-                title: 'Download labels (${_selected.length})',
-                filename: name,
-              );
-            } else if (kIsWeb) {
-              final ok = await _sharePdfSafe(pdfs[i], name);
-              if (!ok) return;
-              if (i < n - 1) {
-                await Future<void>.delayed(const Duration(milliseconds: 350));
-              }
-            } else {
-              final ok = await _sharePdfSafe(pdfs[i], name);
-              if (!ok) return;
-            }
-          }
-          if (kIsWeb && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  n == 1
-                      ? 'Use Download PDF in the app bar, or the share sheet below the preview.'
-                      : 'Started $n downloads (up to $_kMaxLabelsPerPdf labels per file). '
-                          'Allow multiple files if the browser asks.',
-                ),
-              ),
-            );
-          }
+          await _deliverPdfParts(pdfs, labelCount: batchIds.length);
         },
       );
 
   Future<void> _print() => _runPdfFlow(
         retry: _print,
-        action: (pdfs) async {
+        multiBatch: true,
+        action: (pdfs, batchIds) async {
           if (!mounted) return;
-          final n = pdfs.length;
-          for (var i = 0; i < n; i++) {
-            final name = _bulkBarcodeFilename(part: i + 1, partCount: n);
-            if (kIsWeb) {
-              await _sharePdfSafe(pdfs[i], name);
-            } else {
-              await guardWebPrint(
-                () => Printing.layoutPdf(
-                  name: name,
-                  onLayout: (_) async => pdfs[i],
-                ),
-              );
-            }
-          }
-          if (kIsWeb && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  n == 1
-                      ? 'On web, use the downloaded PDF to print from your browser.'
-                      : 'Shared $n PDFs — print each from your browser.',
-                ),
-              ),
-            );
-          }
+          await _deliverPdfParts(
+            pdfs,
+            labelCount: batchIds.length,
+            forPrint: true,
+          );
         },
       );
 
@@ -638,6 +792,20 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
               onPressed: () => _setSelected({}),
               child: const Text('Clear'),
             ),
+          if (ref.watch(bulkBarcodeDownloadedIdsProvider).isNotEmpty)
+            TextButton(
+              onPressed: () {
+                ref.read(bulkBarcodeDownloadedIdsProvider.notifier).state = {};
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Cleared printed marks for this session.'),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Reset printed'),
+            ),
         ],
       ),
       bottomNavigationBar: BulkBarcodePrintToolbar(
@@ -661,7 +829,11 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
         onPreview: _preview,
         onPdf: _downloadPdf,
         onPrint: _print,
-        pdfButtonLabel: kIsWeb ? 'Download' : 'PDF',
+        pdfButtonLabel: selected.length > _kMaxLabelsPerPdf
+            ? (kIsWeb
+                ? 'Download (${_pdfBatchCount(selected.length)} batches)'
+                : 'PDF (${_pdfBatchCount(selected.length)} batches)')
+            : (kIsWeb ? 'Download' : 'PDF'),
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -817,6 +989,11 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
     final visible = _applyClientFilters(items);
     final total = data['total'];
     final loaded = items.length;
+    final downloaded = ref.watch(bulkBarcodeDownloadedIdsProvider);
+    final remainingCount = visible.where((e) {
+      final id = e['id']?.toString() ?? '';
+      return id.isNotEmpty && !downloaded.contains(id);
+    }).length;
 
     return Column(
       children: [
@@ -827,35 +1004,57 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
               Expanded(
                 child: Text(
                   '${visible.length} shown · $loaded loaded'
-                  '${total != null ? ' · $total total' : ''}',
+                  '${total != null ? ' · $total total' : ''}'
+                  '${downloaded.isNotEmpty ? ' · $remainingCount left' : ''}',
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
                 ),
               ),
+              if (remainingCount > 0 &&
+                  remainingCount < visible.length &&
+                  downloaded.isNotEmpty)
+                TextButton(
+                  onPressed: () {
+                    final ids = <String>{
+                      for (final e in visible)
+                        if (e['id'] != null &&
+                            !downloaded.contains(e['id'].toString()))
+                          e['id'].toString(),
+                    };
+                    _setSelected(ids);
+                    if (ids.length > _kMaxLabelsPerPdf && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Selected $remainingCount remaining. '
+                            'Download runs in batches of $_kMaxLabelsPerPdf.',
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                  child: Text('Remaining ($remainingCount)'),
+                ),
               TextButton(
                 onPressed: visible.isEmpty
                     ? null
                     : () {
                         final ids = <String>{
-                          for (final e in visible.take(_kMaxLabelsPerPdf))
+                          for (final e in visible)
                             if (e['id'] != null) e['id'].toString(),
                         };
                         _setSelected(ids);
-                        if (visible.length > _kMaxLabelsPerPdf && mounted) {
+                        if (ids.length > _kMaxLabelsPerPdf && mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
-                                'Selected first $_kMaxLabelsPerPdf of '
-                                '${visible.length} items (batch limit).',
+                                'Selected ${ids.length} items. '
+                                'Download runs in batches of $_kMaxLabelsPerPdf.',
                               ),
                             ),
                           );
                         }
                       },
-                child: Text(
-                  visible.length > _kMaxLabelsPerPdf
-                      ? 'Select $_kMaxLabelsPerPdf'
-                      : 'Select all',
-                ),
+                child: Text('Select all (${visible.length})'),
               ),
             ],
           ),
