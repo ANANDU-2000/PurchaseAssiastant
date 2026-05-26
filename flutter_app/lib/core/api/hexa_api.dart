@@ -260,6 +260,17 @@ class HexaApi {
     return res.data ?? <String, dynamic>{};
   }
 
+  Future<List<Map<String, dynamic>>> listRealtimeEvents({
+    required String businessId,
+    int limit = 50,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/realtime/recent',
+      queryParameters: {'limit': limit},
+    );
+    return _parseJsonMapList(res.data);
+  }
+
   void setAuthToken(String? token) {
     if (token == null || token.isEmpty) {
       _dio.options.headers.remove('Authorization');
@@ -2463,6 +2474,32 @@ class HexaApi {
     return res.data ?? {};
   }
 
+  Future<Map<String, dynamic>> updatePhysicalStock({
+    required String businessId,
+    required String itemId,
+    required num countedQty,
+    required String adjustmentType,
+    required String reason,
+    String? notes,
+    int? lastSeenStockVersion,
+    String? idempotencyKey,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/stock/$itemId/physical-update',
+      data: {
+        'counted_qty': countedQty,
+        'adjustment_type': adjustmentType,
+        'reason': reason.trim(),
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+        if (lastSeenStockVersion != null)
+          'last_seen_stock_version': lastSeenStockVersion,
+        if (idempotencyKey != null && idempotencyKey.trim().isNotEmpty)
+          'idempotency_key': idempotencyKey.trim(),
+      },
+    );
+    return res.data ?? {};
+  }
+
   /// Physical count from barcode scan (mandatory reason when variance).
   Future<Map<String, dynamic>> verifyStockCount({
     required String businessId,
@@ -2567,6 +2604,41 @@ class HexaApi {
           'supplier_name': supplierName.trim(),
         if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
       },
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> createStockQuickPurchase({
+    required String businessId,
+    required String itemId,
+    required num qty,
+    required String supplierId,
+    String? brokerId,
+    String? notes,
+    String? idempotencyKey,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/stock/$itemId/quick-purchase',
+      data: {
+        'qty': qty,
+        'supplier_id': supplierId,
+        if (brokerId != null && brokerId.isNotEmpty) 'broker_id': brokerId,
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+        if (idempotencyKey != null && idempotencyKey.trim().isNotEmpty)
+          'idempotency_key': idempotencyKey.trim(),
+      },
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> getStockItemActivity({
+    required String businessId,
+    required String itemId,
+    int limit = 50,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/stock/$itemId/activity',
+      queryParameters: {'limit': limit},
     );
     return res.data ?? {};
   }

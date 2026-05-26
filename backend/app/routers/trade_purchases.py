@@ -276,7 +276,7 @@ async def patch_trade_purchase_payment(
     body: TradePurchasePaymentPatch,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_membership)],
+    _m: Annotated[Membership, Depends(require_permission("purchase_edit"))],
 ):
     del user
     try:
@@ -295,13 +295,13 @@ async def patch_trade_purchase_delivery(
     body: TradePurchaseDeliveryPatch,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_membership)],
+    _m: Annotated[Membership, Depends(require_permission("stock_edit"))],
 ):
     del user
     out = await tps.patch_trade_purchase_delivery(db, business_id, purchase_id, body)
     if not out:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found")
-    return out
+    return _purchase_detail_response(_m.role, out)
 
 
 @router.post("/{purchase_id}/mark-paid", response_model=TradePurchaseOut)
@@ -310,7 +310,7 @@ async def mark_trade_purchase_paid(
     purchase_id: uuid.UUID,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_membership)],
+    _m: Annotated[Membership, Depends(require_permission("purchase_edit"))],
     body: TradeMarkPaidRequest = TradeMarkPaidRequest(),
 ):
     del user

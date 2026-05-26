@@ -96,6 +96,7 @@ class _RecentChangeRow extends StatelessWidget {
     final icon = switch (item.kind) {
       'purchase' || 'purchase_added' || 'trade_purchase' =>
         Icons.shopping_cart_rounded,
+      'stock_quick_purchase' => Icons.add_shopping_cart_rounded,
       'stock' || 'stock_updated' || 'stock_change' || 'stock_adjustment' =>
         Icons.inventory_2_rounded,
       'usage' => Icons.trending_down_rounded,
@@ -108,6 +109,7 @@ class _RecentChangeRow extends StatelessWidget {
     };
     final color = switch (item.kind) {
       'purchase' => HexaColors.brandPrimary,
+      'stock_quick_purchase' => HexaColors.brandPrimary,
       'stock' => const Color(0xFF0D9488),
       'usage' => const Color(0xFFE65100),
       'transfer' => const Color(0xFF1565C0),

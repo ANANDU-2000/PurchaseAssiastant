@@ -762,6 +762,10 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
                   itemName: item['name']?.toString() ?? 'Item',
                   purchases: purchasesAsync.valueOrNull ?? const [],
                 ),
+                _OperationalItemTabs(
+                  itemId: widget.itemId,
+                  item: item,
+                ),
                 _CollapsibleDetailSection(
                   title: 'Last purchase',
                   icon: Icons.receipt_long_outlined,
@@ -1746,6 +1750,265 @@ class _CompactCatalogBarcodeRow extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+
+class _OperationalItemTabs extends ConsumerWidget {
+  const _OperationalItemTabs({
+    required this.itemId,
+    required this.item,
+  });
+
+  final String itemId;
+  final Map<String, dynamic> item;
+
+  String _qty(dynamic value) {
+    final n = coerceToDouble(value);
+    if (!n.isFinite) return '0';
+    return formatStockQtyNumber(n);
+  }
+
+  Widget _empty(String text) {
+    return Center(
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF64748B),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final stock = ref.watch(stockItemDetailProvider(itemId)).valueOrNull ?? item;
+    final activity = ref.watch(stockItemActivityProvider(itemId));
+    final unit = (stock['stock_unit'] ?? stock['unit'] ?? item['default_unit'] ?? '')
+        .toString()
+        .toUpperCase();
+    final name = item['name']?.toString() ?? 'Item';
+    final code = item['item_code']?.toString();
+    final barcode = item['barcode']?.toString();
+    final current = _qty(stock['current_stock']);
+    final reorder = _qty(stock['reorder_level']);
+    final status = stock['stock_status']?.toString() ?? 'healthy';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Material(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+          child: DefaultTabController(
+            length: 5,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Operational item view',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                const TabBar(
+                  isScrollable: true,
+                  tabs: [
+                    Tab(text: 'Overview'),
+                    Tab(text: 'Purchase History'),
+                    Tab(text: 'Stock Ledger'),
+                    Tab(text: 'Activity'),
+                    Tab(text: 'Barcode'),
+                  ],
+                ),
+                SizedBox(
+                  height: 260,
+                  child: TabBarView(
+                    children: [
+                      ListView(
+                        padding: const EdgeInsets.only(top: 10),
+                        children: [
+                          _OperationalMetricRow(
+                            label: 'Current stock',
+                            value: '$current $unit',
+                          ),
+                          _OperationalMetricRow(
+                            label: 'Stock status',
+                            value: status.toUpperCase(),
+                          ),
+                          _OperationalMetricRow(
+                            label: 'Reorder level',
+                            value: '$reorder $unit',
+                          ),
+                          _OperationalMetricRow(
+                            label: 'Item code',
+                            value: code?.isNotEmpty == true ? code! : 'Missing',
+                          ),
+                        ],
+                      ),
+                      activity.when(
+                        loading: () => const Center(child: CircularProgressIndicator()),
+                        error: (_, __) => _empty('Could not load purchase activity.'),
+                        data: (data) {
+                          final rows =
+                              (data['purchases'] as List? ?? const []).whereType<Map>();
+                          final list = rows.take(12).toList();
+                          if (list.isEmpty) {
+                            return _empty('No quick purchase entries yet.');
+                          }
+                          return ListView.builder(
+                            padding: const EdgeInsets.only(top: 8),
+                            itemCount: list.length,
+                            itemBuilder: (context, index) {
+                              final row = Map<String, dynamic>.from(list[index]);
+                              return ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(
+                                  '${_qty(row['qty'])} ${(row['unit'] ?? unit).toString().toUpperCase()}',
+                                ),
+                                subtitle: Text(
+                                  '${row['supplier_name'] ?? 'Supplier missing'}'
+                                  '${row['broker_name'] != null ? ' · ${row['broker_name']}' : ''}'
+                                  ' · ${row['created_by_name'] ?? 'Staff'}',
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                      activity.when(
+                        loading: () => const Center(child: CircularProgressIndicator()),
+                        error: (_, __) => _empty('Could not load stock ledger.'),
+                        data: (data) {
+                          final rows =
+                              (data['movements'] as List? ?? const []).whereType<Map>();
+                          final list = rows.take(16).toList();
+                          if (list.isEmpty) return _empty('No stock movement yet.');
+                          return ListView.builder(
+                            padding: const EdgeInsets.only(top: 8),
+                            itemCount: list.length,
+                            itemBuilder: (context, index) {
+                              final row = Map<String, dynamic>.from(list[index]);
+                              final delta = coerceToDouble(row['delta_qty']);
+                              final sign = delta >= 0 ? '+' : '';
+                              return ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(
+                                  '${row['movement_kind'] ?? 'movement'} · '
+                                  '$sign${_qty(row['delta_qty'])} ${(row['stock_unit'] ?? unit).toString().toUpperCase()}',
+                                ),
+                                subtitle: Text(
+                                  '${_qty(row['qty_before'])} -> ${_qty(row['qty_after'])} · '
+                                  '${row['actor_name'] ?? 'User'}'
+                                  '${row['reason'] != null ? ' · ${row['reason']}' : ''}',
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                      activity.when(
+                        loading: () => const Center(child: CircularProgressIndicator()),
+                        error: (_, __) => _empty('Could not load activity.'),
+                        data: (data) {
+                          final rows =
+                              (data['activity'] as List? ?? const []).whereType<Map>();
+                          final list = rows.take(16).toList();
+                          if (list.isEmpty) return _empty('No activity yet.');
+                          return ListView.builder(
+                            padding: const EdgeInsets.only(top: 8),
+                            itemCount: list.length,
+                            itemBuilder: (context, index) {
+                              final row = Map<String, dynamic>.from(list[index]);
+                              return ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(row['title']?.toString() ?? 'Activity'),
+                                subtitle: Text(
+                                  '${row['actor_name'] ?? 'User'}'
+                                  '${row['reason'] != null ? ' · ${row['reason']}' : ''}',
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                      ListView(
+                        padding: const EdgeInsets.only(top: 10),
+                        children: [
+                          _OperationalMetricRow(label: 'Item', value: name),
+                          _OperationalMetricRow(
+                            label: 'Item code',
+                            value: code?.isNotEmpty == true ? code! : 'Missing',
+                          ),
+                          _OperationalMetricRow(
+                            label: 'Barcode',
+                            value: barcode?.isNotEmpty == true ? barcode! : 'Missing',
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: () => context.push(
+                              '/barcode/print/${Uri.encodeComponent(itemId)}',
+                            ),
+                            icon: const Icon(Icons.print_outlined),
+                            label: const Text('Print barcode label'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OperationalMetricRow extends StatelessWidget {
+  const _OperationalMetricRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
       ),
     );
   }

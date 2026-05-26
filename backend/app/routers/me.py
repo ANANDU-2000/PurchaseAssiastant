@@ -12,7 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.database import get_db
-from app.deps import get_current_user, require_membership, require_owner_membership
+from app.deps import (
+    get_current_user,
+    require_membership,
+    require_owner_membership,
+    require_permission,
+)
 from app.models import Business, Membership, User
 from app.models.contacts import Broker, Supplier
 from app.services.default_workspace import bootstrap_user_workspace
@@ -569,7 +574,7 @@ async def scan_purchase_bill_v2_confirm(
     business_id: Annotated[uuid.UUID, Query(..., description="Primary workspace for membership check")],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_membership)],
+    _m: Annotated[Membership, Depends(require_permission("purchase_create"))],
     body: ScanPurchaseV2ConfirmRequest = Body(...),
 ):
     """Confirm the scanned preview and create a TradePurchase (server validated)."""
@@ -600,7 +605,7 @@ async def scan_purchase_bill_v2_confirm(
 async def scan_purchase_bill_v2_update(
     business_id: Annotated[uuid.UUID, Query(..., description="Primary workspace for membership check")],
     user: Annotated[User, Depends(get_current_user)],
-    _m: Annotated[Membership, Depends(require_membership)],
+    _m: Annotated[Membership, Depends(require_permission("purchase_create"))],
     body: ScanPurchaseV2UpdateRequest = Body(...),
 ):
     """Update cached scan result after user edits (preview UI)."""

@@ -110,6 +110,7 @@ class CatalogItem(Base):
     ml_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     validation_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     current_stock: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True, default=Decimal("0"))
+    stock_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     reorder_level: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True, default=Decimal("0"))
     opening_stock_qty: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     opening_stock_set_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

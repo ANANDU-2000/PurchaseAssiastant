@@ -25,6 +25,7 @@ from app.models.api_usage_log import ApiUsageLog
 from app.models.admin_audit_log import AdminAuditLog
 from app.models.stock_audit import StockAudit, StockAuditItem
 from app.models.stock_adjustment import StockAdjustmentLog
+from app.models.stock_movement import StockMovement
 from app.models.stock_physical_count import StockPhysicalCount
 from app.models.staff_purchase_log import StaffPurchaseLog
 from app.models.user_session import StaffActivityLog, UserSession
@@ -72,6 +73,7 @@ __all__ = [
     "StockAudit",
     "StockAuditItem",
     "StockAdjustmentLog",
+    "StockMovement",
     "StockPhysicalCount",
     "StaffPurchaseLog",
     "UserSession",

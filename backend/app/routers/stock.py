@@ -13,11 +13,13 @@ from app.database import get_db
 from app.deps import get_current_user, require_membership, require_permission
 from app.services.staff_audit import log_staff_activity
 from app.models import (
+    Broker,
     CatalogItem,
     CategoryType,
     DailyUsageLog,
     ItemCategory,
     Membership,
+    StaffActivityLog,
     Supplier,
     TradePurchase,
     TradePurchaseLine,
@@ -54,7 +56,15 @@ from app.schemas.stock import (
     StockAlertsSummaryOut,
     StaffPurchaseLogIn,
     StaffPurchaseLogOut,
+    QuickPurchaseIn,
+    QuickPurchaseOut,
+    StockActivityEventOut,
+    StockItemActivityOut,
+    StockMovementOut,
+    StockPhysicalUpdateIn,
+    StockPhysicalUpdateOut,
 )
+from app.models.stock_movement import StockMovement
 from app.services import trade_query as tq
 from app.services.staff_view import should_redact_financials
 from app.services.stock_inventory import (
@@ -63,6 +73,11 @@ from app.services.stock_inventory import (
     compute_inventory_summary,
     stock_status,
 )
+from app.services.stock_movement_service import (
+    StaleStockVersionError,
+    apply_stock_movement,
+)
+from app.services.realtime_events import publish_business_event
 from app.services.stock_variance_notifications import (
     _last_purchase_expected_qty,
     maybe_notify_stock_variance,
@@ -221,6 +236,7 @@ def _item_to_list_row(
         opening_stock_set_at=getattr(item, "opening_stock_set_at", None),
         opening_stock_set_by=getattr(item, "opening_stock_set_by", None),
         opening_stock_locked=bool(getattr(item, "opening_stock_locked", False)),
+        stock_version=int(getattr(item, "stock_version", 0) or 0),
     )
 
 
@@ -326,24 +342,30 @@ async def _period_purchased_map(
     item_ids: list[uuid.UUID],
     period_start: date,
     period_end: date,
+    *,
+    delivered_only: bool = True,
 ) -> dict[uuid.UUID, Decimal]:
-    """Sum purchase line qty normalized to each item's stock unit."""
+    """Sum received purchase line qty normalized to each item's stock unit."""
     if not item_ids:
         return {}
-    r = await db.execute(
+    filters = [
+        TradePurchase.business_id == business_id,
+        TradePurchase.purchase_date >= period_start,
+        TradePurchase.purchase_date <= period_end,
+        TradePurchase.status.notin_(("cancelled", "deleted")),
+        TradePurchaseLine.catalog_item_id.in_(item_ids),
+        CatalogItem.business_id == business_id,
+        CatalogItem.deleted_at.is_(None),
+    ]
+    if delivered_only:
+        filters.append(TradePurchase.is_delivered.is_(True))
+    stmt = (
         select(TradePurchaseLine, CatalogItem)
         .join(TradePurchase, TradePurchaseLine.trade_purchase_id == TradePurchase.id)
         .join(CatalogItem, TradePurchaseLine.catalog_item_id == CatalogItem.id)
-        .where(
-            TradePurchase.business_id == business_id,
-            TradePurchase.purchase_date >= period_start,
-            TradePurchase.purchase_date <= period_end,
-            TradePurchase.status != "cancelled",
-            TradePurchaseLine.catalog_item_id.in_(item_ids),
-            CatalogItem.business_id == business_id,
-            CatalogItem.deleted_at.is_(None),
-        )
+        .where(*filters)
     )
+    r = await db.execute(stmt)
     totals: dict[uuid.UUID, Decimal] = defaultdict(lambda: Decimal(0))
     for line, item in r.all():
         totals[item.id] += line_qty_in_stock_unit(line, item)
@@ -490,6 +512,7 @@ async def _query_items(
             or_(
                 func.lower(CatalogItem.name).like(like),
                 func.lower(func.coalesce(CatalogItem.item_code, "")).like(like),
+                func.lower(func.coalesce(CatalogItem.barcode, "")).like(like),
             )
         )
     if category.strip():
@@ -1116,6 +1139,110 @@ async def audit_for_item(
     return await _adjustments_to_out(db, business_id, list(r.scalars().all()))
 
 
+@router.get("/{item_id}/activity", response_model=StockItemActivityOut)
+async def stock_item_activity(
+    business_id: uuid.UUID,
+    item_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    membership: Annotated[Membership, Depends(require_membership)],
+    limit: int = Query(50, ge=1, le=200),
+):
+    item = await get_stock_item(business_id, item_id, db, membership)
+    movement_r = await db.execute(
+        select(StockMovement)
+        .where(
+            StockMovement.business_id == business_id,
+            StockMovement.item_id == item_id,
+        )
+        .order_by(desc(StockMovement.created_at))
+        .limit(limit)
+    )
+    movements = list(movement_r.scalars().all())
+    purchase_r = await db.execute(
+        select(StaffPurchaseLog)
+        .where(
+            StaffPurchaseLog.business_id == business_id,
+            StaffPurchaseLog.item_id == item_id,
+        )
+        .order_by(desc(StaffPurchaseLog.created_at))
+        .limit(limit)
+    )
+    purchases = list(purchase_r.scalars().all())
+    staff_r = await db.execute(
+        select(StaffActivityLog)
+        .where(
+            StaffActivityLog.business_id == business_id,
+            StaffActivityLog.item_id == item_id,
+        )
+        .order_by(desc(StaffActivityLog.created_at))
+        .limit(limit)
+    )
+    staff_events = list(staff_r.scalars().all())
+    events: list[StockActivityEventOut] = []
+    for m in movements:
+        title = {
+            "quick_purchase": "Purchase quantity added",
+            "physical_count": "Physical stock updated",
+            "damage": "Damage recorded",
+            "correction": "Stock corrected",
+            "sale": "Sale adjustment",
+        }.get(m.movement_kind, m.movement_kind.replace("_", " ").title())
+        events.append(
+            StockActivityEventOut(
+                id=str(m.id),
+                kind=m.movement_kind,
+                title=title,
+                qty_before=m.qty_before,
+                qty_after=m.qty_after,
+                delta_qty=m.delta_qty,
+                unit=m.stock_unit,
+                reason=m.reason,
+                notes=m.notes,
+                actor_name=m.actor_name,
+                created_at=m.created_at,
+                source_type=m.source_type,
+                source_id=str(m.source_id) if m.source_id else None,
+            )
+        )
+    for p in purchases:
+        events.append(
+            StockActivityEventOut(
+                id=str(p.id),
+                kind="staff_purchase_log",
+                title="Staff purchase entry",
+                delta_qty=p.qty,
+                unit=p.unit,
+                notes=p.notes,
+                actor_name=p.created_by_name,
+                supplier_name=p.supplier_name,
+                broker_name=getattr(p, "broker_name", None),
+                created_at=p.created_at,
+                source_type="staff_purchase_log",
+                source_id=str(p.id),
+            )
+        )
+    for ev in staff_events:
+        events.append(
+            StockActivityEventOut(
+                id=str(ev.id),
+                kind=ev.action_type,
+                title=ev.action_type.replace("_", " ").title(),
+                actor_name=ev.user_name,
+                notes=None,
+                created_at=ev.created_at,
+                source_type="staff_activity_log",
+                source_id=str(ev.id),
+            )
+        )
+    events.sort(key=lambda e: e.created_at, reverse=True)
+    return StockItemActivityOut(
+        item=item,
+        movements=[_movement_out(m, item_name=item.name) for m in movements],
+        purchases=[_staff_purchase_out(p) for p in purchases],
+        activity=events[:limit],
+    )
+
+
 async def _barcode_label(
     db: AsyncSession, business_id: uuid.UUID, item: CatalogItem
 ) -> BarcodeLabelOut:
@@ -1501,11 +1628,82 @@ def _staff_purchase_out(log: StaffPurchaseLog) -> StaffPurchaseLogOut:
         qty=log.qty,
         unit=log.unit,
         amount=log.amount,
+        supplier_id=getattr(log, "supplier_id", None),
         supplier_name=log.supplier_name,
+        broker_id=getattr(log, "broker_id", None),
+        broker_name=getattr(log, "broker_name", None),
         notes=log.notes,
+        idempotency_key=getattr(log, "idempotency_key", None),
+        stock_movement_id=getattr(log, "stock_movement_id", None),
         created_by_name=log.created_by_name,
         created_at=log.created_at,
     )
+
+
+def _movement_out(
+    movement: StockMovement,
+    *,
+    item_name: str | None = None,
+    duplicate: bool = False,
+) -> StockMovementOut:
+    return StockMovementOut(
+        id=movement.id,
+        item_id=movement.item_id,
+        item_name=item_name,
+        movement_kind=movement.movement_kind,
+        delta_qty=movement.delta_qty,
+        qty_before=movement.qty_before,
+        qty_after=movement.qty_after,
+        stock_unit=movement.stock_unit,
+        reason=movement.reason,
+        notes=movement.notes,
+        source_type=movement.source_type,
+        source_id=movement.source_id,
+        idempotency_key=movement.idempotency_key,
+        actor_id=movement.actor_id,
+        actor_name=movement.actor_name,
+        created_at=movement.created_at,
+        metadata_json=movement.metadata_json,
+        duplicate=duplicate,
+    )
+
+
+async def _supplier_snapshot(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    supplier_id: uuid.UUID | None,
+) -> tuple[uuid.UUID | None, str | None]:
+    if supplier_id is None:
+        return None, None
+    r = await db.execute(
+        select(Supplier).where(
+            Supplier.id == supplier_id,
+            Supplier.business_id == business_id,
+        )
+    )
+    supplier = r.scalar_one_or_none()
+    if supplier is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid supplier")
+    return supplier.id, supplier.name
+
+
+async def _broker_snapshot(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    broker_id: uuid.UUID | None,
+) -> tuple[uuid.UUID | None, str | None]:
+    if broker_id is None:
+        return None, None
+    r = await db.execute(
+        select(Broker).where(
+            Broker.id == broker_id,
+            Broker.business_id == business_id,
+        )
+    )
+    broker = r.scalar_one_or_none()
+    if broker is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid broker")
+    return broker.id, broker.name
 
 
 @router.get("/staff-purchases", response_model=list[StaffPurchaseLogOut])
@@ -1531,62 +1729,121 @@ async def create_staff_purchase_log(
     user: Annotated[User, Depends(get_current_user)],
     _membership: Annotated[Membership, Depends(require_permission("stock_edit"))],
 ):
-    r = await db.execute(
-        select(CatalogItem).where(
-            CatalogItem.id == body.item_id,
-            CatalogItem.business_id == business_id,
-            CatalogItem.deleted_at.is_(None),
-        )
-    )
-    item = r.scalar_one_or_none()
-    if not item:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
-    old_qty = catalog_stock_qty(item)
     qty = Decimal(body.qty)
-    new_qty = old_qty + qty
+    supplier_id, supplier_name = await _supplier_snapshot(db, business_id, body.supplier_id)
+    broker_id, broker_name = await _broker_snapshot(db, business_id, body.broker_id)
+    supplier_snapshot = supplier_name or (body.supplier_name.strip() if body.supplier_name else None)
+    broker_snapshot = broker_name or (body.broker_name.strip() if body.broker_name else None)
+    log_id = uuid.uuid4()
+    idem = body.idempotency_key or f"staff-purchase:{log_id}"
+    try:
+        result = await apply_stock_movement(
+            db,
+            business_id=business_id,
+            item_id=body.item_id,
+            user=user,
+            movement_kind="quick_purchase",
+            mode="delta",
+            qty=qty,
+            reason="Staff purchase quantity",
+            notes=body.notes,
+            source_type="staff_purchase_log",
+            source_id=log_id,
+            idempotency_key=idem,
+            metadata={
+                "supplier_id": str(supplier_id) if supplier_id else None,
+                "supplier_name": supplier_snapshot,
+                "broker_id": str(broker_id) if broker_id else None,
+                "broker_name": broker_snapshot,
+                "amount": str(body.amount) if body.amount is not None else None,
+            },
+        )
+    except ValueError as e:
+        if str(e) == "Item not found":
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found") from e
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+    if result.duplicate:
+        lr = await db.execute(
+            select(StaffPurchaseLog).where(
+                StaffPurchaseLog.business_id == business_id,
+                StaffPurchaseLog.idempotency_key == idem,
+            )
+        )
+        existing = lr.scalar_one_or_none()
+        if existing is not None:
+            return _staff_purchase_out(existing)
+
+    item = result.item
     display = _user_display(user)
-    item.current_stock = new_qty
-    item.last_stock_updated_at = datetime.now(timezone.utc)
-    item.last_stock_updated_by = display
     unit = catalog_stock_unit(item)
+    item.last_supplier_id = supplier_id or getattr(item, "last_supplier_id", None)
+    item.last_broker_id = broker_id
+    item.last_line_qty = qty
+    item.last_line_unit = unit
     log = StaffPurchaseLog(
+        id=log_id,
         business_id=business_id,
         item_id=item.id,
         item_name=item.name,
         qty=qty,
         unit=unit,
         amount=body.amount,
-        supplier_name=body.supplier_name.strip() if body.supplier_name else None,
+        supplier_id=supplier_id,
+        supplier_name=supplier_snapshot,
+        broker_id=broker_id,
+        broker_name=broker_snapshot,
         notes=body.notes.strip() if body.notes else None,
+        idempotency_key=idem,
+        stock_movement_id=result.movement.id,
         created_by=user.id,
         created_by_name=display,
     )
     db.add(log)
-    db.add(
-        StockAdjustmentLog(
-            business_id=business_id,
-            item_id=item.id,
-            old_qty=old_qty,
-            new_qty=new_qty,
-            adjustment_type="purchase",
-            reason="Staff cash purchase",
-            updated_by=user.id,
-            updated_by_name=display,
-        )
-    )
-    await log_staff_activity(
-        db,
-        business_id=business_id,
-        user=user,
-        action_type="STAFF_CASH_PURCHASE",
-        item_id=item.id,
-        item_name=item.name,
-        before_data={"qty": float(old_qty)},
-        after_data={"qty": float(new_qty), "cash_qty": float(qty)},
-    )
     await db.commit()
     await db.refresh(log)
+    publish_business_event(
+        business_id,
+        "stock.changed",
+        {
+            "item_id": str(item.id),
+            "movement_id": str(result.movement.id),
+            "kind": "quick_purchase",
+        },
+    )
     return _staff_purchase_out(log)
+
+
+@router.post("/{item_id}/quick-purchase", response_model=QuickPurchaseOut)
+async def create_item_quick_purchase(
+    business_id: uuid.UUID,
+    item_id: uuid.UUID,
+    body: QuickPurchaseIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+    membership: Annotated[Membership, Depends(require_permission("stock_edit"))],
+):
+    staff_body = StaffPurchaseLogIn(
+        item_id=item_id,
+        qty=body.qty,
+        supplier_id=body.supplier_id,
+        broker_id=body.broker_id,
+        notes=body.notes,
+        idempotency_key=body.idempotency_key,
+    )
+    log = await create_staff_purchase_log(business_id, staff_body, db, user, membership)
+    movement_r = await db.execute(
+        select(StockMovement).where(StockMovement.id == log.stock_movement_id)
+    )
+    movement = movement_r.scalar_one_or_none()
+    if movement is None:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Stock movement missing")
+    item = await get_stock_item(business_id, item_id, db, membership)
+    return QuickPurchaseOut(
+        purchase_log=log,
+        movement=_movement_out(movement, item_name=item.name),
+        item=item,
+    )
 
 
 @router.get("/{item_id}/intelligence", response_model=StockIntelligenceOut)
@@ -1862,6 +2119,79 @@ async def record_physical_stock_count(
     return _physical_count_out(item, entry)
 
 
+@router.post("/{item_id}/physical-update", response_model=StockPhysicalUpdateOut)
+async def update_physical_stock(
+    business_id: uuid.UUID,
+    item_id: uuid.UUID,
+    body: StockPhysicalUpdateIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+    membership: Annotated[Membership, Depends(require_permission("stock_edit"))],
+):
+    kind = {
+        "verification": "physical_count",
+        "damaged": "damage",
+        "correction": "correction",
+        "sale": "sale",
+    }.get(body.adjustment_type, "physical_count")
+    try:
+        result = await apply_stock_movement(
+            db,
+            business_id=business_id,
+            item_id=item_id,
+            user=user,
+            movement_kind=kind,
+            mode="absolute",
+            qty=Decimal(body.counted_qty),
+            reason=body.reason,
+            notes=body.notes,
+            source_type="physical_update",
+            idempotency_key=body.idempotency_key,
+            last_seen_stock_version=body.last_seen_stock_version,
+        )
+    except StaleStockVersionError as e:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "STALE_STOCK_VERSION",
+                "message": str(e),
+                "current_stock": str(e.current_qty),
+                "stock_version": e.current_version,
+            },
+        ) from e
+    except ValueError as e:
+        if str(e) == "Item not found":
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found") from e
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    await maybe_notify_stock_variance(
+        db,
+        business_id=business_id,
+        item_id=item_id,
+        adjustment_type=body.adjustment_type,
+        new_qty=result.movement.qty_after,
+    )
+    await db.commit()
+    await db.refresh(result.movement)
+    publish_business_event(
+        business_id,
+        "stock.changed",
+        {
+            "item_id": str(item_id),
+            "movement_id": str(result.movement.id),
+            "kind": kind,
+        },
+    )
+    item = await get_stock_item(business_id, item_id, db, membership)
+    return StockPhysicalUpdateOut(
+        item=item,
+        movement=_movement_out(
+            result.movement,
+            item_name=item.name,
+            duplicate=result.duplicate,
+        ),
+    )
+
+
 @router.post("/{item_id}/verify-count", response_model=StockDetailOut)
 async def verify_stock_count(
     business_id: uuid.UUID,
@@ -1938,56 +2268,45 @@ async def patch_stock_item(
     user: Annotated[User, Depends(get_current_user)],
     _membership: Annotated[Membership, Depends(require_permission("stock_edit"))],
 ):
-    r = await db.execute(
-        select(CatalogItem)
-        .options(selectinload(CatalogItem.category))
-        .where(
-            CatalogItem.id == item_id,
-            CatalogItem.business_id == business_id,
-            CatalogItem.deleted_at.is_(None),
+    kind = {
+        "verification": "physical_count",
+        "damaged": "damage",
+        "correction": "correction",
+        "sale": "sale",
+    }.get(body.adjustment_type, body.adjustment_type)
+    try:
+        result = await apply_stock_movement(
+            db,
+            business_id=business_id,
+            item_id=item_id,
+            user=user,
+            movement_kind=kind,
+            mode="absolute",
+            qty=Decimal(body.new_qty),
+            reason=body.reason or body.adjustment_type,
+            source_type="stock_patch",
         )
-    )
-    item = r.scalar_one_or_none()
-    if not item:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
-
-    old_qty = catalog_stock_qty(item)
-    new_qty = Decimal(body.new_qty)
-    display = _user_display(user)
-    log = StockAdjustmentLog(
-        business_id=business_id,
-        item_id=item_id,
-        old_qty=old_qty,
-        new_qty=new_qty,
-        adjustment_type=body.adjustment_type,
-        reason=body.reason,
-        updated_by=user.id,
-        updated_by_name=display,
-    )
-    item.current_stock = new_qty
-    item.last_stock_updated_at = datetime.now(timezone.utc)
-    item.last_stock_updated_by = display
-    item.updated_by_user_id = user.id
-    db.add(log)
-    await log_staff_activity(
-        db,
-        business_id=business_id,
-        user=user,
-        action_type="STOCK_UPDATE",
-        item_id=item_id,
-        item_name=item.name,
-        before_data={"qty": float(old_qty)},
-        after_data={"qty": float(new_qty), "type": body.adjustment_type},
-    )
+    except ValueError as e:
+        if str(e) == "Item not found":
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found") from e
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     await maybe_notify_stock_variance(
         db,
         business_id=business_id,
         item_id=item_id,
         adjustment_type=body.adjustment_type,
-        new_qty=new_qty,
+        new_qty=result.movement.qty_after,
     )
     await db.commit()
-    await db.refresh(item)
+    publish_business_event(
+        business_id,
+        "stock.changed",
+        {
+            "item_id": str(item_id),
+            "movement_id": str(result.movement.id),
+            "kind": kind,
+        },
+    )
 
     return await get_stock_item(business_id, item_id, db, _membership)
 

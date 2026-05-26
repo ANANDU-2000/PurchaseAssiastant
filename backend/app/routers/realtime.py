@@ -5,11 +5,12 @@ import json
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 
 from app.deps import require_membership, require_realtime_effective
 from app.models import Membership
+from app.services.realtime_events import recent_business_events, subscribe_business_events
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/realtime", tags=["realtime"])
 
@@ -23,9 +24,22 @@ async def sse_events(
     del _m, _rt
 
     async def gen():
-        # Heartbeat until client disconnects; replace with Redis pub/sub later.
-        while True:
-            yield f"data: {json.dumps({'type': 'ping', 'business_id': str(business_id)})}\n\n"
-            await asyncio.sleep(30)
+        async for queue in subscribe_business_events(business_id):
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=30)
+                except asyncio.TimeoutError:
+                    event = {"type": "ping", "business_id": str(business_id)}
+                yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.get("/recent")
+async def recent_events(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    limit: int = Query(50, ge=1, le=100),
+):
+    del _m
+    return recent_business_events(business_id, limit=limit)

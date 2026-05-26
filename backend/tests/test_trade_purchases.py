@@ -29,6 +29,29 @@ def _register_and_business():
     return h, bid
 
 
+def _staff_headers(owner_h, bid):
+    suffix = uuid.uuid4().hex[:8]
+    phone = f"98{int(suffix, 16) % 100000000:08d}"
+    staff_email = f"tpstaff{suffix}@test.hexa.local"
+    cr = client.post(
+        f"/v1/businesses/{bid}/users",
+        headers=owner_h,
+        json={
+            "full_name": "Trade Purchase Staff",
+            "phone": phone,
+            "email": staff_email,
+            "role": "staff",
+        },
+    )
+    assert cr.status_code == 201, cr.text
+    login = client.post(
+        "/v1/auth/login",
+        json={"email": staff_email, "password": cr.json()["generated_password"]},
+    )
+    assert login.status_code == 200, login.text
+    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
 def _line_body(catalog_item_id: str | None = None):
     body = {
         "item_name": "Rice",
@@ -54,7 +77,14 @@ def _supplier_id(h, bid, *, name: str = "TP Test Supplier") -> str:
     return r.json()["id"]
 
 
-def _catalog_item_id(h, bid, *, name: str = "Test rice") -> str:
+def _catalog_item_id(
+    h,
+    bid,
+    *,
+    name: str = "Test rice",
+    item_code: str | None = None,
+    barcode: str | None = None,
+) -> str:
     """Create a minimal catalog item. Phase 6 requires every purchase line to
     link to one, so tests need to create it up-front."""
     sid = _supplier_id(h, bid, name=f"Def {uuid.uuid4().hex[:6]}")
@@ -71,18 +101,23 @@ def _catalog_item_id(h, bid, *, name: str = "Test rice") -> str:
     )
     assert types.status_code == 200, types.text
     tid = types.json()[0]["id"]
+    payload = {
+        "category_id": cid,
+        "type_id": tid,
+        "name": name,
+        "default_unit": "bag",
+        "stock_unit": "bag",
+        "default_kg_per_bag": 50,
+        "default_supplier_ids": [sid],
+    }
+    if item_code is not None:
+        payload["item_code"] = item_code
+    if barcode is not None:
+        payload["barcode"] = barcode
     item = client.post(
         f"/v1/businesses/{bid}/catalog-items",
         headers=h,
-        json={
-            "category_id": cid,
-            "type_id": tid,
-            "name": name,
-            "default_unit": "bag",
-            "stock_unit": "bag",
-            "default_kg_per_bag": 50,
-            "default_supplier_ids": [sid],
-        },
+        json=payload,
     )
     assert item.status_code == 201, item.text
     return item.json()["id"]
@@ -742,3 +777,135 @@ def test_get_trade_purchase_line_total_is_line_money_landing_gross_is_pre_tax():
     # Gross: 10 * 50 * 2 = 1000; after 10% disc -> 900; after 5% tax -> 945
     assert abs(float(ln["line_landing_gross"]) - 1000.0) < 0.02
     assert abs(float(ln["line_total"]) - 945.0) < 0.02
+
+
+def test_purchase_to_date_filter_is_inclusive_without_next_day_leak():
+    h, bid = _register_and_business()
+    sid = _supplier_id(h, bid)
+    iid = _catalog_item_id(h, bid)
+    for purchase_date in ("2026-05-20", "2026-05-21"):
+        r = client.post(
+            f"/v1/businesses/{bid}/trade-purchases",
+            headers=h,
+            json={
+                "purchase_date": purchase_date,
+                "supplier_id": sid,
+                "lines": [_line_body(iid)],
+            },
+        )
+        assert r.status_code == 201, r.text
+
+    one_day = client.get(
+        f"/v1/businesses/{bid}/trade-purchases",
+        headers=h,
+        params={"purchase_from": "2026-05-20", "purchase_to": "2026-05-20"},
+    )
+    assert one_day.status_code == 200, one_day.text
+    rows = one_day.json()
+    assert len(rows) == 1
+    assert rows[0]["purchase_date"] == "2026-05-20"
+
+
+def test_stock_search_matches_saved_barcode():
+    h, bid = _register_and_business()
+    _catalog_item_id(
+        h,
+        bid,
+        name="Barcode Rice",
+        item_code="RICE-CODE",
+        barcode="8901234567890",
+    )
+
+    r = client.get(
+        f"/v1/businesses/{bid}/stock/list",
+        headers=h,
+        params={"q": "8901234567890"},
+    )
+    assert r.status_code == 200, r.text
+    names = [row["name"] for row in r.json()["items"]]
+    assert "Barcode Rice" in names
+
+
+def test_staff_cannot_edit_payment_but_can_receive_delivery_without_financials():
+    owner_h, bid = _register_and_business()
+    sid = _supplier_id(owner_h, bid)
+    iid = _catalog_item_id(owner_h, bid)
+    cr = client.post(
+        f"/v1/businesses/{bid}/trade-purchases",
+        headers=owner_h,
+        json={
+            "purchase_date": date.today().isoformat(),
+            "supplier_id": sid,
+            "lines": [_line_body(iid)],
+        },
+    )
+    assert cr.status_code == 201, cr.text
+    pid = cr.json()["id"]
+    staff_h = _staff_headers(owner_h, bid)
+
+    pay = client.patch(
+        f"/v1/businesses/{bid}/trade-purchases/{pid}/payment",
+        headers=staff_h,
+        json={"paid_amount": 10},
+    )
+    assert pay.status_code == 403, pay.text
+
+    delivery = client.patch(
+        f"/v1/businesses/{bid}/trade-purchases/{pid}/delivery",
+        headers=staff_h,
+        json={"is_delivered": True},
+    )
+    assert delivery.status_code == 200, delivery.text
+    body = delivery.json()
+    assert body["is_delivered"] is True
+    assert "total_amount" not in body
+    assert "landing_cost" not in body["lines"][0]
+
+
+def test_stock_period_purchased_counts_only_delivered_purchase_lines():
+    h, bid = _register_and_business()
+    sid = _supplier_id(h, bid)
+    iid = _catalog_item_id(h, bid)
+    first = client.post(
+        f"/v1/businesses/{bid}/trade-purchases",
+        headers=h,
+        json={
+            "purchase_date": "2026-05-20",
+            "supplier_id": sid,
+            "lines": [_line_body(iid)],
+        },
+    )
+    assert first.status_code == 201, first.text
+    second = client.post(
+        f"/v1/businesses/{bid}/trade-purchases",
+        headers=h,
+        json={
+            "purchase_date": "2026-05-20",
+            "force_duplicate": True,
+            "supplier_id": sid,
+            "lines": [_line_body(iid)],
+        },
+    )
+    assert second.status_code == 201, second.text
+    delivered = client.patch(
+        f"/v1/businesses/{bid}/trade-purchases/{first.json()['id']}/delivery",
+        headers=h,
+        json={"is_delivered": True},
+    )
+    assert delivered.status_code == 200, delivered.text
+
+    stock = client.get(
+        f"/v1/businesses/{bid}/stock/list",
+        headers=h,
+        params={
+            "include_period": True,
+            "period_start": "2026-05-20",
+            "period_end": "2026-05-20",
+            "q": "Test rice",
+        },
+    )
+    assert stock.status_code == 200, stock.text
+    rows = stock.json()["items"]
+    assert len(rows) == 1
+    assert abs(float(rows[0]["period_purchased_qty"]) - 10.0) < 0.001
+    assert rows[0]["has_pending_order"] is True

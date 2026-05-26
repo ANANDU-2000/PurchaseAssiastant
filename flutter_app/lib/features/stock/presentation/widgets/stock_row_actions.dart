@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../quick_stock_patch_sheet.dart';
-import '../stock_undo_snackbar.dart';
-import '../update_stock_sheet.dart';
+import '../stock_compact_update_sheet.dart';
+import '../stock_quick_purchase_sheet.dart';
 
 Future<void> showStockRowActions({
   required BuildContext context,
@@ -17,82 +16,87 @@ Future<void> showStockRowActions({
   await showModalBottomSheet<void>(
     context: context,
     useSafeArea: true,
+    showDragHandle: true,
     builder: (ctx) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: const Icon(Icons.flash_on_outlined),
-            title: const Text('Quick add/remove'),
-            onTap: () async {
-              Navigator.pop(ctx);
-              final saved = await showQuickStockPatchSheet(
-                context: context,
-                ref: ref,
-                item: item,
-              );
-              if (saved && context.mounted) {
-                showStockUndoSnackBar(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 10),
+            _StockActionTile(
+              icon: Icons.inventory_2_outlined,
+              label: 'Update Physical Stock',
+              onTap: () async {
+                Navigator.pop(ctx);
+                await showStockCompactUpdateSheet(
                   context: context,
                   ref: ref,
-                  itemId: id,
-                  itemName: name,
+                  item: item,
                 );
-              }
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.edit_outlined),
-            title: const Text('Edit stock'),
-            onTap: () {
-              Navigator.pop(ctx);
-              showUpdateStockSheet(
-                context: context,
-                ref: ref,
-                itemId: id,
-                itemName: name,
-                stockRow: item,
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.history),
-            title: const Text('View history'),
-            onTap: () {
-              Navigator.pop(ctx);
-              context.push(
-                '/stock/$id/history?name=${Uri.encodeComponent(name)}',
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.print_outlined),
-            title: const Text('Print barcode'),
-            onTap: () {
-              Navigator.pop(ctx);
-              context.push('/barcode/print/${Uri.encodeComponent(id)}');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.insights_outlined),
-            title: const Text('View intelligence'),
-            onTap: () {
-              Navigator.pop(ctx);
-              context.push('/stock/intelligence/$id');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.swap_horiz),
-            title: const Text('Movement history'),
-            onTap: () {
-              Navigator.pop(ctx);
-              context.push(
-                '/stock/$id/history?name=${Uri.encodeComponent(name)}',
-              );
-            },
-          ),
-        ],
+              },
+            ),
+            _StockActionTile(
+              icon: Icons.add_shopping_cart_outlined,
+              label: 'Add Purchase Quantity',
+              onTap: () async {
+                Navigator.pop(ctx);
+                await showStockQuickPurchaseSheet(
+                  context: context,
+                  ref: ref,
+                  item: item,
+                );
+              },
+            ),
+            _StockActionTile(
+              icon: Icons.history_rounded,
+              label: 'View Item Activity',
+              onTap: () {
+                Navigator.pop(ctx);
+                context.push('/stock/$id/history?name=${Uri.encodeComponent(name)}');
+              },
+            ),
+          ],
+        ),
       ),
     ),
   );
+}
+
+class _StockActionTile extends StatelessWidget {
+  const _StockActionTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 20),
+        label: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(label),
+        ),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size.fromHeight(48),
+          alignment: Alignment.centerLeft,
+        ),
+      ),
+    );
+  }
 }

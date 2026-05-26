@@ -19,6 +19,7 @@ import '../../core/providers/stock_providers.dart';
 import '../../core/providers/home_breakdown_tab_providers.dart';
 import '../../core/providers/home_dashboard_provider.dart';
 import '../../core/providers/reports_provider.dart';
+import '../../core/providers/realtime_events_provider.dart';
 import '../../core/providers/trade_purchases_provider.dart'
     show invalidateTradePurchaseCaches;
 import '../../core/design_system/hexa_ds_tokens.dart';
@@ -95,6 +96,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
         conn.valueOrNull != null && isOfflineResult(conn.valueOrNull!);
     final pendingSync = OfflineStore.getPendingEntries().length;
     final stockAlertN = ref.watch(stockLowCountProvider).valueOrNull ?? 0;
+    ref.watch(realtimeInvalidationProvider);
     final isDesktop = MediaQuery.sizeOf(context).width >= 900;
 
     void go(int branch) {

@@ -26,8 +26,19 @@ class StaffPurchaseLog(Base):
     qty: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
     unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    supplier_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     supplier_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    broker_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("brokers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    broker_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    stock_movement_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("stock_movements.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )

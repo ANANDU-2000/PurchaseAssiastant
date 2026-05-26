@@ -14,11 +14,11 @@ import '../../../core/widgets/list_skeleton.dart';
 import '../stock_list_merge.dart';
 import '../stock_period_utils.dart';
 import '../../catalog/presentation/widgets/item_quick_view_sheet.dart';
-import 'stock_compact_update_sheet.dart';
 import 'widgets/stock_list_column_header.dart';
 import 'widgets/stock_pagination_bar.dart';
 import 'widgets/stock_search_sliver.dart';
 import 'widgets/stock_compact_top_bar.dart';
+import 'widgets/stock_row_actions.dart';
 import 'widgets/stock_table_row.dart';
 import 'widgets/operational_stock_filter_sheet.dart'
     show stockActiveFilterSummary;
@@ -167,22 +167,11 @@ class _StockPageState extends ConsumerState<StockPage> {
     return items;
   }
 
-  Future<void> _openUpdateSheet(Map<String, dynamic> item) async {
-    final id = item['id']?.toString() ?? '';
-    final saved = await showStockCompactUpdateSheet(
+  Future<void> _openRowActions(Map<String, dynamic> item) async {
+    await showStockRowActions(
       context: context,
       ref: ref,
       item: item,
-    );
-    if (!mounted || !saved) return;
-    _resetMerged();
-    ref.invalidate(stockListProvider);
-    ref.invalidate(stockChangesFeedProvider);
-    if (id.isNotEmpty) {
-      ref.invalidate(stockItemIntelligenceProvider(id));
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Stock updated')),
     );
   }
 
@@ -294,7 +283,7 @@ class _StockPageState extends ConsumerState<StockPage> {
                     item: items[i],
                     isStaffMode: _isStaffMode,
                     isFirstRow: i == 0,
-                    onTap: () => unawaited(_openUpdateSheet(items[i])),
+                    onTap: () => unawaited(_openRowActions(items[i])),
                     onLongPress: () {
                       final id = items[i]['id']?.toString() ?? '';
                       final name = items[i]['name']?.toString() ?? 'Item';

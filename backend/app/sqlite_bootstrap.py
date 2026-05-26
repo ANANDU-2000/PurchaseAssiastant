@@ -53,6 +53,7 @@ def apply_sqlite_bootstrap(sync_conn) -> None:
     _ensure_catalog_items_public_token(sync_conn)
     _ensure_catalog_items_opening_stock(sync_conn)
     _ensure_stock_physical_counts(sync_conn)
+    _ensure_stock_movements(sync_conn)
     _ensure_staff_purchase_logs(sync_conn)
     _ensure_supplier_wholesale_columns(sync_conn)
     _ensure_supplier_profile_columns(sync_conn)
@@ -305,29 +306,84 @@ def _ensure_catalog_items_opening_stock(sync_conn):
 
 def _ensure_staff_purchase_logs(sync_conn):
     insp = inspect(sync_conn)
-    if insp.has_table("staff_purchase_logs"):
+    if not insp.has_table("staff_purchase_logs"):
+        sync_conn.exec_driver_sql(
+            """
+            CREATE TABLE staff_purchase_logs (
+                id CHAR(32) PRIMARY KEY,
+                business_id CHAR(32) NOT NULL,
+                item_id CHAR(32) NOT NULL,
+                item_name VARCHAR(512) NOT NULL,
+                qty NUMERIC(12,3) NOT NULL,
+                unit VARCHAR(32) NULL,
+                amount NUMERIC(12,2) NULL,
+                supplier_id CHAR(32) NULL,
+                supplier_name VARCHAR(255) NULL,
+                broker_id CHAR(32) NULL,
+                broker_name VARCHAR(255) NULL,
+                notes TEXT NULL,
+                idempotency_key VARCHAR(120) NULL,
+                stock_movement_id CHAR(32) NULL,
+                created_by CHAR(32) NULL,
+                created_by_name VARCHAR(255) NULL,
+                created_at DATETIME NULL
+            )
+            """
+        )
+    else:
+        cols = {c["name"] for c in insp.get_columns("staff_purchase_logs")}
+        alters = []
+        if "supplier_id" not in cols:
+            alters.append("ALTER TABLE staff_purchase_logs ADD COLUMN supplier_id CHAR(32) NULL")
+        if "broker_id" not in cols:
+            alters.append("ALTER TABLE staff_purchase_logs ADD COLUMN broker_id CHAR(32) NULL")
+        if "broker_name" not in cols:
+            alters.append("ALTER TABLE staff_purchase_logs ADD COLUMN broker_name VARCHAR(255) NULL")
+        if "idempotency_key" not in cols:
+            alters.append("ALTER TABLE staff_purchase_logs ADD COLUMN idempotency_key VARCHAR(120) NULL")
+        if "stock_movement_id" not in cols:
+            alters.append("ALTER TABLE staff_purchase_logs ADD COLUMN stock_movement_id CHAR(32) NULL")
+        for sql in alters:
+            try:
+                sync_conn.exec_driver_sql(sql)
+            except Exception:  # noqa: BLE001
+                pass
+    sync_conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_staff_purchase_logs_business_created "
+        "ON staff_purchase_logs (business_id, created_at)"
+    )
+
+
+def _ensure_stock_movements(sync_conn):
+    insp = inspect(sync_conn)
+    if insp.has_table("stock_movements"):
         return
     sync_conn.exec_driver_sql(
         """
-        CREATE TABLE staff_purchase_logs (
+        CREATE TABLE stock_movements (
             id CHAR(32) PRIMARY KEY,
             business_id CHAR(32) NOT NULL,
             item_id CHAR(32) NOT NULL,
-            item_name VARCHAR(512) NOT NULL,
-            qty NUMERIC(12,3) NOT NULL,
-            unit VARCHAR(32) NULL,
-            amount NUMERIC(12,2) NULL,
-            supplier_name VARCHAR(255) NULL,
+            movement_kind VARCHAR(50) NOT NULL,
+            delta_qty NUMERIC(12,3) NOT NULL,
+            qty_before NUMERIC(12,3) NOT NULL,
+            qty_after NUMERIC(12,3) NOT NULL,
+            stock_unit VARCHAR(32) NULL,
+            reason VARCHAR(255) NULL,
             notes TEXT NULL,
-            created_by CHAR(32) NULL,
-            created_by_name VARCHAR(255) NULL,
+            source_type VARCHAR(50) NULL,
+            source_id CHAR(32) NULL,
+            idempotency_key VARCHAR(120) NOT NULL,
+            actor_id CHAR(32) NULL,
+            actor_name VARCHAR(255) NULL,
+            metadata_json JSON NULL,
             created_at DATETIME NULL
         )
         """
     )
     sync_conn.exec_driver_sql(
-        "CREATE INDEX IF NOT EXISTS ix_staff_purchase_logs_business_created "
-        "ON staff_purchase_logs (business_id, created_at)"
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_movements_business_idempotency "
+        "ON stock_movements (business_id, idempotency_key)"
     )
 
 
@@ -652,6 +708,8 @@ def _ensure_catalog_items_stock_columns(sync_conn):
     alters: list[str] = []
     if "current_stock" not in cols:
         alters.append("ALTER TABLE catalog_items ADD COLUMN current_stock NUMERIC(12,3) DEFAULT 0")
+    if "stock_version" not in cols:
+        alters.append("ALTER TABLE catalog_items ADD COLUMN stock_version INTEGER NOT NULL DEFAULT 0")
     if "reorder_level" not in cols:
         alters.append("ALTER TABLE catalog_items ADD COLUMN reorder_level NUMERIC(12,3) DEFAULT 0")
     if "rack_location" not in cols:

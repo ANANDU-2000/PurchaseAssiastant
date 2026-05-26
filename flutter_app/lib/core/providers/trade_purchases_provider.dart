@@ -23,6 +23,17 @@ String? _purchaseFromApi(DateTime? d) {
   return '$y-$m-$day';
 }
 
+@visibleForTesting
+({String? from, String? to}) tradePurchaseDateApiRange(
+  DateTime? fromDate,
+  DateTime? toDate,
+) {
+  return (
+    from: _purchaseFromApi(fromDate),
+    to: _purchaseFromApi(toDate),
+  );
+}
+
 /// Derives API `status` from history chips / route. [null] means unfiltered (`all`).
 String? _tradeListApiStatus(String primaryRaw, String? secondaryRaw) {
   final sec = secondaryRaw?.trim().toLowerCase();
@@ -155,17 +166,15 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
     final fromDate = advFrom ?? analyticsRange.from;
     final toDate = advTo ?? analyticsRange.to;
 
-    final purchaseFrom = _purchaseFromApi(fromDate);
-    // Add one day to toDate to ensure inclusive filtering on the backend
-    final purchaseTo = _purchaseFromApi(toDate.add(const Duration(days: 1)));
+    final apiRange = tradePurchaseDateApiRange(fromDate, toDate);
 
     final page = await ref.read(hexaApiProvider).listTradePurchases(
           businessId: session.primaryBusiness.id,
           limit: kTradePurchasesHistoryFetchLimit,
           offset: 0,
           status: apiStatus,
-          purchaseFrom: purchaseFrom,
-          purchaseTo: purchaseTo,
+          purchaseFrom: apiRange.from,
+          purchaseTo: apiRange.to,
         );
     final hasMore = page.length >= kTradePurchasesHistoryFetchLimit;
     return TradePurchasesListView(rows: page, hasMore: hasMore);
@@ -194,16 +203,14 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
       final fromDate = advFrom ?? analyticsRange.from;
       final toDate = advTo ?? analyticsRange.to;
 
-      final purchaseFrom = _purchaseFromApi(fromDate);
-      // Add one day to toDate to ensure inclusive filtering on the backend
-      final purchaseTo = _purchaseFromApi(toDate.add(const Duration(days: 1)));
+      final apiRange = tradePurchaseDateApiRange(fromDate, toDate);
       final page = await ref.read(hexaApiProvider).listTradePurchases(
             businessId: session.primaryBusiness.id,
             limit: kTradePurchasesHistoryFetchLimit,
             offset: offset,
             status: apiStatus,
-            purchaseFrom: purchaseFrom,
-            purchaseTo: purchaseTo,
+            purchaseFrom: apiRange.from,
+            purchaseTo: apiRange.to,
           );
       final after = state.valueOrNull;
       if (after == null || after.rows.length != offset) return;

@@ -335,6 +335,7 @@ final homeRecentActivityFeedProvider =
   const feedTimeout = Duration(seconds: 15);
   late final List<Map<String, dynamic>> purchases;
   late final List<Map<String, dynamic>> auditRows;
+  late final List<Map<String, dynamic>> staffPurchases;
   try {
     final results = await Future.wait([
       api.listTradePurchases(
@@ -349,9 +350,14 @@ final homeRecentActivityFeedProvider =
         businessId: bid,
         limit: 80,
       ),
+      api.listStaffPurchaseLogs(
+        businessId: bid,
+        limit: 30,
+      ),
     ]).timeout(feedTimeout);
     purchases = results[0];
     auditRows = results[1];
+    staffPurchases = results[2];
   } on TimeoutException {
     throw Exception('Recent changes timed out. Pull to refresh.');
   }
@@ -409,6 +415,27 @@ final homeRecentActivityFeedProvider =
             a['updated_by_name']?.toString() ??
             a['user_name']?.toString(),
         qtyChange: delta?.toString(),
+      ),
+    );
+  }
+
+  for (final p in staffPurchases) {
+    final atRaw = p['created_at']?.toString();
+    final at = atRaw != null ? DateTime.tryParse(atRaw) : null;
+    if (at == null) continue;
+    final local = at.toLocal();
+    if (local.isBefore(range.start) || !local.isBefore(range.end)) continue;
+    final qty = coerceToDouble(p['qty']);
+    final unit = p['unit']?.toString().toUpperCase() ?? '';
+    items.add(
+      HomeActivityItem(
+        kind: 'stock_quick_purchase',
+        title: 'Purchase quantity added',
+        subtitle: p['item_name']?.toString() ?? 'Item',
+        at: local,
+        routeId: p['item_id']?.toString(),
+        actor: p['created_by_name']?.toString(),
+        qtyChange: qty > 0 ? '+$qty $unit' : null,
       ),
     );
   }

@@ -41,6 +41,7 @@ from app.schemas.operations import (
 )
 from app.services.staff_audit import log_staff_activity
 from app.services.stock_inventory import catalog_stock_qty
+from app.services.unit_normalization import line_qty_in_stock_unit
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/operations", tags=["operations"])
 
@@ -88,20 +89,23 @@ async def _purchased_today_map(
     if not item_ids:
         return {}
     r = await db.execute(
-        select(
-            TradePurchaseLine.catalog_item_id,
-            func.coalesce(func.sum(TradePurchaseLine.qty), 0),
-        )
+        select(TradePurchaseLine, CatalogItem)
         .join(TradePurchase, TradePurchaseLine.trade_purchase_id == TradePurchase.id)
+        .join(CatalogItem, TradePurchaseLine.catalog_item_id == CatalogItem.id)
         .where(
             TradePurchase.business_id == business_id,
             TradePurchase.purchase_date == today,
-            TradePurchase.status != "cancelled",
+            TradePurchase.status.notin_(("cancelled", "deleted")),
+            TradePurchase.is_delivered.is_(True),
             TradePurchaseLine.catalog_item_id.in_(item_ids),
+            CatalogItem.business_id == business_id,
+            CatalogItem.deleted_at.is_(None),
         )
-        .group_by(TradePurchaseLine.catalog_item_id)
     )
-    return {row[0]: Decimal(row[1] or 0) for row in r.all()}
+    totals: dict[uuid.UUID, Decimal] = {}
+    for line, item in r.all():
+        totals[item.id] = totals.get(item.id, Decimal("0")) + line_qty_in_stock_unit(line, item)
+    return totals
 
 
 @router.get("/checklist/today", response_model=ChecklistTodayOut)

@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -15,6 +16,82 @@ class StockPatchIn(BaseModel):
         ),
     )
     reason: str | None = None
+
+
+class StockPhysicalUpdateIn(BaseModel):
+    counted_qty: Decimal = Field(ge=0, max_digits=12, decimal_places=3)
+    adjustment_type: Literal["verification", "damaged", "correction", "sale"] = "verification"
+    reason: str = Field(min_length=1, max_length=255)
+    notes: str | None = Field(default=None, max_length=500)
+    last_seen_stock_version: int | None = Field(default=None, ge=0)
+    idempotency_key: str | None = Field(default=None, max_length=120)
+
+
+class StockMovementOut(BaseModel):
+    id: uuid.UUID
+    item_id: uuid.UUID
+    item_name: str | None = None
+    movement_kind: str
+    delta_qty: Decimal
+    qty_before: Decimal
+    qty_after: Decimal
+    stock_unit: str | None = None
+    reason: str | None = None
+    notes: str | None = None
+    source_type: str | None = None
+    source_id: uuid.UUID | None = None
+    idempotency_key: str
+    actor_id: uuid.UUID | None = None
+    actor_name: str | None = None
+    created_at: datetime
+    metadata_json: dict[str, Any] | None = None
+    duplicate: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class StockPhysicalUpdateOut(BaseModel):
+    item: "StockDetailOut"
+    movement: StockMovementOut
+
+
+class QuickPurchaseIn(BaseModel):
+    qty: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
+    supplier_id: uuid.UUID
+    broker_id: uuid.UUID | None = None
+    notes: str | None = Field(default=None, max_length=500)
+    idempotency_key: str | None = Field(default=None, max_length=120)
+
+
+class QuickPurchaseOut(BaseModel):
+    purchase_log: "StaffPurchaseLogOut"
+    movement: StockMovementOut
+    item: "StockDetailOut"
+
+
+class StockActivityEventOut(BaseModel):
+    id: str
+    kind: str
+    title: str
+    qty_before: Decimal | None = None
+    qty_after: Decimal | None = None
+    delta_qty: Decimal | None = None
+    unit: str | None = None
+    reason: str | None = None
+    notes: str | None = None
+    actor_name: str | None = None
+    supplier_name: str | None = None
+    broker_name: str | None = None
+    created_at: datetime
+    source_type: str | None = None
+    source_id: str | None = None
+
+
+class StockItemActivityOut(BaseModel):
+    item: "StockDetailOut"
+    movements: list[StockMovementOut] = Field(default_factory=list)
+    purchases: list["StaffPurchaseLogOut"] = Field(default_factory=list)
+    activity: list[StockActivityEventOut] = Field(default_factory=list)
 
 
 class StockListItemOut(BaseModel):
@@ -64,6 +141,7 @@ class StockListItemOut(BaseModel):
     opening_stock_set_at: datetime | None = None
     opening_stock_set_by: str | None = None
     opening_stock_locked: bool = False
+    stock_version: int = 0
 
 
 class StockListOut(BaseModel):
@@ -180,8 +258,12 @@ class StaffPurchaseLogIn(BaseModel):
     item_id: uuid.UUID
     qty: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
     amount: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    supplier_id: uuid.UUID | None = None
     supplier_name: str | None = Field(default=None, max_length=255)
+    broker_id: uuid.UUID | None = None
+    broker_name: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=500)
+    idempotency_key: str | None = Field(default=None, max_length=120)
 
 
 class StaffPurchaseLogOut(BaseModel):
@@ -191,8 +273,13 @@ class StaffPurchaseLogOut(BaseModel):
     qty: Decimal
     unit: str | None = None
     amount: Decimal | None = None
+    supplier_id: uuid.UUID | None = None
     supplier_name: str | None = None
+    broker_id: uuid.UUID | None = None
+    broker_name: str | None = None
     notes: str | None = None
+    idempotency_key: str | None = None
+    stock_movement_id: uuid.UUID | None = None
     created_by_name: str | None = None
     created_at: datetime
 

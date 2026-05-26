@@ -1,6 +1,6 @@
 # Purchase Assistant — Living task board
 
-**Last updated:** 2026-05-24 (Master Fix v3 DB + §29 completion)
+**Last updated:** 2026-05-26 (Staff purchase + stock workflow rebuild)
 
 ---
 
@@ -32,6 +32,27 @@ Canonical phase doc: [`docs/harisree/IMPLEMENTATION_PHASES.md`](docs/harisree/IM
 - [x] Feature gap decision: PDF/XLSX sales comparison upload explicitly deferred in `dfiles/13_SALES_COMPARISON_REPORT.md`
 - [x] Production QA automated pass: `flutter analyze`, `flutter build web`, backend pytest, Render health/ready, and Vercel smoke pass
 - [ ] Manual release QA still needs a physical Android camera/PDF/offline/keyboard/sign-out pass before store/client handoff
+
+### Deep SaaS audit build — Phase 1 hardening (2026-05-26)
+
+- [x] Purchase history date filter: stop sending next-day `purchase_to`; backend already treats it as inclusive
+- [x] Barcode parity: scanner accepts warehouse/retail linear formats; stock search matches saved `barcode`
+- [x] Purchase write permissions: payments require `purchase_edit`; delivery stock changes require `stock_edit`; scan confirm/update require `purchase_create`
+- [x] Staff delivery response redacts trade-purchase financial fields
+- [x] Stock period and daily usage purchased quantities count delivered purchases only; pending orders remain separate metadata
+- [x] Regression checks: `backend/tests/test_trade_purchases.py`, `flutter_app/test/trade_date_range_parity_test.dart`, targeted Flutter analyze
+
+### Staff purchase + stock workflow rebuild (2026-05-26)
+
+- [x] Backend stock movement ledger: `stock_movements`, idempotency keys, stock versioning, row-locked movement service
+- [x] Quick purchase API: item-prefilled route with supplier/broker ids, staff purchase log relation, movement link, activity logging
+- [x] Compact stock row actions: Physical Stock Update, Add Purchase Quantity, View Item Activity
+- [x] Physical stock sheet: absolute count + reason + notes + stale stock protection
+- [x] Purchase quantity sheet: supplier/broker autocomplete, idempotent submit, warehouse surface invalidation
+- [x] Item activity: merged movements, quick purchases, and staff activity endpoint/provider plus operational detail tabs
+- [x] Owner visibility: recent feed includes quick purchase entries and stock movement projections
+- [x] Realtime sync: backend stock events + Flutter invalidation listener with polling fallback
+- [x] Validation: `pytest backend/tests` printed `259 passed`; `flutter analyze`; `flutter test test/stock_row_actions_test.dart test/trade_date_range_parity_test.dart`
 
 Verification gates per phase:
 - Backend import/app tests, migration chain, stock SQL checks when relevant.

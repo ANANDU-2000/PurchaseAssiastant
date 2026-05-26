@@ -30,6 +30,18 @@ import 'barcode_scan_web_stub.dart'
 
 const _kMaxRecent = 10;
 const _kDebounceMs = 800;
+const _kWarehouseBarcodeFormats = <BarcodeFormat>[
+  BarcodeFormat.code128,
+  BarcodeFormat.code39,
+  BarcodeFormat.code93,
+  BarcodeFormat.codabar,
+  BarcodeFormat.ean13,
+  BarcodeFormat.ean8,
+  BarcodeFormat.itf,
+  BarcodeFormat.upcA,
+  BarcodeFormat.upcE,
+  BarcodeFormat.qrCode,
+];
 
 /// Warehouse barcode scan — camera + manual lookup → item detail.
 class BarcodeScanPage extends ConsumerStatefulWidget {
@@ -112,7 +124,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
           detectionSpeed: DetectionSpeed.noDuplicates,
           detectionTimeoutMs: _kDebounceMs,
           facing: CameraFacing.back,
-          formats: const [BarcodeFormat.code128, BarcodeFormat.qrCode],
+          formats: _kWarehouseBarcodeFormats,
         );
         if (mounted) setState(() {});
         return;
@@ -147,7 +159,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
       detectionSpeed: DetectionSpeed.noDuplicates,
       detectionTimeoutMs: _kDebounceMs,
       facing: CameraFacing.back,
-      formats: const [BarcodeFormat.code128, BarcodeFormat.qrCode],
+      formats: _kWarehouseBarcodeFormats,
     );
     setState(() {});
   }

@@ -94,6 +94,16 @@ final stockItemIntelligenceProvider = FutureProvider.autoDispose
       );
 });
 
+final stockItemActivityProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, String>((ref, itemId) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return {};
+  return ref.read(hexaApiProvider).getStockItemActivity(
+        businessId: session.primaryBusiness.id,
+        itemId: itemId,
+      );
+});
+
 final stockListQueryProvider =
     StateProvider<StockListQuery>((_) => const StockListQuery());
 

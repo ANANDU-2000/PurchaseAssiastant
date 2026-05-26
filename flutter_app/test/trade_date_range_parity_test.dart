@@ -8,6 +8,8 @@ import 'package:harisree_warehouse/core/providers/home_dashboard_provider.dart'
         homePeriodProvider,
         homePeriodRange,
         HomePeriod;
+import 'package:harisree_warehouse/core/providers/trade_purchases_provider.dart'
+    show tradePurchaseDateApiRange;
 
 void main() {
   test('month preset: home snapshot dates align with reports range for same "today"', () {
@@ -55,5 +57,15 @@ void main() {
     final h = homePeriodRange(HomePeriod.allTime, now: DateTime(2026, 5, 23));
     expect(h.start.year, 1970);
     expect(h.end.year, greaterThanOrEqualTo(2099));
+  });
+
+  test('purchase history sends inclusive purchase_to without next-day expansion', () {
+    final range = tradePurchaseDateApiRange(
+      DateTime(2026, 5, 20, 10, 30),
+      DateTime(2026, 5, 20, 23, 59),
+    );
+
+    expect(range.from, '2026-05-20');
+    expect(range.to, '2026-05-20');
   });
 }

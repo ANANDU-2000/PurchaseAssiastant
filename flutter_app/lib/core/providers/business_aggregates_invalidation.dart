@@ -138,8 +138,14 @@ void invalidateWarehouseSurfaces(dynamic ref) {
   ref.invalidate(lowStockByCategoryProvider);
   ref.invalidate(stockStatusCountsProvider);
   ref.invalidate(stockItemIntelligenceProvider);
+  ref.invalidate(stockItemActivityProvider);
   ref.invalidate(warehouseAlertsProvider);
   ref.invalidate(homeRecentActivityFeedProvider);
+  ref.invalidate(stockAuditPeriodProvider);
+  ref.invalidate(stockChangesFeedProvider);
+  ref.invalidate(staffTodayActivityProvider);
+  ref.invalidate(staffTodayStockWorkProvider);
+  ref.invalidate(staffTodaySummaryProvider);
   ref.invalidate(stockAlertCountsProvider);
   ref.invalidate(stockLowTopHomeProvider);
   ref.invalidate(stockVariancesTodayProvider);
