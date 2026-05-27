@@ -57,6 +57,9 @@ from app.schemas.stock import (
     PhysicalStockCountOut,
     StockTotalsOut,
     StockAlertsSummaryOut,
+    LowStockOpsSummaryOut,
+    LowStockOpsItemOut,
+    LowStockOpsOut,
     StaffPurchaseLogIn,
     StaffPurchaseLogOut,
     QuickPurchaseIn,
@@ -75,6 +78,14 @@ from app.services.stock_inventory import (
     catalog_stock_qty,
     compute_inventory_summary,
     stock_status,
+)
+from app.services.low_stock_priority import compute_low_stock_priority
+from app.services.low_stock_ops_enrichment import (
+    derive_lifecycle_stage,
+    item_is_disputed,
+    open_dispute_item_ids,
+    rejected_audit_item_ids,
+    reorder_status_map,
 )
 from app.services.stock_movement_service import (
     StaleStockVersionError,
@@ -1274,6 +1285,367 @@ async def stock_alerts_summary(
         missing_usage_logs=max(0, active - logged),
         eviction_count=eviction,
         total_items=active,
+    )
+
+
+LowStockOpsFilter = Literal[
+    "all",
+    "low",
+    "out",
+    "pending",
+    "delayed",
+    "disputed",
+    "verification",
+    "urgent",
+    "high_impact",
+]
+
+LowStockOpsSort = Literal["priority", "stock_asc", "name"]
+
+
+def _days_between(period_start: date | None, period_end: date | None) -> int:
+    if not period_start or not period_end:
+        return 0
+    return max(0, (period_end - period_start).days) + 1
+
+
+async def _fetch_low_stock_candidates(
+    *,
+    business_id: uuid.UUID,
+    db: AsyncSession,
+    membership: Membership,
+    q: str,
+    category: str,
+    subcategory: str,
+    status: StatusFilter,
+    period_start: str | None,
+    period_end: str | None,
+    fetch_per_page: int,
+    max_pages: int,
+) -> tuple[int, dict[uuid.UUID, StockListItemOut]]:
+    """Fetch a capped set of low-stock candidates for server-side priority sorting."""
+    ps, pe = _parse_period_dates(period_start, period_end)
+    period_days = _days_between(ps, pe)
+    # If period is not provided, we still fetch items; priority score just uses
+    # reorder_gap + mismatch + verification signals.
+    if period_days <= 0:
+        include_period = False
+    else:
+        include_period = True
+
+    merged: dict[uuid.UUID, StockListItemOut] = {}
+    total_seen = 0
+    for page in range(1, max_pages + 1):
+        out = await list_stock(
+            business_id=business_id,
+            db=db,
+            _m=membership,
+            page=page,
+            per_page=fetch_per_page,
+            q=q,
+            category=category,
+            subcategory=subcategory,
+            status=status,
+            sort="stock_asc",
+            include_period=include_period,
+            period_start=period_start,
+            period_end=period_end,
+            include_today=False,
+        )
+        total_seen = out.total
+        for it in out.items:
+            merged[it.id] = it
+        # Stop early once the page is empty.
+        if not out.items or len(merged) >= total_seen:
+            break
+    return total_seen, merged
+
+
+async def _enrich_low_stock_ops_rows(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    items: list[StockListItemOut],
+) -> list[LowStockOpsItemOut]:
+    """Attach priority, lifecycle, reorder, and dispute signals to stock rows."""
+    item_ids = [it.id for it in items]
+    reorder_map = await reorder_status_map(db, business_id, item_ids)
+    dispute_ids = await open_dispute_item_ids(db, business_id, item_ids)
+    rejected_ids = await rejected_audit_item_ids(db, business_id, item_ids)
+
+    out: list[LowStockOpsItemOut] = []
+    for it in items:
+        pr = compute_low_stock_priority(it)
+        ro_status = reorder_map.get(it.id)
+        open_dispute = it.id in dispute_ids
+        disputed = item_is_disputed(
+            it,
+            open_disputes=dispute_ids,
+            rejected_audits=rejected_ids,
+        )
+        lifecycle = derive_lifecycle_stage(
+            it,
+            reorder_entry_status=ro_status,
+            has_open_dispute=open_dispute or it.id in rejected_ids,
+        )
+        verification_state = "pending" if pr.needs_verification else "none"
+        out.append(
+            LowStockOpsItemOut(
+                **it.model_dump(),
+                priority_score=pr.score,
+                priority_band=pr.band,
+                is_delayed_supplier=pr.delayed_flag,
+                has_mismatch=disputed,
+                verification_state=verification_state,
+                lifecycle_stage=lifecycle,
+                reorder_entry_status=ro_status,
+                has_open_dispute=open_dispute,
+            )
+        )
+    return out
+
+
+@router.get("/low-stock/summary", response_model=LowStockOpsSummaryOut)
+async def low_stock_operations_summary(
+    business_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    q: str = Query(""),
+    category: str = Query(""),
+    subcategory: str = Query(""),
+    period_start: str | None = Query(None),
+    period_end: str | None = Query(None),
+):
+    """KPIs for the low-stock operations header."""
+    ps, pe = _parse_period_dates(period_start, period_end)
+    period_days = _days_between(ps, pe)
+
+    # Fetch low/critical/out candidates (capped) and compute counts.
+    fetch_per_page = 200
+    max_pages = 12
+    merged: dict[uuid.UUID, StockListItemOut] = {}
+    for status in ("low", "critical", "out"):
+        _, chunk = await _fetch_low_stock_candidates(
+            business_id=business_id,
+            db=db,
+            membership=_m,
+            q=q,
+            category=category,
+            subcategory=subcategory,
+            status=status,  # type: ignore[arg-type]
+            period_start=period_start,
+            period_end=period_end,
+            fetch_per_page=fetch_per_page,
+            max_pages=max_pages,
+        )
+        merged.update(chunk)
+
+    total_attention = 0
+    out_of_stock = 0
+    pending_purchase = 0
+    delayed_supplier = 0
+    mismatch_items = 0
+    pending_verification = 0
+    disputed_items = 0
+
+    impact_units_per_day = 0.0
+    usage_sum: Decimal = Decimal(0)
+    merged_list = list(merged.values())
+    item_ids = [it.id for it in merged_list]
+    dispute_ids = await open_dispute_item_ids(db, business_id, item_ids)
+    rejected_ids = await rejected_audit_item_ids(db, business_id, item_ids)
+
+    for it in merged_list:
+        pr = compute_low_stock_priority(it)
+        # attention = low/critical/out shortage bucket
+        is_out = pr.out_of_stock_flag
+        if pr.out_of_stock_flag or it.stock_status.lower() in ("low", "critical"):
+            total_attention += 1
+        if is_out:
+            out_of_stock += 1
+        if it.has_pending_order:
+            pending_purchase += 1
+        if pr.delayed_flag:
+            delayed_supplier += 1
+        if pr.mismatch_flag:
+            mismatch_items += 1
+        if item_is_disputed(
+            it,
+            open_disputes=dispute_ids,
+            rejected_audits=rejected_ids,
+        ):
+            disputed_items += 1
+        if pr.needs_verification:
+            pending_verification += 1
+        if it.period_usage_qty is not None:
+            usage_sum += it.period_usage_qty
+
+    if period_days > 0:
+        impact_units_per_day = float(usage_sum / Decimal(period_days))
+
+    return LowStockOpsSummaryOut(
+        total_attention=total_attention,
+        out_of_stock=out_of_stock,
+        pending_purchase=pending_purchase,
+        delayed_supplier=delayed_supplier,
+        mismatch_items=mismatch_items,
+        pending_verification=pending_verification,
+        disputed_items=disputed_items,
+        estimated_impact_units_per_day=impact_units_per_day,
+    )
+
+
+@router.get("/low-stock/operations", response_model=LowStockOpsOut)
+async def low_stock_operations(
+    business_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    q: str = Query(""),
+    filter: LowStockOpsFilter = Query("all"),
+    category: str = Query(""),
+    subcategory: str = Query(""),
+    supplier_id: uuid.UUID | None = Query(None),
+    sort: LowStockOpsSort = Query("priority"),
+    period_start: str | None = Query(None),
+    period_end: str | None = Query(None),
+):
+    """Paginated low-stock operations list (priority-sorted v1)."""
+    if supplier_id is not None:
+        # v1: supplier_id filtering is approximated via supplier_name search only.
+        # The operations list already includes `supplier_name` in stock rows.
+        q = f"{q} {str(supplier_id)}".strip()
+
+    ps, pe = _parse_period_dates(period_start, period_end)
+    period_days = _days_between(ps, pe)
+
+    fetch_per_page = min(200, per_page * 4)
+    max_pages = 20
+    merged: dict[uuid.UUID, StockListItemOut] = {}
+    for status in ("low", "critical", "out"):
+        _, chunk = await _fetch_low_stock_candidates(
+            business_id=business_id,
+            db=db,
+            membership=_m,
+            q=q,
+            category=category,
+            subcategory=subcategory,
+            status=status,  # type: ignore[arg-type]
+            period_start=period_start,
+            period_end=period_end,
+            fetch_per_page=fetch_per_page,
+            max_pages=max_pages,
+        )
+        merged.update(chunk)
+
+    items = list(merged.values())
+
+    # High-impact threshold (v1): usage quantile across fetched items.
+    usage_vals = [float(it.period_usage_qty or 0) for it in items]
+    usage_vals = [v for v in usage_vals if v > 0.0]
+    usage_vals.sort()
+    high_threshold = usage_vals[int(len(usage_vals) * 0.75)] if usage_vals else 0.0
+
+    item_ids = [it.id for it in items]
+    dispute_ids = await open_dispute_item_ids(db, business_id, item_ids)
+    rejected_ids = await rejected_audit_item_ids(db, business_id, item_ids)
+
+    passing: list[StockListItemOut] = []
+    for it in items:
+        pr = compute_low_stock_priority(it)
+        delayed_supplier = pr.delayed_flag
+        disputed = item_is_disputed(
+            it,
+            open_disputes=dispute_ids,
+            rejected_audits=rejected_ids,
+        )
+
+        ok = True
+        if filter != "all":
+            if filter == "low":
+                ok = it.stock_status.lower() in ("low", "critical") and not pr.out_of_stock_flag
+            elif filter == "out":
+                ok = pr.out_of_stock_flag
+            elif filter == "pending":
+                ok = it.has_pending_order
+            elif filter == "delayed":
+                ok = delayed_supplier
+            elif filter == "disputed":
+                ok = disputed
+            elif filter == "verification":
+                ok = pr.needs_verification
+            elif filter == "urgent":
+                ok = pr.band in ("critical", "high")
+            elif filter == "high_impact":
+                usage = float(it.period_usage_qty or 0)
+                ok = usage >= high_threshold and high_threshold > 0
+        if not ok:
+            continue
+
+        if q.strip():
+            hay = " ".join(
+                str(x).lower()
+                for x in (
+                    it.name,
+                    it.item_code,
+                    it.barcode,
+                    it.supplier_name,
+                    it.category_name,
+                    it.subcategory_name,
+                    it.last_stock_updated_by,
+                    it.last_purchase_human_id,
+                )
+                if x is not None
+            )
+            if q.strip().lower() not in hay:
+                continue
+
+        passing.append(it)
+
+    filtered = await _enrich_low_stock_ops_rows(db, business_id, passing)
+
+    # Sort & paginate
+    if sort == "stock_asc":
+        filtered.sort(key=lambda x: float(x.current_stock))
+    elif sort == "name":
+        filtered.sort(key=lambda x: (x.name or "").lower())
+    else:
+        filtered.sort(key=lambda x: x.priority_score, reverse=True)
+
+    total = len(filtered)
+    start = (page - 1) * per_page
+    page_items = filtered[start : start + per_page]
+
+    # Summary slice for current query (counts include filter selections).
+    # Header UI uses global summary; for now keep slice-aligned.
+    pending_verification_cnt = sum(1 for it in filtered if it.needs_verification)
+    out_cnt = sum(1 for it in filtered if it.stock_status.lower() == "out" or float(it.current_stock) <= 0)
+    pending_cnt = sum(1 for it in filtered if it.has_pending_order)
+    delayed_cnt = sum(1 for it in filtered if it.is_delayed_supplier)
+    mismatch_cnt = sum(1 for it in filtered if it.has_mismatch)
+    disputed_cnt = sum(1 for it in filtered if it.has_mismatch)
+    total_attention = total
+    usage_sum: Decimal = Decimal(0)
+    for it in filtered:
+        if it.period_usage_qty is not None:
+            usage_sum += it.period_usage_qty
+    impact = float(usage_sum / Decimal(period_days)) if period_days > 0 else 0.0
+
+    return LowStockOpsOut(
+        summary_slice=LowStockOpsSummaryOut(
+            total_attention=total_attention,
+            out_of_stock=out_cnt,
+            pending_purchase=pending_cnt,
+            delayed_supplier=delayed_cnt,
+            mismatch_items=mismatch_cnt,
+            pending_verification=pending_verification_cnt,
+            disputed_items=disputed_cnt,
+            estimated_impact_units_per_day=impact,
+        ),
+        items=page_items,
+        total=total,
+        page=page,
+        per_page=per_page,
     )
 
 

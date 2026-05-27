@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/json_coerce.dart';
+
 class ItemStockSnapshot {
   const ItemStockSnapshot({
     required this.unitLabel,
@@ -28,6 +30,61 @@ class ItemStockSnapshot {
   final DateTime? lastUpdatedAt;
   final String? lastUpdatedBy;
   final bool needsVerification;
+
+  /// Creates a snapshot from a `StockListItemOut`-shaped row map.
+  ///
+  /// This is used by low-stock operations lists, where the backend already
+  /// enriches rows with physical/system quantities, reorder level, and
+  /// pending-incoming metadata.
+  factory ItemStockSnapshot.fromStockListRow(
+    Map<String, dynamic> row,
+  ) {
+    final unitRaw =
+        (row['stock_unit'] ?? row['unit'] ?? '').toString().trim();
+    final unitLabel = unitRaw.isNotEmpty ? unitRaw.toUpperCase() : 'PIECE';
+
+    final openingQty = coerceToDouble(row['opening_stock_qty']);
+    final purchasedQty = coerceToDouble(row['period_purchased_qty']);
+
+    final systemQty = coerceToDouble(row['current_stock']);
+    final physicalQtyRaw = row['physical_stock_qty'];
+    final physicalQty = physicalQtyRaw == null ? systemQty : coerceToDouble(physicalQtyRaw);
+
+    final reorderLevel = coerceToDouble(row['reorder_level']);
+    final hasPendingIncoming = row['has_pending_order'] == true;
+    final pendingIncomingDays =
+        row['pending_order_days'] is num ? (row['pending_order_days'] as num).toInt() : null;
+
+    final diffQty = (row['physical_stock_difference_qty'] as num?)
+            ?.toDouble() ??
+        (row['warehouse_diff_qty'] as num?)?.toDouble() ??
+        (physicalQty - systemQty);
+
+    final lastUpdatedAtRaw = row['last_stock_updated_at']?.toString();
+    final lastUpdatedAt = lastUpdatedAtRaw != null
+        ? DateTime.tryParse(lastUpdatedAtRaw)?.toLocal()
+        : null;
+    final lastUpdatedBy = row['last_stock_updated_by']?.toString();
+
+    final needsVerification = row['needs_verification'] == true;
+
+    return ItemStockSnapshot(
+      unitLabel: unitLabel,
+      openingQty: openingQty,
+      purchasedQty: purchasedQty,
+      physicalQty: physicalQty,
+      systemQty: systemQty,
+      diffQty: diffQty,
+      reorderLevel: reorderLevel,
+      hasPendingIncoming: hasPendingIncoming,
+      pendingIncomingDays: pendingIncomingDays,
+      lastUpdatedAt: lastUpdatedAt,
+      lastUpdatedBy: (lastUpdatedBy != null && lastUpdatedBy.trim().isNotEmpty)
+          ? lastUpdatedBy.trim()
+          : null,
+      needsVerification: needsVerification,
+    );
+  }
 
   ItemStockStatus get status {
     if (systemQty < -0.0001) return ItemStockStatus.negative;

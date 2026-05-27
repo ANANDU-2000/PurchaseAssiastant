@@ -1,6 +1,16 @@
 # Purchase Assistant — Living task board
 
-**Last updated:** 2026-05-26 (Responsive UI/UX audit + fixes)
+**Last updated:** 2026-05-27 (Low stock operations rebuild)
+
+---
+
+## LOW-STOCK-REBUILD (2026-05-27)
+
+- [x] Backend: `GET low-stock/summary`, `GET low-stock/operations`, priority + lifecycle enrichment, `stock_dispute_cases` (039)
+- [x] Flutter: `LowStockOperationsPage`, desktop 3-panel shell, bulk CSV export, lifecycle strip, context panel
+- [x] Notifications: mismatch/delayed deep links; owner stock-audit approval sheet
+- [x] Docs: `docs/harisree/LOW_STOCK_OPERATIONS_REBUILD.md`
+- [x] Tests: `test_low_stock_operations.py`, `low_stock_snapshot_row_test.dart`
 
 ---
 

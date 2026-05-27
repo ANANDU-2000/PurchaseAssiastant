@@ -165,6 +165,41 @@ class StockAlertsSummaryOut(BaseModel):
     total_items: int = 0
 
 
+class LowStockOpsSummaryOut(BaseModel):
+    """Header KPI slice for the low-stock operations surface."""
+
+    total_attention: int = 0
+    out_of_stock: int = 0
+    pending_purchase: int = 0
+    delayed_supplier: int = 0
+    mismatch_items: int = 0
+    pending_verification: int = 0
+    disputed_items: int = 0
+
+    # P0/P1: units-based estimate (no valuation in this v1 endpoint).
+    estimated_impact_units_per_day: float = 0.0
+
+
+class LowStockOpsItemOut(StockListItemOut):
+    priority_score: float = 0.0
+    priority_band: str = "normal"
+
+    is_delayed_supplier: bool = False
+    has_mismatch: bool = False
+    verification_state: str = "none"  # none | pending | verified
+    lifecycle_stage: str = "attention"
+    reorder_entry_status: str | None = None
+    has_open_dispute: bool = False
+
+
+class LowStockOpsOut(BaseModel):
+    summary_slice: LowStockOpsSummaryOut
+    items: list[LowStockOpsItemOut]
+    total: int = 0
+    page: int = 1
+    per_page: int = 50
+
+
 class InventorySummaryOut(BaseModel):
     """On-hand warehouse valuation (landing-cost rates only)."""
 

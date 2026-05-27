@@ -68,7 +68,7 @@ import '../../features/barcode/presentation/stock_audit_summary_page.dart';
 import '../../features/stock/presentation/stock_page.dart';
 import '../../features/stock/presentation/opening_stock_setup_page.dart';
 import '../../features/stock/presentation/staff_purchase_logs_page.dart';
-import '../../features/stock/presentation/low_stock_owner_page.dart';
+import '../../features/stock/presentation/low_stock_operations_page.dart';
 import '../../features/stock/presentation/stock_changes_page.dart';
 import '../../features/stock/presentation/reorder_list_page.dart';
 import '../../features/stock/presentation/stock_history_page.dart';
@@ -79,7 +79,6 @@ import '../../features/staff/presentation/staff_shell_screen.dart';
 import '../../features/staff/presentation/staff_activity_page.dart';
 import '../../features/staff/presentation/staff_purchase_history_page.dart';
 import '../../features/staff/presentation/staff_quick_purchase_page.dart';
-import '../../features/staff/presentation/staff_low_stock_page.dart';
 import '../../features/staff/presentation/staff_purchase_order_detail_page.dart';
 import '../../features/staff/presentation/staff_pending_deliveries_page.dart';
 import '../../features/staff/presentation/staff_receive_shipment_page.dart';
@@ -486,7 +485,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/stock/low-stock',
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
-          child: const LowStockOwnerPage(),
+          child: const LowStockOperationsPage(staffMode: false),
         ),
       ),
       GoRoute(
@@ -717,7 +716,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/staff/low-stock',
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
-          child: const StaffLowStockPage(),
+          child: const LowStockOperationsPage(staffMode: true),
         ),
       ),
       GoRoute(

@@ -2339,6 +2339,60 @@ class HexaApi {
         };
   }
 
+  /// Low-stock operations summary for the enterprise operations header.
+  Future<Map<String, dynamic>> getLowStockSummary({
+    required String businessId,
+    String q = '',
+    String category = '',
+    String subcategory = '',
+    String? periodStart,
+    String? periodEnd,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/stock/low-stock/summary',
+      queryParameters: {
+        if (q.isNotEmpty) 'q': q,
+        if (category.isNotEmpty) 'category': category,
+        if (subcategory.isNotEmpty) 'subcategory': subcategory,
+        if (periodStart != null && periodStart.isNotEmpty)
+          'period_start': periodStart,
+        if (periodEnd != null && periodEnd.isNotEmpty) 'period_end': periodEnd,
+      },
+    );
+    return res.data ?? {};
+  }
+
+  /// Low-stock operations list with priority scoring and server-side paging.
+  Future<Map<String, dynamic>> listLowStockOperations({
+    required String businessId,
+    required int page,
+    required int perPage,
+    String q = '',
+    String filter = 'all',
+    String category = '',
+    String subcategory = '',
+    String sort = 'priority',
+    String? periodStart,
+    String? periodEnd,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/stock/low-stock/operations',
+      queryParameters: {
+        'page': page,
+        'per_page': perPage,
+        if (q.isNotEmpty) 'q': q,
+        'filter': filter,
+        if (category.isNotEmpty) 'category': category,
+        if (subcategory.isNotEmpty) 'subcategory': subcategory,
+        'sort': sort,
+        if (periodStart != null && periodStart.isNotEmpty)
+          'period_start': periodStart,
+        if (periodEnd != null && periodEnd.isNotEmpty) 'period_end': periodEnd,
+      },
+    );
+    return res.data ?? {};
+  }
+
   /// Max rows for [listStockAuditRecent] (must match backend `le` on `/audit/recent`).
   static const int stockAuditRecentMaxLimit = 250;
 
@@ -2816,6 +2870,36 @@ class HexaApi {
   }) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/stock-audits/kpis',
+    );
+    return res.data ?? {};
+  }
+
+  /// Owner/manager view: pending stock-audit lines for one item.
+  Future<List<Map<String, dynamic>>> listPendingStockAuditLinesForItem({
+    required String businessId,
+    required String itemId,
+  }) async {
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/stock-audits/pending-lines',
+      queryParameters: {'item_id': itemId},
+    );
+
+    final data = res.data;
+    if (data is! List) return [];
+    return [
+      for (final e in data)
+        if (e is Map<String, dynamic>) e
+        else if (e is Map) Map<String, dynamic>.from(e)
+    ];
+  }
+
+  Future<Map<String, dynamic>> approveStockAuditLine({
+    required String businessId,
+    required String auditId,
+    required String lineId,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/stock-audits/$auditId/lines/$lineId/approve',
     );
     return res.data ?? {};
   }

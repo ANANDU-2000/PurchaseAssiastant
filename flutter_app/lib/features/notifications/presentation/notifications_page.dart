@@ -7,10 +7,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/notifications_provider.dart'
     show
         NotificationCategoryFilter,
-        NotificationCategoryFilterX,
         NotificationItem,
-        NotificationType,
-        dismissedPurchaseAlertIdsProvider,
         mergedNotificationFeedProvider,
         notificationMatchesCategoryFilter,
         notificationsProvider;

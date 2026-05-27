@@ -24,6 +24,7 @@ from app.models.webhook_event_log import WebhookEventLog
 from app.models.api_usage_log import ApiUsageLog
 from app.models.admin_audit_log import AdminAuditLog
 from app.models.stock_audit import StockAudit, StockAuditItem
+from app.models.stock_dispute_case import StockDisputeCase
 from app.models.stock_adjustment import StockAdjustmentLog
 from app.models.stock_movement import StockMovement
 from app.models.stock_physical_count import StockPhysicalCount

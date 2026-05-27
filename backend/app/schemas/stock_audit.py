@@ -43,6 +43,26 @@ class StockAuditItemOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class StockAuditPendingLineOut(BaseModel):
+    """Owner approval view: pending audit lines for one item."""
+
+    id: uuid.UUID
+    audit_id: uuid.UUID
+    audit_date: date
+    item_id: uuid.UUID
+
+    system_qty: Decimal | None = Field(default=None, max_digits=10, decimal_places=2)
+    counted_qty: Decimal = Field(..., max_digits=10, decimal_places=2)
+    difference_qty: Decimal = Field(..., max_digits=10, decimal_places=2)
+
+    line_status: str
+    adjustment_type: str | None = None
+    reason: str | None = None
+    notes: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class StockAuditBase(BaseModel):
     notes: str | None = None
 

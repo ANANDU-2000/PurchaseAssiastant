@@ -21,6 +21,7 @@ from app.schemas.stock_audit import (
     StockAuditKpisOut,
     StockAuditLineUpsert,
     StockAuditOut,
+    StockAuditPendingLineOut,
     StockAuditUpdate,
 )
 from app.services.stock_audit_service import (
@@ -164,6 +165,51 @@ async def stock_audit_kpis(
         pending_approval_count=int(pending or 0),
         open_draft_sessions=int(drafts or 0),
     )
+
+
+@router.get("/pending-lines", response_model=list[StockAuditPendingLineOut])
+async def list_pending_audit_lines_for_item(
+    business_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    item_id: uuid.UUID,
+):
+    """Fetch pending audit lines for one item (owner/manager approval view)."""
+    if _m.role not in ("owner", "manager", "admin"):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Approval requires manager or owner",
+        )
+
+    r = await db.execute(
+        select(StockAuditItem, StockAudit.audit_date)
+        .join(StockAudit, StockAudit.id == StockAuditItem.audit_id)
+        .where(
+            StockAudit.business_id == business_id,
+            StockAuditItem.item_id == item_id,
+            StockAuditItem.line_status == "pending_approval",
+        )
+        .order_by(StockAudit.created_at.desc(), StockAuditItem.id.desc())
+    )
+    rows = r.all()
+    out: list[StockAuditPendingLineOut] = []
+    for line, audit_date in rows:
+        out.append(
+            StockAuditPendingLineOut(
+                id=line.id,
+                audit_id=line.audit_id,
+                audit_date=audit_date,
+                item_id=line.item_id,
+                system_qty=line.system_qty,
+                counted_qty=line.counted_qty,
+                difference_qty=line.difference_qty,
+                line_status=line.line_status,
+                adjustment_type=line.adjustment_type,
+                reason=line.reason,
+                notes=line.notes,
+            )
+        )
+    return out
 
 
 @router.get("/{audit_id}", response_model=StockAuditOut)

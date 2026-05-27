@@ -73,6 +73,7 @@ bool notificationMatchesCategoryFilter(
 NotificationCategoryFilter notificationCategoryForItem(NotificationItem n) {
   final kind = n.serverKind ?? '';
   if (kind == 'stock_variance' ||
+      kind == 'stock_mismatch' ||
       kind == 'export_failed' ||
       kind == 'sync_failed' ||
       kind == 'approval_required' ||
@@ -92,6 +93,7 @@ NotificationCategoryFilter notificationCategoryForItem(NotificationItem n) {
   if (n.type == NotificationType.priceAlert ||
       n.type == NotificationType.profitLow ||
       kind == 'low_stock' ||
+      kind == 'supplier_delayed' ||
       kind == 'missing_barcode' ||
       kind == 'missing_code' ||
       kind == 'opening_stock_pending' ||

@@ -40,6 +40,12 @@ class NotificationAlertCard extends StatelessWidget {
     if (kind == 'low_stock' || kind == 'stock_variance') {
       return Icons.inventory_2_outlined;
     }
+    if (kind == 'stock_mismatch') {
+      return Icons.warning_amber_rounded;
+    }
+    if (kind == 'supplier_delayed') {
+      return Icons.hourglass_bottom_rounded;
+    }
     if (kind == 'delivery_pending' || kind == 'delivery_received') {
       return Icons.local_shipping_outlined;
     }
