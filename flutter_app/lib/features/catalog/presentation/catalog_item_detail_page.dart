@@ -45,6 +45,7 @@ import '../../../shared/widgets/search_picker_sheet.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../stock/presentation/update_stock_sheet.dart';
 import '../../stock/presentation/widgets/stock_today_feed.dart';
+import 'widgets/item_delivery_status_card.dart';
 import 'widgets/item_physical_verification_card.dart';
 import 'widgets/item_stock_snapshot_card.dart';
 
@@ -1209,6 +1210,8 @@ class _CatalogItemStockSection extends ConsumerWidget {
       children: [
         ItemStockSnapshotCard(itemId: itemId),
         const SizedBox(height: 8),
+        ItemDeliveryStatusCard(itemId: itemId),
+        const SizedBox(height: 8),
         ItemPhysicalVerificationCard(itemId: itemId),
         const SizedBox(height: 8),
         UnitEngineSummaryCard(
@@ -2319,42 +2322,6 @@ class _ItemWarehouseHeroHeader extends StatelessWidget {
       'low' => const Color(0xFFE65100),
       _ => const Color(0xFF2E7D32),
     };
-    final unit =
-        (stock?['stock_unit'] ?? stock?['unit'] ?? item['default_unit'] ?? '')
-            .toString()
-            .trim();
-    final curN = coerceToDouble(stock?['current_stock']);
-    final kgBag = coerceToDoubleNullable(
-      stock?['default_kg_per_bag'] ?? item['default_kg_per_bag'],
-    );
-    final kgTin = coerceToDoubleNullable(item['default_weight_per_tin']);
-    final stockKg = coerceToDoubleNullable(stock?['current_stock_kg']);
-    final unitForDisplay = unit.isEmpty ? 'bag' : unit;
-    final onHandDual = dualStockDisplay(
-      qty: curN,
-      unit: unitForDisplay,
-      kgPerBag: kgBag,
-      currentStockKg: stockKg,
-    );
-    final onHandPrimary = onHandDual.primary;
-    final onHandSecondary = onHandDual.secondary ??
-        stockDisplaySecondary(curN, unitForDisplay, kgBag, kgTin);
-
-    final openingQty = coerceToDoubleNullable(item['opening_stock_qty']);
-    final openingLocked = item['opening_stock_locked'] == true;
-    final diffQty =
-        openingQty == null ? null : (curN - openingQty);
-
-    final lastUpdatedAtIso = item['last_stock_updated_at']?.toString();
-    final lastUpdatedBy =
-        item['last_stock_updated_by']?.toString().trim().isNotEmpty == true
-            ? item['last_stock_updated_by']?.toString().trim()
-            : null;
-    final lastUpdatedAt = DateTime.tryParse(lastUpdatedAtIso ?? '');
-    final lastUpdatedDisplay = lastUpdatedAt == null
-        ? '—'
-        : DateFormat('d MMM yyyy · HH:mm').format(lastUpdatedAt.toLocal());
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -2407,135 +2374,6 @@ class _ItemWarehouseHeroHeader extends StatelessWidget {
             ),
           ],
         ),
-        if (stock != null && stock!.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  statusColor.withValues(alpha: 0.14),
-                  statusColor.withValues(alpha: 0.04),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: statusColor.withValues(alpha: 0.35)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'STOCK ON HAND',
-                  style: HexaDsType.label(11, color: HexaDsColors.textMuted),
-                ),
-                const SizedBox(height: 6),
-                StockNumberDisplay(
-                  qty: curN,
-                  unit: unitForDisplay,
-                  status: stockDisplayStatusFromApi(st),
-                  hasPendingOrder: stock!['has_pending_order'] == true,
-                  pendingDays: (stock!['pending_order_days'] as num?)?.toInt(),
-                  fontSize: 28,
-                ),
-                if (onHandSecondary != null && onHandSecondary.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    onHandSecondary,
-                    style: HexaDsType.body(12, color: HexaDsColors.textMuted),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _ItemStatBox(
-                  label: 'On hand',
-                  value: onHandPrimary,
-                  sub: onHandSecondary ??
-                      (unit.isNotEmpty ? unit.toUpperCase() : null),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _ItemStatBox(
-                  label: 'Reorder',
-                  value: _fmtQty(stock!['reorder_level']),
-                  sub: unit.isNotEmpty ? unit : null,
-                  onTap: onReorderTap,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _ItemStatBox(
-                  label: 'Rack',
-                  value:
-                      (stock!['rack_location']?.toString().trim().isNotEmpty ==
-                              true)
-                          ? stock!['rack_location'].toString()
-                          : '—',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _ItemStatBox(
-                  label: 'Opening',
-                  value: openingQty == null
-                      ? '—'
-                      : stockDisplayPrimary(openingQty, unitForDisplay),
-                  sub: openingLocked ? 'Locked' : 'Pending',
-                  onTap: () {
-                    final code =
-                        item['item_code']?.toString().trim() ?? '';
-                    if (code.isEmpty) return;
-                    context.push(
-                      '/stock/opening-setup?q=${Uri.encodeComponent(code)}',
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _ItemStatBox(
-                  label: 'Current',
-                  value: onHandPrimary,
-                  sub: onHandSecondary ?? (unit.isNotEmpty ? unit.toUpperCase() : null),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _ItemStatBox(
-                  label: 'Diff',
-                  value: diffQty == null
-                      ? '—'
-                      : stockDisplayPrimary(diffQty, unitForDisplay),
-                  sub: openingQty == null ? null : 'Current − Opening',
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _ItemStatBox(
-                  label: 'Last update',
-                  value: lastUpdatedDisplay,
-                  sub: lastUpdatedBy,
-                ),
-              ),
-            ],
-          ),
-        ],
       ],
     );
   }

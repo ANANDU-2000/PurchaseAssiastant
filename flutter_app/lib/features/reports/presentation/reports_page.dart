@@ -118,7 +118,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
   int _visibleCap = 40;
   bool _exportingCsv = false;
   bool _exportingPdf = false;
-  bool _reportsSummaryCollapsed = false;
+  bool _reportsSummaryCollapsed = true;
 
   @override
   void initState() {
@@ -1092,29 +1092,36 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
 
     switch (_biTab) {
       case ReportsBiTab.overview:
-        return ListView(
+        return Padding(
           padding: const EdgeInsets.only(bottom: 16),
-          children: [
-            ReportsInsightsStrip(agg: aggAll),
-            ReportsOverviewChartSection(
-              agg: aggAll,
-              viewportHeight: MediaQuery.sizeOf(context).height,
-              isLoadingInitial: showSkeleton,
-              loadFailed: hasFetchError && merged.isEmpty,
-              loadError: purchasesAsync.error,
-              isEmpty: showEmpty,
-              canRetry: true,
-              hideTopStatRow: true,
-              onRetry: _bumpInvalidate,
-              onMatchHome: _syncRangeWithHome,
-              onPickRange: () => unawaited(_pickCustomRange()),
-            ),
-            if (session != null && sessionCanSeeFinancials(session))
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: OperationalReportsSection(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ReportsInsightsStrip(agg: aggAll),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 280,
+                child: ReportsOverviewChartSection(
+                  agg: aggAll,
+                  viewportHeight: 280,
+                  isLoadingInitial: showSkeleton,
+                  loadFailed: hasFetchError && merged.isEmpty,
+                  loadError: purchasesAsync.error,
+                  isEmpty: showEmpty,
+                  canRetry: true,
+                  hideTopStatRow: true,
+                  onRetry: _bumpInvalidate,
+                  onMatchHome: _syncRangeWithHome,
+                  onPickRange: () => unawaited(_pickCustomRange()),
+                ),
               ),
-          ],
+              if (session != null && sessionCanSeeFinancials(session))
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: OperationalReportsSection(),
+                ),
+            ],
+          ),
         );
       case ReportsBiTab.categories:
         return ReportsBreakdownTab(
@@ -1518,6 +1525,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                           ),
                           const SizedBox(height: 8),
                           _compactReportsTabs(),
+                          const SizedBox(height: 12),
                           if (_biTab == ReportsBiTab.items) ...[
                             const SizedBox(height: 6),
                             Align(
@@ -1582,8 +1590,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                         ]),
                       ),
                     ),
-                    SliverFillRemaining(
-                      hasScrollBody: true,
+                    SliverToBoxAdapter(
                       child: _buildTabContent(
                         aggList: aggList,
                         aggAll: aggAll,

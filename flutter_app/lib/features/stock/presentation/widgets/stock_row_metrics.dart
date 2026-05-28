@@ -28,9 +28,36 @@ abstract final class StockRowMetrics {
     if (phys != null && phys.isFinite) {
       return phys - stockQty(item);
     }
-    final purchased = purchasedQty(item);
-    if (purchased == null) return double.nan;
-    return stockQty(item) - purchased;
+    return double.nan;
+  }
+
+  static String openingLabel(Map<String, dynamic> item) {
+    final opening = coerceToDoubleNullable(item['opening_stock_qty']);
+    if (opening == null) return '';
+    final u = unit(item);
+    return 'Open ${formatStockQtyNumber(opening)}${u.isNotEmpty ? ' $u' : ''}';
+  }
+
+  static String deliveryMetaLine(Map<String, dynamic> item) {
+    final parts = <String>[];
+    final pendingDel = pendingDeliveryQty(item) ?? 0;
+    final hasPending = item['has_pending_order'] == true;
+    final delivered = item['last_purchase_delivered'] == true;
+    final po = item['last_purchase_human_id']?.toString().trim();
+    final days = (item['pending_order_days'] as num?)?.toInt();
+
+    if (hasPending || pendingDel > 0.001) {
+      var line = 'Pending truck';
+      if (pendingDel > 0.001) {
+        line += ' ${formatStockQtyNumber(pendingDel)}';
+      }
+      if (days != null && days > 0) line += ' · ${days}d';
+      if (po != null && po.isNotEmpty) line += ' · $po';
+      parts.add(line);
+    } else if (delivered) {
+      parts.add('Delivered${po != null && po.isNotEmpty ? ' · $po' : ''}');
+    }
+    return parts.join(' · ');
   }
 
   static String unit(Map<String, dynamic> item) =>

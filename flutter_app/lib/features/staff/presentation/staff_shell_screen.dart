@@ -207,7 +207,8 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
                 ),
               ],
             ),
-            if (idx != StaffShellBranch.scan &&
+            if (idx != StaffShellBranch.home &&
+                idx != StaffShellBranch.scan &&
                 idx != StaffShellBranch.stock &&
                 routePath != '/notifications' &&
                 !routePath.startsWith('/catalog/item/'))

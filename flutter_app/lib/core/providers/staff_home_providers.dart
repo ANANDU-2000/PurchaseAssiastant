@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/session_notifier.dart';
@@ -91,6 +92,18 @@ final staffDisplayNameProvider = FutureProvider.autoDispose<String>((ref) async 
   return 'Staff';
 });
 
+bool _isAuthFailure(Object e) {
+  if (e is DioException) {
+    final sc = e.response?.statusCode;
+    return sc == 401 || sc == 403;
+  }
+  return false;
+}
+
+void _rethrowAuthFailure(Object e) {
+  if (_isAuthFailure(e)) throw e;
+}
+
 Future<Session?> _waitForSession(Ref ref, {int attempts = 40}) async {
   var session = ref.watch(sessionProvider);
   if (session != null) return session;
@@ -107,12 +120,17 @@ final staffTodayActivityProvider =
   _providerKeepAlive(ref, const Duration(minutes: 2));
   final session = await _waitForSession(ref);
   if (session == null) return [];
-  return ref.read(hexaApiProvider).listActivityLog(
-        businessId: session.primaryBusiness.id,
-        period: 'today',
-        page: 1,
-        perPage: 80,
-      );
+  try {
+    return await ref.read(hexaApiProvider).listActivityLog(
+          businessId: session.primaryBusiness.id,
+          period: 'today',
+          page: 1,
+          perPage: 80,
+        );
+  } catch (e) {
+    _rethrowAuthFailure(e);
+    rethrow;
+  }
 });
 
 /// Today's stock adjustments from audit feed (authoritative for stock work counts).
@@ -133,18 +151,49 @@ final staffLowStockAlertsProvider =
   _providerKeepAlive(ref, const Duration(minutes: 2));
   final session = await _waitForSession(ref);
   if (session == null) return [];
-  final m = await ref.read(hexaApiProvider).listStock(
-        businessId: session.primaryBusiness.id,
-        page: 1,
-        perPage: 8,
-        status: 'low',
+  try {
+    final m = await ref.read(hexaApiProvider).listStock(
+          businessId: session.primaryBusiness.id,
+          page: 1,
+          perPage: 8,
+          status: 'low',
+        );
+    final items = m['items'];
+    if (items is! List) return [];
+    return [
+      for (final e in items)
+        if (e is Map) Map<String, dynamic>.from(e),
+    ];
+  } catch (e) {
+    _rethrowAuthFailure(e);
+    rethrow;
+  }
+});
+
+/// Low + out count for staff home attention (fallback when low list is empty).
+final staffLowStockAttentionCountProvider = Provider.autoDispose<int>((ref) {
+  final alerts = ref.watch(staffLowStockAlertsProvider);
+  final counts = ref.watch(stockStatusCountsProvider);
+  return alerts.when(
+    data: (rows) {
+      if (rows.isNotEmpty) return rows.length;
+      return counts.when(
+        data: (c) => (c['low'] ?? 0) + (c['out'] ?? 0),
+        loading: () => 0,
+        error: (_, __) => 0,
       );
-  final items = m['items'];
-  if (items is! List) return [];
-  return [
-    for (final e in items)
-      if (e is Map) Map<String, dynamic>.from(e),
-  ];
+    },
+    loading: () => counts.when(
+      data: (c) => (c['low'] ?? 0) + (c['out'] ?? 0),
+      loading: () => 0,
+      error: (_, __) => 0,
+    ),
+    error: (_, __) => counts.when(
+      data: (c) => (c['low'] ?? 0) + (c['out'] ?? 0),
+      loading: () => 0,
+      error: (_, __) => 0,
+    ),
+  );
 });
 
 /// Undelivered trade purchases visible to staff (for home alert pill).

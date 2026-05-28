@@ -114,9 +114,12 @@ final hexaApiProvider = Provider<HexaApi>((ref) {
                   try {
                     ref.read(apiDegradedProvider.notifier).notifyDegraded(
                           invalidRefresh
-                              ? 'Session expired — open Settings and sign in again.'
+                              ? 'Session expired — sign in again.'
                               : 'Connection issue while refreshing session. Retrying on next request.',
                         );
+                    if (invalidRefresh) {
+                      authRefresh.value++;
+                    }
                   } catch (_) {}
                 });
               }

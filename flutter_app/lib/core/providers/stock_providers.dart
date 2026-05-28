@@ -492,7 +492,17 @@ final lowStockByCategoryProvider =
   final byId = <String, Map<String, dynamic>>{};
   for (final item in lowRows) {
     final status = (item['stock_status']?.toString() ?? '').toLowerCase();
-    if (status != 'low' && status != 'out') continue;
+    final pendingDel =
+        (item['pending_delivery_qty'] as num?)?.toDouble() ?? 0.0;
+    final pendingDelivery = item['has_pending_order'] == true &&
+        item['last_purchase_delivered'] == false;
+    if (status != 'low' &&
+        status != 'out' &&
+        status != 'critical' &&
+        pendingDel <= 0.001 &&
+        !pendingDelivery) {
+      continue;
+    }
     final id = item['id']?.toString();
     if (id != null && id.isNotEmpty) {
       byId[id] = item;

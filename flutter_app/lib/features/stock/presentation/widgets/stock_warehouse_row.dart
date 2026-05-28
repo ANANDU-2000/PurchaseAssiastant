@@ -33,21 +33,25 @@ class StockWarehouseRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = item['name']?.toString() ?? '—';
     final codeRaw = item['item_code']?.toString().trim() ?? '';
-    final sub = item['subcategory_name']?.toString().trim() ?? '';
+    final cat = item['category_name']?.toString().trim() ?? '';
     final unit = StockRowMetrics.unit(item);
-    final purchased = StockRowMetrics.purchasedQty(item);
     final stock = StockRowMetrics.stockQty(item);
     final physical = StockRowMetrics.physicalQty(item);
     final diff = StockRowMetrics.diffQty(item);
-    final pending = StockRowMetrics.pendingDeliveryQty(item);
     final status = (item['stock_status']?.toString() ?? 'healthy').toLowerCase();
     final updatedAt = item['last_stock_updated_at']?.toString();
     final updatedBy = item['last_stock_updated_by']?.toString();
     final relative = formatStockRelativeTime(updatedAt);
     final isLowOrCritical = status == 'low' || status == 'critical' || status == 'out';
 
+    final opening = StockRowMetrics.openingLabel(item);
+    final delivery = StockRowMetrics.deliveryMetaLine(item);
+
     final metaParts = <String>[
       if (codeRaw.isNotEmpty) '#$codeRaw',
+      if (cat.isNotEmpty) cat,
+      if (opening.isNotEmpty) opening,
+      if (delivery.isNotEmpty) delivery,
       if (relative.isNotEmpty) relative,
       if (!isStaffMode && updatedBy != null && updatedBy.isNotEmpty) updatedBy,
     ];
@@ -93,31 +97,26 @@ class StockWarehouseRow extends StatelessWidget {
                         children: [
                           Text(
                             name,
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              fontSize: 14,
+                              fontSize: 13,
                               fontWeight: FontWeight.w800,
                               color: Color(0xFF1A1A1A),
+                              height: 1.2,
                             ),
                           ),
-                          if (sub.isNotEmpty &&
-                              sub.toLowerCase() != name.trim().toLowerCase())
-                            Text(
-                              sub,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: HexaDsType.label(11).copyWith(
-                                color: const Color(0xFF64748B),
-                              ),
-                            ),
                           if (metaParts.isNotEmpty)
-                            Text(
-                              metaParts.join(' • '),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: HexaDsType.label(11).copyWith(
-                                color: const Color(0xFF94A3B8),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 3),
+                              child: Text(
+                                metaParts.join(' · '),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: HexaDsType.label(10).copyWith(
+                                  color: const Color(0xFF64748B),
+                                  height: 1.2,
+                                ),
                               ),
                             ),
                         ],
@@ -130,11 +129,6 @@ class StockWarehouseRow extends StatelessWidget {
                     StockRowMetrics.inlineStatusColor(item),
                   ),
                   _boxedMetric(
-                    purchased == null ? '—' : formatStockQtyNumber(purchased),
-                    unit,
-                    const Color(0xFF1A1A1A),
-                  ),
-                  _boxedMetric(
                     physical == null ? '—' : formatStockQtyNumber(physical),
                     unit,
                     const Color(0xFF0F766E),
@@ -143,11 +137,6 @@ class StockWarehouseRow extends StatelessWidget {
                     _diffPrimary(diff),
                     _diffSecondary(diff),
                     StockRowMetrics.diffColor(diff),
-                  ),
-                  _boxedMetric(
-                    _pendingPrimary(pending, item),
-                    _pendingSecondary(item),
-                    _pendingColor(pending, item),
                   ),
                 ],
               ),
@@ -169,28 +158,6 @@ class StockWarehouseRow extends StatelessWidget {
     if (!diff.isFinite) return '';
     if (diff.abs() < 0.001) return 'OK';
     return diff > 0 ? 'Excess' : 'Deficit';
-  }
-
-  String _pendingPrimary(double? pending, Map<String, dynamic> item) {
-    if (pending != null && pending > 0) {
-      return formatStockQtyNumber(pending);
-    }
-    if (item['has_pending_order'] == true) return '•';
-    return '—';
-  }
-
-  String _pendingSecondary(Map<String, dynamic> item) {
-    if (item['has_pending_order'] != true) return '';
-    final days = item['pending_order_days'];
-    if (days is num && days > 0) return '${days.toInt()}d';
-    return 'Wait';
-  }
-
-  Color _pendingColor(double? pending, Map<String, dynamic> item) {
-    if ((pending ?? 0) > 0 || item['has_pending_order'] == true) {
-      return const Color(0xFFE65100);
-    }
-    return const Color(0xFF64748B);
   }
 
   Widget _boxedMetric(String primary, String secondary, Color color) {

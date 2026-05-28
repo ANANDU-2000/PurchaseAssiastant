@@ -18,6 +18,8 @@ import 'widgets/low_stock_bulk_export.dart';
 import 'widgets/low_stock_ops_header.dart';
 import '../../../core/auth/session_notifier.dart';
 
+/// @deprecated Replaced by [LowStockDashboardPage] — not wired in router.
+@Deprecated('Use LowStockDashboardPage via /stock/low-stock or /staff/low-stock')
 class LowStockOperationsPage extends ConsumerStatefulWidget {
   const LowStockOperationsPage({super.key, required this.staffMode});
 

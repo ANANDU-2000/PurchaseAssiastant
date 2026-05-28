@@ -69,7 +69,7 @@ import '../../features/barcode/presentation/stock_audit_summary_page.dart';
 import '../../features/stock/presentation/stock_page.dart';
 import '../../features/stock/presentation/opening_stock_setup_page.dart';
 import '../../features/stock/presentation/staff_purchase_logs_page.dart';
-import '../../features/stock/presentation/low_stock_operations_page.dart';
+import '../../features/stock/presentation/low_stock_dashboard_page.dart';
 import '../../features/stock/presentation/stock_changes_page.dart';
 import '../../features/stock/presentation/reorder_list_page.dart';
 import '../../features/stock/presentation/stock_history_page.dart';
@@ -499,7 +499,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/stock/low-stock',
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
-          child: const LowStockOperationsPage(staffMode: false),
+          child: const LowStockDashboardPage(staffMode: false),
         ),
       ),
       GoRoute(
@@ -727,7 +727,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/staff/low-stock',
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
-          child: const LowStockOperationsPage(staffMode: true),
+          child: const LowStockDashboardPage(staffMode: true),
         ),
       ),
       GoRoute(

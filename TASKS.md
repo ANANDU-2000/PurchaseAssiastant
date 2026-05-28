@@ -38,6 +38,22 @@
 - [x] Item detail: stock snapshot cards; hide stock when edit mode; `GET stock/item` period fields
 - [x] Low-stock category badge shows item count
 
+## Low stock UX rebuild (2026-05-28)
+
+- [x] Unified `LowStockDashboardPage` for `/stock/low-stock` and `/staff/low-stock` (replaces operations filter-chip UI)
+- [x] Category tree: dual LOW/OUT badges, 5 tabs (incl. pending delivery), scoped search
+- [x] Item tile: BAG/TIN/BOX/KG grid, stock progress, inform owner / reorder / stock update / receive
+- [x] Data: `lowStockByCategoryProvider` includes critical + pending delivery rows
+
+## Staff / stock / reports sprint (2026-05-28)
+
+- [x] P0: 401 session expired + staff providers fail loud on auth errors
+- [x] Staff home: tools top, low-stock attention (`staffLowStockAttentionCountProvider`), activity last, no home scan FAB
+- [x] Stock table: ITEM / SYSTEM / PHYS / DIFF; row meta for opening + pending truck
+- [x] Item detail: legacy STOCK ON HAND grid removed; `ItemDeliveryStatusCard` added
+- [x] Reports: overview chart overlap fix; summary collapsed by default on mobile
+- [x] Tests: `stock_row_metrics_test.dart`
+
 ---
 
 ## Warehouse home + notifications sprint (2026-05-28)

@@ -14,6 +14,7 @@ import '../../../core/providers/staff_home_providers.dart';
 import '../../../core/providers/stock_providers.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/widgets/friendly_load_error.dart';
 import 'widgets/staff_home_dashboard_widgets.dart';
 import 'widgets/staff_warehouse_totals_card.dart';
 import 'widgets/staff_warehouse_difference_card.dart';
@@ -182,11 +183,11 @@ class StaffHomePage extends ConsumerWidget {
     final pendingDeliveries = ref.watch(staffPendingDeliveryCountProvider);
     final pendingList =
         ref.watch(staffPendingDeliveriesProvider).valueOrNull ?? const [];
-    final lowCount =
-        ref.watch(staffLowStockAlertsProvider).valueOrNull?.length ?? 0;
+    final lowCount = ref.watch(staffLowStockAttentionCountProvider);
     final openingCount = ref.watch(staffOpeningStockCountProvider);
     final mismatchAsync = ref.watch(staffStockMismatchCountProvider);
     final mismatchCount = mismatchAsync.valueOrNull ?? 0;
+    final lowStockAsync = ref.watch(staffLowStockAlertsProvider);
     final checklist = ref.watch(checklistTodayProvider).valueOrNull ?? const <String, dynamic>{};
     final checklistTasks = [
       for (final e in (checklist['tasks'] as List? ?? const []))
@@ -204,6 +205,8 @@ class StaffHomePage extends ConsumerWidget {
         (staffHomeShowsBarcodeTools(focus) && missingCount > 0) ||
         mismatchCount > 0;
 
+    final authError = lowStockAsync.hasError ? lowStockAsync.error : null;
+
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
       body: SafeArea(
@@ -220,11 +223,12 @@ class StaffHomePage extends ConsumerWidget {
             ref.invalidate(tradePurchasesListProvider);
             ref.invalidate(stockOnHandTotalsProvider);
             ref.invalidate(stockTotalsProvider(AppPeriod.month));
+            ref.invalidate(stockStatusCountsProvider);
           },
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
               HexaOp.pageGutter,
-              12,
+              8,
               HexaOp.pageGutter,
               100,
             ),
@@ -284,97 +288,23 @@ class StaffHomePage extends ConsumerWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: HexaOp.cardGap),
-              const StaffHomeShiftSnapshotStrip(),
-              const SizedBox(height: HexaOp.cardGap),
-              const StaffHomeRecentScansStrip(),
-              if (showAttention) ...[
-                const SizedBox(height: HexaOp.sectionGap),
-                const StaffHomeSectionHeader(
-                  title: 'Needs attention',
-                  subtitle: 'Tap to open and complete',
+              if (authError != null) ...[
+                const SizedBox(height: HexaOp.cardGap),
+                FriendlyLoadError(
+                  message: 'Session expired or offline — pull to retry or sign in again.',
+                  onRetry: () {
+                    ref.invalidate(staffLowStockAlertsProvider);
+                    ref.invalidate(stockStatusCountsProvider);
+                  },
                 ),
-                if (staffHomeShowsPurchaseTools(focus) && pendingDeliveries > 0)
-                  StaffHomeAttentionTile(
-                    icon: Icons.local_shipping_rounded,
-                    title: 'Pending deliveries',
-                    subtitle: _pendingDeliverySubtitle(pendingList),
-                    count: pendingDeliveries,
-                    accent: const Color(0xFFBA7517),
-                    onTap: () => context.push('/staff/receive'),
-                  ),
-                if (lowCount > 0)
-                  StaffHomeAttentionTile(
-                    icon: Icons.warning_amber_rounded,
-                    title: 'Low stock',
-                    subtitle: 'Update counts or reorder levels',
-                    count: lowCount,
-                    accent: const Color(0xFFDC2626),
-                    onTap: () {
-                      ref.read(stockListQueryProvider.notifier).state =
-                          const StockListQuery(status: 'low', page: 1);
-                      context.go('/staff/stock');
-                    },
-                  ),
-                if (openingCount > 0)
-                  StaffHomeAttentionTile(
-                    icon: Icons.inventory_outlined,
-                    title: 'Opening stock',
-                    subtitle: 'Items need initial stock setup',
-                    count: openingCount,
-                    accent: HexaColors.warning,
-                    onTap: () => context.push('/stock/opening-setup'),
-                  ),
-                if (staffHomeShowsBarcodeTools(focus) && missingCount > 0)
-                  StaffHomeAttentionTile(
-                    icon: Icons.qr_code_2_outlined,
-                    title: 'Missing barcodes',
-                    subtitle: 'Items need labels before bulk print',
-                    count: missingCount,
-                    accent: HexaColors.loss,
-                    onTap: () => context.push('/stock/missing-barcodes'),
-                  ),
-                if (mismatchCount > 0)
-                  StaffHomeAttentionTile(
-                    icon: Icons.compare_arrows_rounded,
-                    title: 'Stock mismatch',
-                    subtitle: 'Physical count differs from system',
-                    count: mismatchCount,
-                    accent: const Color(0xFFA32D2D),
-                    onTap: () => context.go('/reports'),
-                  ),
               ],
-              if (myTasks.isNotEmpty) ...[
-                const SizedBox(height: HexaOp.sectionGap),
-                const StaffHomeSectionHeader(
-                  title: 'My Tasks',
-                  subtitle: 'Assigned checklist items',
-                ),
-                ...myTasks.take(3).map((task) {
-                  final slot = task['slot']?.toString() ?? 'morning';
-                  final key = task['task_key']?.toString() ?? '';
-                  final label = task['label']?.toString() ?? 'Task';
-                  return ListTile(
-                    dense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 6),
-                    leading: Checkbox(
-                      value: false,
-                      onChanged: (_) async {
-                        final session = ref.read(sessionProvider);
-                        if (session == null || key.isEmpty) return;
-                        await ref.read(hexaApiProvider).completeChecklistTask(
-                              businessId: session.primaryBusiness.id,
-                              slot: slot,
-                              taskKey: key,
-                            );
-                        ref.invalidate(checklistTodayProvider);
-                      },
-                    ),
-                    title: Text(label),
-                  );
-                }),
-              ],
-              const SizedBox(height: HexaOp.sectionGap),
+              const SizedBox(height: HexaOp.cardGap),
+              const StaffHomeSectionHeader(
+                title: 'Tools',
+                subtitle: 'Search, stock, labels, and low stock',
+              ),
+              StaffHomeToolsGrid(lowCount: lowCount, focus: focus),
+              const SizedBox(height: HexaOp.cardGap),
               const StaffHomeSectionHeader(
                 title: 'Start here',
                 subtitle: 'Most used actions for floor staff',
@@ -432,7 +362,7 @@ class StaffHomePage extends ConsumerWidget {
                   if (staffHomeShowsPurchaseTools(focus)) ...[
                     const SizedBox(width: 10),
                     Expanded(
-                    child: OutlinedButton.icon(
+                      child: OutlinedButton.icon(
                         onPressed: () => context.push('/staff/quick-purchase'),
                         icon: const Icon(Icons.add_shopping_cart_rounded),
                         label: const Text('Cash buy'),
@@ -441,8 +371,92 @@ class StaffHomePage extends ConsumerWidget {
                   ],
                 ],
               ),
+              const SizedBox(height: HexaOp.cardGap),
+              const StaffHomeShiftSnapshotStrip(),
+              if (showAttention) ...[
+                const SizedBox(height: HexaOp.cardGap),
+                const StaffHomeSectionHeader(
+                  title: 'Needs attention',
+                  subtitle: 'Tap to open and complete',
+                ),
+                if (staffHomeShowsPurchaseTools(focus) && pendingDeliveries > 0)
+                  StaffHomeAttentionTile(
+                    icon: Icons.local_shipping_rounded,
+                    title: 'Pending deliveries',
+                    subtitle: _pendingDeliverySubtitle(pendingList),
+                    count: pendingDeliveries,
+                    accent: const Color(0xFFBA7517),
+                    onTap: () => context.push('/staff/receive'),
+                  ),
+                if (lowCount > 0)
+                  StaffHomeAttentionTile(
+                    icon: Icons.warning_amber_rounded,
+                    title: 'Low stock',
+                    subtitle: 'Items need reorder or stock update',
+                    count: lowCount,
+                    accent: const Color(0xFFDC2626),
+                    onTap: () => context.push('/staff/low-stock'),
+                  ),
+                if (openingCount > 0)
+                  StaffHomeAttentionTile(
+                    icon: Icons.inventory_outlined,
+                    title: 'Opening stock',
+                    subtitle: 'Items need initial stock setup',
+                    count: openingCount,
+                    accent: HexaColors.warning,
+                    onTap: () => context.push('/stock/opening-setup'),
+                  ),
+                if (staffHomeShowsBarcodeTools(focus) && missingCount > 0)
+                  StaffHomeAttentionTile(
+                    icon: Icons.qr_code_2_outlined,
+                    title: 'Missing barcodes',
+                    subtitle: 'Items need labels before bulk print',
+                    count: missingCount,
+                    accent: HexaColors.loss,
+                    onTap: () => context.push('/stock/missing-barcodes'),
+                  ),
+                if (mismatchCount > 0)
+                  StaffHomeAttentionTile(
+                    icon: Icons.compare_arrows_rounded,
+                    title: 'Stock mismatch',
+                    subtitle: 'Physical count differs from system',
+                    count: mismatchCount,
+                    accent: const Color(0xFFA32D2D),
+                    onTap: () => context.go('/reports'),
+                  ),
+              ],
+              if (myTasks.isNotEmpty) ...[
+                const SizedBox(height: HexaOp.cardGap),
+                const StaffHomeSectionHeader(
+                  title: 'My Tasks',
+                  subtitle: 'Assigned checklist items',
+                ),
+                ...myTasks.take(3).map((task) {
+                  final slot = task['slot']?.toString() ?? 'morning';
+                  final key = task['task_key']?.toString() ?? '';
+                  final label = task['label']?.toString() ?? 'Task';
+                  return ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+                    leading: Checkbox(
+                      value: false,
+                      onChanged: (_) async {
+                        final session = ref.read(sessionProvider);
+                        if (session == null || key.isEmpty) return;
+                        await ref.read(hexaApiProvider).completeChecklistTask(
+                              businessId: session.primaryBusiness.id,
+                              slot: slot,
+                              taskKey: key,
+                            );
+                        ref.invalidate(checklistTodayProvider);
+                      },
+                    ),
+                    title: Text(label),
+                  );
+                }),
+              ],
               if (staffHomeShowsWarehouse(focus)) ...[
-                const SizedBox(height: HexaOp.sectionGap),
+                const SizedBox(height: HexaOp.cardGap),
                 const StaffHomeSectionHeader(
                   title: 'Warehouse on hand',
                   subtitle: 'Totals across bags, kg, boxes, tins',
@@ -451,14 +465,8 @@ class StaffHomePage extends ConsumerWidget {
                 const SizedBox(height: HexaOp.cardGap),
                 const StaffWarehouseDifferenceCard(),
               ],
-              const SizedBox(height: HexaOp.sectionGap),
+              const SizedBox(height: HexaOp.cardGap),
               const StaffHomeRecentActivitySection(),
-              const SizedBox(height: HexaOp.sectionGap),
-              const StaffHomeSectionHeader(
-                title: 'Tools',
-                subtitle: 'Search, stock, labels, and history',
-              ),
-              StaffHomeToolsGrid(lowCount: lowCount, focus: focus),
             ],
           ),
         ),
