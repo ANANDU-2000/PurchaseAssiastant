@@ -58,8 +58,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     final hasUnread = visible.any((n) => !n.isRead);
     final filterEmptyButHasItems =
         items.isNotEmpty && filtered.isEmpty && q.isEmpty;
-    final showEmptyState =
-        visible.isEmpty && !(serverAsync.isLoading && items.isNotEmpty);
+    final showEmptyState = visible.isEmpty && !serverAsync.isLoading;
 
     final onSurf = Theme.of(context).colorScheme.onSurface;
     return Scaffold(
@@ -340,6 +339,27 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _handleApprove(NotificationItem n) async {
+    if (n.serverNotificationId == null || n.serverNotificationId!.isEmpty) {
+      return;
+    }
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      await ref.read(hexaApiProvider).patchAppNotificationRead(
+            businessId: session.primaryBusiness.id,
+            notificationId: n.serverNotificationId!,
+          );
+      invalidateNotificationSurfaces(ref);
+      ref.invalidate(appNotificationsListProvider);
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
+  Future<void> _handleReject(NotificationItem n) async {
+    await _handleApprove(n);
+  }
+
   List<Widget> _buildGroupedNotificationTiles({
     required BuildContext context,
     required WidgetRef ref,
@@ -391,6 +411,18 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       'Earlier',
       visible.where((n) => !isToday(n) && !isYesterday(n)).toList(),
     );
+    if (widgets.isEmpty && visible.isNotEmpty) {
+      widgets.add(const _NotificationDateHeader(label: 'Alerts'));
+      for (final n in visible) {
+        widgets.add(_notificationTile(
+          context: context,
+          ref: ref,
+          n: n,
+          rel: rel,
+          tt: tt,
+        ));
+      }
+    }
     return widgets;
   }
 
@@ -429,14 +461,15 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     }
 
     return NotificationAlertCard(
+      key: ValueKey(n.id),
       item: n,
       timeLabel: NotificationAlertCard.relativeTime(n.createdAt, rel),
       onTap: handleTap,
       onApprove: n.serverKind == 'approval_required'
-          ? () => context.push('/stock/audits')
+          ? () => _handleApprove(n)
           : null,
       onReject: n.serverKind == 'approval_required'
-          ? () => context.push('/stock/audits')
+          ? () => _handleReject(n)
           : null,
     );
   }

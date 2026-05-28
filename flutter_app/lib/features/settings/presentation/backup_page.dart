@@ -71,7 +71,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
             name: fn,
           ),
         ],
-        text: 'Purchase Assistant backup',
+        text: 'Harisree Warehouse backup',
       );
       await _recordBackup();
     } on DioException catch (e) {

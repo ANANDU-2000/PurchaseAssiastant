@@ -14,6 +14,7 @@ from app.config import Settings, get_settings
 from app.database import get_db
 from app.deps import AdminCaller, require_admin_caller, require_super_admin
 from app.models import AdminAuditLog, ApiUsageLog, Business, Entry, User
+from app.services.low_stock_notifications import run_low_stock_notification_scan
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 
@@ -117,6 +118,20 @@ async def admin_super_businesses_overview(
             for row in rows
         ],
         "total_returned": len(rows),
+    }
+
+
+@router.post("/trigger-low-stock-alert")
+async def admin_trigger_low_stock_alert(
+    _user: Annotated[User, Depends(require_super_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    del _user
+    queued = await run_low_stock_notification_scan(db)
+    return {
+        "triggered": True,
+        "queued_notifications": int(queued),
+        "as_of": datetime.now(timezone.utc).isoformat(),
     }
 
 

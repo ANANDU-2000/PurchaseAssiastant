@@ -15,6 +15,7 @@ import '../../features/catalog/presentation/catalog_add_item_page.dart';
 import '../../features/catalog/presentation/catalog_add_subcategory_page.dart';
 import '../../features/catalog/presentation/catalog_category_detail_page.dart';
 import '../../features/catalog/presentation/item_detail_page.dart';
+import '../../features/catalog/presentation/item_edit_page.dart';
 import '../../features/catalog/presentation/catalog_item_timeline_page.dart';
 import '../../features/catalog/presentation/catalog_page.dart';
 import '../../features/catalog/presentation/catalog_type_items_page.dart';
@@ -88,6 +89,7 @@ import '../../features/admin/presentation/super_admin_page.dart';
 import '../../features/get_started/presentation/get_started_page.dart';
 import '../../features/operations/presentation/daily_usage_page.dart';
 import '../../features/operations/presentation/staff_checklist_page.dart';
+import '../../features/operations/presentation/owner_tasks_page.dart';
 import '../../features/catalog/presentation/barcode_quick_create_page.dart';
 import '../../features/catalog/presentation/catalog_duplicates_page.dart';
 import '../../features/stock/presentation/stock_missing_labels_page.dart';
@@ -426,6 +428,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return iosPushPage(
             key: state.pageKey,
             child: ItemDetailPage(itemId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/catalog/item/:itemId/edit',
+        name: 'item_edit',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['itemId']!;
+          return iosPushPage(
+            key: state.pageKey,
+            child: ItemEditPage(itemId: id),
           );
         },
       ),
@@ -896,6 +909,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const StaffChecklistPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/operations/owner-tasks',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const OwnerTasksPage(),
         ),
       ),
       GoRoute(

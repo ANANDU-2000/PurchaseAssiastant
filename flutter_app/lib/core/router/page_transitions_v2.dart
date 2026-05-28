@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// Optimized page transitions for Purchase Assistant
+/// Optimized page transitions for Harisree Warehouse
 class HexaPageTransitions {
   /// Fast slide transition for navigation (220ms)
   static PageRoute<T> slideTransition<T>({

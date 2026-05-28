@@ -12,7 +12,10 @@ import '../../../core/calc_engine.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidatePurchaseWorkspace;
+import '../../../core/providers/business_write_revision.dart';
 import '../../../core/providers/business_profile_provider.dart';
+import '../../../core/providers/home_owner_dashboard_providers.dart';
+import '../../../core/providers/stock_providers.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/router/post_auth_route.dart';
 import '../../../core/services/pdf_actions.dart';
@@ -27,6 +30,7 @@ import 'widgets/purchase_detail_delivery_banner.dart';
 import 'widgets/purchase_detail_header.dart';
 import 'widgets/purchase_detail_line_row.dart';
 import 'widgets/purchase_detail_summary_strip.dart';
+import 'widgets/staff_verification_sheet.dart';
 import '../../../core/utils/snack.dart';
 import '../../../core/utils/trade_purchase_commission.dart';
 import '../../../core/utils/trade_purchase_rate_display.dart';
@@ -559,6 +563,16 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
       final purchase = TradePurchase.fromJson(updated);
       invalidatePurchaseWorkspace(ref);
       ref.invalidate(tradePurchaseDetailProvider(p.id));
+      ref.invalidate(stockListProvider);
+      ref.invalidate(stockStatusCountsProvider);
+      ref.invalidate(homeInventorySummaryProvider);
+      for (final line in purchase.lines) {
+        final itemId = line.catalogItemId?.trim();
+        if (itemId != null && itemId.isNotEmpty) {
+          ref.invalidate(stockItemDetailProvider(itemId));
+        }
+      }
+      ref.read(businessDataWriteRevisionProvider.notifier).state++;
       ref.read(tradePurchaseDeliveryOptimisticProvider(p.id).notifier).state =
           null;
       if (context.mounted) {
@@ -681,6 +695,36 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
           purchase: p,
           onToggleDelivery: () => _toggleDelivery(context, ref, p),
         ),
+        if (p.isDelivered) ...[
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final lineMaps = [
+                  for (final l in p.lines)
+                    {
+                      'id': l.id,
+                      'item_name': l.itemName,
+                      'qty': l.qty,
+                      'unit': l.unit,
+                    }
+                ];
+                final changed = await showStaffVerificationSheet(
+                  context: context,
+                  ref: ref,
+                  purchaseId: p.id,
+                  lines: lineMaps,
+                );
+                if (changed) {
+                  ref.invalidate(tradePurchaseDetailProvider(p.id));
+                }
+              },
+              icon: const Icon(Icons.fact_check_outlined, size: 18),
+              label: const Text('Verify warehouse receipt'),
+            ),
+          ),
+        ],
         const SizedBox(height: 14),
         Text(
           'Items',

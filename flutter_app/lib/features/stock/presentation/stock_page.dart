@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/services/stock_list_pdf.dart';
@@ -61,11 +63,7 @@ class _StockPageState extends ConsumerState<StockPage> {
     _subcatCtrl.text = initialQuery.subcategory;
     _scroll.addListener(_onScrollLoadMore);
 
-    if (ref.read(stockPagePeriodProvider) != HomePeriod.allTime) {
-      applyStockPagePeriod(ref, HomePeriod.allTime);
-    } else {
-      applyStockPagePeriod(ref, ref.read(stockPagePeriodProvider));
-    }
+    applyStockPagePeriod(ref, ref.read(stockPagePeriodProvider));
 
     final q = ref.read(stockListQueryProvider);
     if (q.perPage != 50 || q.sort != 'recent') {
@@ -112,7 +110,7 @@ class _StockPageState extends ConsumerState<StockPage> {
   void _onSearchChanged() {
     final raw = _searchCtrl.text.trim();
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () {
+    _debounce = Timer(const Duration(milliseconds: 180), () {
       if (!mounted) return;
       final q = ref.read(stockListQueryProvider);
       if (q.q == raw) return;
@@ -229,6 +227,44 @@ class _StockPageState extends ConsumerState<StockPage> {
     }
   }
 
+  Future<void> _exportStockExcel() async {
+    final data = _mergedData ?? ref.read(stockListProvider).valueOrNull;
+    if (data == null) return;
+    final raw = [
+      for (final e in (data['items'] as List? ?? []))
+        if (e is Map) Map<String, dynamic>.from(e),
+    ];
+    final rows = _prepareItems(raw);
+    if (rows.isEmpty) return;
+    String esc(String s) => '"${s.replaceAll('"', '""')}"';
+    final b = StringBuffer();
+    b.writeln('Item,Category,Subcategory,Unit,Current Stock,Opening Stock,Purchased,Reorder Level,Last Updated');
+    for (final r in rows) {
+      b.writeln([
+        esc(r['name']?.toString() ?? ''),
+        esc(r['category_name']?.toString() ?? ''),
+        esc(r['subcategory_name']?.toString() ?? ''),
+        esc((r['stock_unit'] ?? r['unit'])?.toString() ?? ''),
+        coerceToDouble(r['current_stock']).toString(),
+        coerceToDouble(r['opening_stock_qty']).toString(),
+        coerceToDouble(r['period_purchased_qty']).toString(),
+        coerceToDouble(r['reorder_level']).toString(),
+        esc(r['last_stock_updated_at']?.toString() ?? ''),
+      ].join(','));
+    }
+    final bytes = utf8.encode(b.toString());
+    await Share.shareXFiles(
+      [
+        XFile.fromData(
+          bytes,
+          mimeType: 'text/csv',
+          name: 'harisree_stock_export.csv',
+        ),
+      ],
+      text: 'Stock export',
+    );
+  }
+
   Future<void> _openFilters() async {
     await showOperationalStockFilter(
       context: context,
@@ -244,6 +280,24 @@ class _StockPageState extends ConsumerState<StockPage> {
     final route =
         _isStaffMode ? '/staff/stock/changes' : '/stock/changes';
     context.push(route);
+  }
+
+  void _showPeriodPicker() {
+    final current = ref.read(stockPagePeriodProvider);
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      showDragHandle: true,
+      builder: (_) => _StockPeriodSheet(
+        current: current,
+        onPick: (p) {
+          Navigator.pop(context);
+          applyStockPagePeriod(ref, p);
+          _resetMerged();
+          ref.invalidate(stockListProvider);
+        },
+      ),
+    );
   }
 
   Map<String, dynamic>? _selectedItem(List<Map<String, dynamic>> items) {
@@ -416,6 +470,7 @@ class _StockPageState extends ConsumerState<StockPage> {
     final filterCount = countWarehouseActiveFilters(listQ, op);
     final data = _mergedData ?? listAsync.valueOrNull;
     final isReloading = listAsync.isLoading && data != null;
+    final showDebounceProgress = _debounce?.isActive ?? false;
 
     Widget body;
     if (data == null && listAsync.isLoading) {
@@ -440,13 +495,72 @@ class _StockPageState extends ConsumerState<StockPage> {
         filterCount: filterCount,
         searchExpanded: _searchExpanded,
         isReloading: isReloading,
+        currentPeriod: ref.watch(stockPagePeriodProvider),
         onToggleSearch: () =>
             setState(() => _searchExpanded = !_searchExpanded),
+        onOpenPeriod: _showPeriodPicker,
         onOpenFilters: _openFilters,
         onOpenHistory: _openHistory,
         onExportPdf: _isStaffMode ? null : _exportStockPdf,
+        onExportExcel: _isStaffMode ? null : _exportStockExcel,
       ),
-      body: body,
+      body: Column(
+        children: [
+          if (showDebounceProgress)
+            const LinearProgressIndicator(minHeight: 2),
+          Expanded(child: body),
+        ],
+      ),
+    );
+  }
+}
+
+class _StockPeriodSheet extends StatelessWidget {
+  const _StockPeriodSheet({required this.current, required this.onPick});
+
+  final HomePeriod current;
+  final void Function(HomePeriod) onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final options = [
+      (HomePeriod.today, Icons.today_rounded, 'Today', 'Bought today'),
+      (HomePeriod.week, Icons.view_week_rounded, 'This Week', 'Last 7 days'),
+      (HomePeriod.month, Icons.calendar_month_rounded, 'This Month', 'Last 30 days'),
+      (HomePeriod.year, Icons.calendar_view_month_rounded, 'This Year', 'From Jan 1'),
+      (HomePeriod.allTime, Icons.all_inclusive_rounded, 'All Time', 'Full history'),
+    ];
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Text(
+              'Filter by period',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+          ),
+          const Divider(height: 1),
+          ...options.map(
+            (o) => ListTile(
+              leading: Icon(o.$2),
+              title: Text(
+                o.$3,
+                style: TextStyle(
+                  fontWeight: current == o.$1 ? FontWeight.w800 : FontWeight.w500,
+                ),
+              ),
+              subtitle: Text(o.$4),
+              trailing: current == o.$1 ? const Icon(Icons.check_rounded) : null,
+              onTap: () => onPick(o.$1),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
     );
   }
 }

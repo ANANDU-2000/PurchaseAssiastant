@@ -56,7 +56,7 @@ Future<void> showStockRowActions({
           ),
           _StockActionTile(
             icon: Icons.info_outline_rounded,
-            label: 'View Item Detail',
+            label: 'View Item Activity',
             onTap: () {
               Navigator.pop(ctx);
               context.push('/catalog/item/$id');

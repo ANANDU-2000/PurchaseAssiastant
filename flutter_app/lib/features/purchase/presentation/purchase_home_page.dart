@@ -37,7 +37,7 @@ import '../../../shared/widgets/fullscreen_date_range_picker.dart';
 import '../../../shared/widgets/operational_ui.dart';
 import 'widgets/purchase_history_grouping.dart';
 
-enum _HistPeriodPreset { today, week, month, year, custom }
+enum _HistPeriodPreset { today, week, month, year, allTime, custom }
 
 bool _purchaseHistSameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
@@ -202,6 +202,10 @@ _HistPeriodPreset _purchaseHistInferPreset(({DateTime from, DateTime to}) r) {
   if (_purchaseHistSameDay(from, DateTime(today.year, 1, 1)) &&
       _purchaseHistSameDay(to, today)) {
     return _HistPeriodPreset.year;
+  }
+  if (_purchaseHistSameDay(from, DateTime(2020, 1, 1)) &&
+      _purchaseHistSameDay(to, today)) {
+    return _HistPeriodPreset.allTime;
   }
   return _HistPeriodPreset.custom;
 }
@@ -546,6 +550,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
           to: today
         ),
       _HistPeriodPreset.year => (from: DateTime(n.year, 1, 1), to: today),
+      _HistPeriodPreset.allTime => (from: DateTime(2020, 1, 1), to: today),
       _HistPeriodPreset.custom => ref.read(analyticsDateRangeProvider),
     };
     setState(() => _preset = p);
@@ -597,6 +602,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                 (_HistPeriodPreset.week, 'This week'),
                 (_HistPeriodPreset.month, 'This month'),
                 (_HistPeriodPreset.year, 'This year'),
+                (_HistPeriodPreset.allTime, 'All time'),
                 (_HistPeriodPreset.custom, 'Custom range'),
               ])
                 ListTile(
@@ -2085,6 +2091,7 @@ class _PurchaseHistoryFullscreenSearchPageState
           to: today
         ),
       _HistPeriodPreset.year => (from: DateTime(n.year, 1, 1), to: today),
+      _HistPeriodPreset.allTime => (from: DateTime(2020, 1, 1), to: today),
       _HistPeriodPreset.custom => ref.read(analyticsDateRangeProvider),
     };
     setState(() => _preset = p);
@@ -2126,6 +2133,7 @@ class _PurchaseHistoryFullscreenSearchPageState
                 (_HistPeriodPreset.week, 'This week'),
                 (_HistPeriodPreset.month, 'This month'),
                 (_HistPeriodPreset.year, 'This year'),
+                (_HistPeriodPreset.allTime, 'All time'),
                 (_HistPeriodPreset.custom, 'Custom range'),
               ])
                 ListTile(

@@ -286,6 +286,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 subtitle: 'Download purchase records for your files',
                 onTap: () => context.push('/settings/backup'),
               ),
+              _NavTile(
+                icon: Icons.checklist_rtl_outlined,
+                title: 'Owner tasks',
+                subtitle: 'Checklist progress and staff completion',
+                onTap: () => context.push('/operations/owner-tasks'),
+              ),
             ],
           ),
           if (session?.isSuperAdmin == true) ...[

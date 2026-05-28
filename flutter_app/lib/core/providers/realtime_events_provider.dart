@@ -4,6 +4,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/session_notifier.dart';
 import 'business_aggregates_invalidation.dart';
+import 'business_write_revision.dart';
+import 'home_owner_dashboard_providers.dart';
+import 'low_stock_providers.dart';
+import 'stock_providers.dart';
+import 'trade_purchases_provider.dart';
+
+void invalidateAfterStockWrite(WidgetRef ref) {
+  ref.invalidate(stockListProvider);
+  ref.invalidate(stockStatusCountsProvider);
+  ref.invalidate(homeInventorySummaryProvider);
+  ref.invalidate(lowStockOperationsSummaryProvider);
+  ref.read(businessDataWriteRevisionProvider.notifier).state++;
+}
+
+void invalidateAfterPurchaseWrite(WidgetRef ref) {
+  ref.invalidate(tradePurchasesListProvider);
+  invalidateAfterStockWrite(ref);
+}
 
 final realtimeInvalidationProvider = StreamProvider.autoDispose<int>((ref) async* {
   final session = ref.watch(sessionProvider);

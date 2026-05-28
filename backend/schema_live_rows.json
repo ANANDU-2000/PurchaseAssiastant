@@ -1,0 +1,2330 @@
+[
+  {
+    "table_name": "admin_audit_logs",
+    "column_name": "action"
+  },
+  {
+    "table_name": "admin_audit_logs",
+    "column_name": "actor"
+  },
+  {
+    "table_name": "admin_audit_logs",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "admin_audit_logs",
+    "column_name": "details"
+  },
+  {
+    "table_name": "admin_audit_logs",
+    "column_name": "id"
+  },
+  {
+    "table_name": "admin_audit_logs",
+    "column_name": "note"
+  },
+  {
+    "table_name": "admin_audit_logs",
+    "column_name": "resource_id"
+  },
+  {
+    "table_name": "admin_audit_logs",
+    "column_name": "resource_type"
+  },
+  {
+    "table_name": "ai_item_profiles",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "ai_item_profiles",
+    "column_name": "catalog_item_id"
+  },
+  {
+    "table_name": "ai_item_profiles",
+    "column_name": "id"
+  },
+  {
+    "table_name": "ai_item_profiles",
+    "column_name": "profile_json"
+  },
+  {
+    "table_name": "ai_item_profiles",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "alembic_version",
+    "column_name": "version_num"
+  },
+  {
+    "table_name": "api_usage_logs",
+    "column_name": "action"
+  },
+  {
+    "table_name": "api_usage_logs",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "api_usage_logs",
+    "column_name": "cost_estimate_inr_paise"
+  },
+  {
+    "table_name": "api_usage_logs",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "api_usage_logs",
+    "column_name": "id"
+  },
+  {
+    "table_name": "api_usage_logs",
+    "column_name": "meta"
+  },
+  {
+    "table_name": "api_usage_logs",
+    "column_name": "provider"
+  },
+  {
+    "table_name": "api_usage_logs",
+    "column_name": "units"
+  },
+  {
+    "table_name": "api_usage_logs",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "assistant_decisions",
+    "column_name": "action"
+  },
+  {
+    "table_name": "assistant_decisions",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "assistant_decisions",
+    "column_name": "id"
+  },
+  {
+    "table_name": "assistant_decisions",
+    "column_name": "payload_json"
+  },
+  {
+    "table_name": "assistant_decisions",
+    "column_name": "session_id"
+  },
+  {
+    "table_name": "assistant_decisions",
+    "column_name": "status"
+  },
+  {
+    "table_name": "assistant_decisions",
+    "column_name": "validation_json"
+  },
+  {
+    "table_name": "assistant_sessions",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "assistant_sessions",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "assistant_sessions",
+    "column_name": "flow"
+  },
+  {
+    "table_name": "assistant_sessions",
+    "column_name": "id"
+  },
+  {
+    "table_name": "assistant_sessions",
+    "column_name": "state_json"
+  },
+  {
+    "table_name": "assistant_sessions",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "assistant_sessions",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "billing_payments",
+    "column_name": "amount_paise"
+  },
+  {
+    "table_name": "billing_payments",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "billing_payments",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "billing_payments",
+    "column_name": "currency"
+  },
+  {
+    "table_name": "billing_payments",
+    "column_name": "id"
+  },
+  {
+    "table_name": "billing_payments",
+    "column_name": "idempotency_key"
+  },
+  {
+    "table_name": "billing_payments",
+    "column_name": "meta"
+  },
+  {
+    "table_name": "billing_payments",
+    "column_name": "paid_at"
+  },
+  {
+    "table_name": "billing_payments",
+    "column_name": "razorpay_order_id"
+  },
+  {
+    "table_name": "billing_payments",
+    "column_name": "razorpay_payment_id"
+  },
+  {
+    "table_name": "billing_payments",
+    "column_name": "status"
+  },
+  {
+    "table_name": "broker_supplier_links",
+    "column_name": "broker_id"
+  },
+  {
+    "table_name": "broker_supplier_links",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "broker_supplier_links",
+    "column_name": "id"
+  },
+  {
+    "table_name": "broker_supplier_links",
+    "column_name": "supplier_id"
+  },
+  {
+    "table_name": "broker_supplier_m2m",
+    "column_name": "broker_id"
+  },
+  {
+    "table_name": "broker_supplier_m2m",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "broker_supplier_m2m",
+    "column_name": "id"
+  },
+  {
+    "table_name": "broker_supplier_m2m",
+    "column_name": "supplier_id"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "commission_type"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "commission_value"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "default_billty_rate"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "default_delivered_rate"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "default_discount"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "default_payment_days"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "freight_type"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "id"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "image_url"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "location"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "name"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "notes"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "phone"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "preferences_json"
+  },
+  {
+    "table_name": "brokers",
+    "column_name": "whatsapp_number"
+  },
+  {
+    "table_name": "business_goals",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "business_goals",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "business_goals",
+    "column_name": "id"
+  },
+  {
+    "table_name": "business_goals",
+    "column_name": "period"
+  },
+  {
+    "table_name": "business_goals",
+    "column_name": "profit_goal"
+  },
+  {
+    "table_name": "business_goals",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "business_goals",
+    "column_name": "volume_goal"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "admin_exempt"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "ai_addon"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "current_period_end"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "current_period_start"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "exempt_reason"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "grace_until"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "id"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "monthly_addons_paise"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "monthly_base_paise"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "notes"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "plan_code"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "status"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "voice_addon"
+  },
+  {
+    "table_name": "business_subscriptions",
+    "column_name": "whatsapp_addon"
+  },
+  {
+    "table_name": "businesses",
+    "column_name": "address"
+  },
+  {
+    "table_name": "businesses",
+    "column_name": "branding_logo_url"
+  },
+  {
+    "table_name": "businesses",
+    "column_name": "branding_title"
+  },
+  {
+    "table_name": "businesses",
+    "column_name": "contact_email"
+  },
+  {
+    "table_name": "businesses",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "businesses",
+    "column_name": "default_currency"
+  },
+  {
+    "table_name": "businesses",
+    "column_name": "gst_number"
+  },
+  {
+    "table_name": "businesses",
+    "column_name": "id"
+  },
+  {
+    "table_name": "businesses",
+    "column_name": "name"
+  },
+  {
+    "table_name": "businesses",
+    "column_name": "phone"
+  },
+  {
+    "table_name": "catalog_aliases",
+    "column_name": "alias_type"
+  },
+  {
+    "table_name": "catalog_aliases",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "catalog_aliases",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "catalog_aliases",
+    "column_name": "id"
+  },
+  {
+    "table_name": "catalog_aliases",
+    "column_name": "name"
+  },
+  {
+    "table_name": "catalog_aliases",
+    "column_name": "normalized_name"
+  },
+  {
+    "table_name": "catalog_aliases",
+    "column_name": "notes"
+  },
+  {
+    "table_name": "catalog_aliases",
+    "column_name": "ref_id"
+  },
+  {
+    "table_name": "catalog_item_default_brokers",
+    "column_name": "broker_id"
+  },
+  {
+    "table_name": "catalog_item_default_brokers",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "catalog_item_default_brokers",
+    "column_name": "catalog_item_id"
+  },
+  {
+    "table_name": "catalog_item_default_brokers",
+    "column_name": "id"
+  },
+  {
+    "table_name": "catalog_item_default_brokers",
+    "column_name": "sort_order"
+  },
+  {
+    "table_name": "catalog_item_default_suppliers",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "catalog_item_default_suppliers",
+    "column_name": "catalog_item_id"
+  },
+  {
+    "table_name": "catalog_item_default_suppliers",
+    "column_name": "id"
+  },
+  {
+    "table_name": "catalog_item_default_suppliers",
+    "column_name": "sort_order"
+  },
+  {
+    "table_name": "catalog_item_default_suppliers",
+    "column_name": "supplier_id"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "ai_detected_unit"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "archived_at"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "auto_detect_enabled"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "barcode"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "category_id"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "conversion_factor"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "created_by_user_id"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "current_stock"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "default_items_per_box"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "default_kg_per_bag"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "default_landing_cost"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "default_purchase_unit"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "default_sale_unit"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "default_selling_cost"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "default_unit"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "default_weight_per_tin"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "deleted_at"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "display_unit"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "eviction_days"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "hsn_code"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "id"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "is_loose_item"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "is_packaged_item"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "item_code"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "last_broker_id"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "last_line_qty"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "last_line_unit"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "last_line_weight_kg"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "last_purchase_at"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "last_purchase_price"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "last_selling_rate"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "last_stock_updated_at"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "last_stock_updated_by"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "last_supplier_id"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "last_trade_purchase_id"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "ml_profile"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "name"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "normalized_name"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "package_measurement"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "package_size"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "package_type"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "package_volume"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "package_weight"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "packaging_confidence"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "rack_location"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "reorder_level"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "selling_unit"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "smart_classification"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "stock_unit"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "tax_percent"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "type_id"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "unit_confidence"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "updated_by_user_id"
+  },
+  {
+    "table_name": "catalog_items",
+    "column_name": "validation_status"
+  },
+  {
+    "table_name": "catalog_variants",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "catalog_variants",
+    "column_name": "catalog_item_id"
+  },
+  {
+    "table_name": "catalog_variants",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "catalog_variants",
+    "column_name": "default_kg_per_bag"
+  },
+  {
+    "table_name": "catalog_variants",
+    "column_name": "id"
+  },
+  {
+    "table_name": "catalog_variants",
+    "column_name": "name"
+  },
+  {
+    "table_name": "category_types",
+    "column_name": "category_id"
+  },
+  {
+    "table_name": "category_types",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "category_types",
+    "column_name": "id"
+  },
+  {
+    "table_name": "category_types",
+    "column_name": "name"
+  },
+  {
+    "table_name": "cloud_expenses",
+    "column_name": "amount_inr"
+  },
+  {
+    "table_name": "cloud_expenses",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "cloud_expenses",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "cloud_expenses",
+    "column_name": "due_day"
+  },
+  {
+    "table_name": "cloud_expenses",
+    "column_name": "id"
+  },
+  {
+    "table_name": "cloud_expenses",
+    "column_name": "last_paid_date"
+  },
+  {
+    "table_name": "cloud_expenses",
+    "column_name": "name"
+  },
+  {
+    "table_name": "cloud_expenses",
+    "column_name": "next_due_date"
+  },
+  {
+    "table_name": "cloud_expenses",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "cloud_payment_history",
+    "column_name": "amount_inr"
+  },
+  {
+    "table_name": "cloud_payment_history",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "cloud_payment_history",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "cloud_payment_history",
+    "column_name": "external_payment_id"
+  },
+  {
+    "table_name": "cloud_payment_history",
+    "column_name": "id"
+  },
+  {
+    "table_name": "cloud_payment_history",
+    "column_name": "paid_on"
+  },
+  {
+    "table_name": "cloud_payment_history",
+    "column_name": "payment_provider"
+  },
+  {
+    "table_name": "daily_usage_logs",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "daily_usage_logs",
+    "column_name": "closing_qty"
+  },
+  {
+    "table_name": "daily_usage_logs",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "daily_usage_logs",
+    "column_name": "id"
+  },
+  {
+    "table_name": "daily_usage_logs",
+    "column_name": "item_id"
+  },
+  {
+    "table_name": "daily_usage_logs",
+    "column_name": "logged_by_user_id"
+  },
+  {
+    "table_name": "daily_usage_logs",
+    "column_name": "notes"
+  },
+  {
+    "table_name": "daily_usage_logs",
+    "column_name": "opening_qty"
+  },
+  {
+    "table_name": "daily_usage_logs",
+    "column_name": "purchased_qty"
+  },
+  {
+    "table_name": "daily_usage_logs",
+    "column_name": "usage_date"
+  },
+  {
+    "table_name": "daily_usage_logs",
+    "column_name": "used_qty"
+  },
+  {
+    "table_name": "entries",
+    "column_name": "broker_id"
+  },
+  {
+    "table_name": "entries",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "entries",
+    "column_name": "commission_amount"
+  },
+  {
+    "table_name": "entries",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "entries",
+    "column_name": "entry_date"
+  },
+  {
+    "table_name": "entries",
+    "column_name": "id"
+  },
+  {
+    "table_name": "entries",
+    "column_name": "invoice_no"
+  },
+  {
+    "table_name": "entries",
+    "column_name": "place"
+  },
+  {
+    "table_name": "entries",
+    "column_name": "source"
+  },
+  {
+    "table_name": "entries",
+    "column_name": "status"
+  },
+  {
+    "table_name": "entries",
+    "column_name": "supplier_id"
+  },
+  {
+    "table_name": "entries",
+    "column_name": "transport_cost"
+  },
+  {
+    "table_name": "entries",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "bags"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "base_unit"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "buy_price"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "catalog_item_id"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "catalog_variant_id"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "category"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "currency"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "entry_id"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "id"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "item_name"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "kg_per_bag"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "landing_cost"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "profit"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "qty"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "qty_base"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "qty_kg"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "selling_price"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "stock_note"
+  },
+  {
+    "table_name": "entry_line_items",
+    "column_name": "unit"
+  },
+  {
+    "table_name": "feature_flags",
+    "column_name": "enabled"
+  },
+  {
+    "table_name": "feature_flags",
+    "column_name": "key"
+  },
+  {
+    "table_name": "item_categories",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "item_categories",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "item_categories",
+    "column_name": "id"
+  },
+  {
+    "table_name": "item_categories",
+    "column_name": "is_perishable"
+  },
+  {
+    "table_name": "item_categories",
+    "column_name": "name"
+  },
+  {
+    "table_name": "item_learning_history",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "item_learning_history",
+    "column_name": "catalog_item_id"
+  },
+  {
+    "table_name": "item_learning_history",
+    "column_name": "corrected_by_user"
+  },
+  {
+    "table_name": "item_learning_history",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "item_learning_history",
+    "column_name": "detected_pattern"
+  },
+  {
+    "table_name": "item_learning_history",
+    "column_name": "id"
+  },
+  {
+    "table_name": "item_learning_history",
+    "column_name": "learning_score"
+  },
+  {
+    "table_name": "item_learning_history",
+    "column_name": "selected_unit"
+  },
+  {
+    "table_name": "item_packaging_profiles",
+    "column_name": "ai_generated"
+  },
+  {
+    "table_name": "item_packaging_profiles",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "item_packaging_profiles",
+    "column_name": "catalog_item_id"
+  },
+  {
+    "table_name": "item_packaging_profiles",
+    "column_name": "confidence_score"
+  },
+  {
+    "table_name": "item_packaging_profiles",
+    "column_name": "conversion_factor"
+  },
+  {
+    "table_name": "item_packaging_profiles",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "item_packaging_profiles",
+    "column_name": "display_unit"
+  },
+  {
+    "table_name": "item_packaging_profiles",
+    "column_name": "id"
+  },
+  {
+    "table_name": "item_packaging_profiles",
+    "column_name": "package_measurement"
+  },
+  {
+    "table_name": "item_packaging_profiles",
+    "column_name": "package_size"
+  },
+  {
+    "table_name": "item_packaging_profiles",
+    "column_name": "package_type"
+  },
+  {
+    "table_name": "item_packaging_profiles",
+    "column_name": "selling_unit"
+  },
+  {
+    "table_name": "item_packaging_profiles",
+    "column_name": "stock_unit"
+  },
+  {
+    "table_name": "item_packaging_profiles",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "item_packaging_profiles",
+    "column_name": "updated_by_learning"
+  },
+  {
+    "table_name": "master_units",
+    "column_name": "active"
+  },
+  {
+    "table_name": "master_units",
+    "column_name": "category"
+  },
+  {
+    "table_name": "master_units",
+    "column_name": "conversion_supported"
+  },
+  {
+    "table_name": "master_units",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "master_units",
+    "column_name": "display_name"
+  },
+  {
+    "table_name": "master_units",
+    "column_name": "id"
+  },
+  {
+    "table_name": "master_units",
+    "column_name": "unit_code"
+  },
+  {
+    "table_name": "memberships",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "memberships",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "memberships",
+    "column_name": "id"
+  },
+  {
+    "table_name": "memberships",
+    "column_name": "permissions_json"
+  },
+  {
+    "table_name": "memberships",
+    "column_name": "role"
+  },
+  {
+    "table_name": "memberships",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "notifications",
+    "column_name": "body"
+  },
+  {
+    "table_name": "notifications",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "notifications",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "notifications",
+    "column_name": "dedupe_key"
+  },
+  {
+    "table_name": "notifications",
+    "column_name": "id"
+  },
+  {
+    "table_name": "notifications",
+    "column_name": "kind"
+  },
+  {
+    "table_name": "notifications",
+    "column_name": "payload"
+  },
+  {
+    "table_name": "notifications",
+    "column_name": "read_at"
+  },
+  {
+    "table_name": "notifications",
+    "column_name": "title"
+  },
+  {
+    "table_name": "notifications",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "ocr_correction_events",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "ocr_correction_events",
+    "column_name": "catalog_item_id"
+  },
+  {
+    "table_name": "ocr_correction_events",
+    "column_name": "corrected_to"
+  },
+  {
+    "table_name": "ocr_correction_events",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "ocr_correction_events",
+    "column_name": "field"
+  },
+  {
+    "table_name": "ocr_correction_events",
+    "column_name": "id"
+  },
+  {
+    "table_name": "ocr_correction_events",
+    "column_name": "raw_value"
+  },
+  {
+    "table_name": "ocr_correction_events",
+    "column_name": "supplier_id"
+  },
+  {
+    "table_name": "ocr_correction_events",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "ocr_item_aliases",
+    "column_name": "alias"
+  },
+  {
+    "table_name": "ocr_item_aliases",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "ocr_item_aliases",
+    "column_name": "catalog_item_id"
+  },
+  {
+    "table_name": "ocr_item_aliases",
+    "column_name": "confidence"
+  },
+  {
+    "table_name": "ocr_item_aliases",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "ocr_item_aliases",
+    "column_name": "id"
+  },
+  {
+    "table_name": "ocr_item_aliases",
+    "column_name": "normalized_alias"
+  },
+  {
+    "table_name": "ocr_item_aliases",
+    "column_name": "source"
+  },
+  {
+    "table_name": "ocr_item_aliases",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "ocr_item_aliases",
+    "column_name": "usage_count"
+  },
+  {
+    "table_name": "password_reset_tokens",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "password_reset_tokens",
+    "column_name": "expires_at"
+  },
+  {
+    "table_name": "password_reset_tokens",
+    "column_name": "id"
+  },
+  {
+    "table_name": "password_reset_tokens",
+    "column_name": "token_hash"
+  },
+  {
+    "table_name": "password_reset_tokens",
+    "column_name": "used_at"
+  },
+  {
+    "table_name": "password_reset_tokens",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "platform_integration",
+    "column_name": "dialog360_api_key"
+  },
+  {
+    "table_name": "platform_integration",
+    "column_name": "dialog360_base_url"
+  },
+  {
+    "table_name": "platform_integration",
+    "column_name": "dialog360_phone_number_id"
+  },
+  {
+    "table_name": "platform_integration",
+    "column_name": "dialog360_webhook_secret"
+  },
+  {
+    "table_name": "platform_integration",
+    "column_name": "google_ai_api_key"
+  },
+  {
+    "table_name": "platform_integration",
+    "column_name": "groq_api_key"
+  },
+  {
+    "table_name": "platform_integration",
+    "column_name": "id"
+  },
+  {
+    "table_name": "platform_integration",
+    "column_name": "openai_api_key"
+  },
+  {
+    "table_name": "platform_integration",
+    "column_name": "razorpay_key_id"
+  },
+  {
+    "table_name": "platform_integration",
+    "column_name": "razorpay_key_secret"
+  },
+  {
+    "table_name": "platform_integration",
+    "column_name": "razorpay_webhook_secret"
+  },
+  {
+    "table_name": "platform_integration",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "platform_monthly_expenses",
+    "column_name": "amount_inr_paise"
+  },
+  {
+    "table_name": "platform_monthly_expenses",
+    "column_name": "category"
+  },
+  {
+    "table_name": "platform_monthly_expenses",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "platform_monthly_expenses",
+    "column_name": "id"
+  },
+  {
+    "table_name": "platform_monthly_expenses",
+    "column_name": "label"
+  },
+  {
+    "table_name": "platform_monthly_expenses",
+    "column_name": "month"
+  },
+  {
+    "table_name": "platform_monthly_expenses",
+    "column_name": "notes"
+  },
+  {
+    "table_name": "purchase_scan_traces",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "purchase_scan_traces",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "purchase_scan_traces",
+    "column_name": "id"
+  },
+  {
+    "table_name": "purchase_scan_traces",
+    "column_name": "image_bytes_in"
+  },
+  {
+    "table_name": "purchase_scan_traces",
+    "column_name": "meta_json"
+  },
+  {
+    "table_name": "purchase_scan_traces",
+    "column_name": "model"
+  },
+  {
+    "table_name": "purchase_scan_traces",
+    "column_name": "normalized_response_json"
+  },
+  {
+    "table_name": "purchase_scan_traces",
+    "column_name": "ocr_chars"
+  },
+  {
+    "table_name": "purchase_scan_traces",
+    "column_name": "provider"
+  },
+  {
+    "table_name": "purchase_scan_traces",
+    "column_name": "raw_response_json"
+  },
+  {
+    "table_name": "purchase_scan_traces",
+    "column_name": "scan_token"
+  },
+  {
+    "table_name": "purchase_scan_traces",
+    "column_name": "stage"
+  },
+  {
+    "table_name": "purchase_scan_traces",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "purchase_scan_traces",
+    "column_name": "warnings_json"
+  },
+  {
+    "table_name": "reorder_list",
+    "column_name": "added_by"
+  },
+  {
+    "table_name": "reorder_list",
+    "column_name": "added_by_name"
+  },
+  {
+    "table_name": "reorder_list",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "reorder_list",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "reorder_list",
+    "column_name": "id"
+  },
+  {
+    "table_name": "reorder_list",
+    "column_name": "item_id"
+  },
+  {
+    "table_name": "reorder_list",
+    "column_name": "status"
+  },
+  {
+    "table_name": "reorder_list",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "smart_package_rules",
+    "column_name": "active"
+  },
+  {
+    "table_name": "smart_package_rules",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "smart_package_rules",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "smart_package_rules",
+    "column_name": "id"
+  },
+  {
+    "table_name": "smart_package_rules",
+    "column_name": "keyword_pattern"
+  },
+  {
+    "table_name": "smart_package_rules",
+    "column_name": "package_type"
+  },
+  {
+    "table_name": "smart_package_rules",
+    "column_name": "priority"
+  },
+  {
+    "table_name": "smart_unit_rules",
+    "column_name": "active"
+  },
+  {
+    "table_name": "smart_unit_rules",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "smart_unit_rules",
+    "column_name": "category"
+  },
+  {
+    "table_name": "smart_unit_rules",
+    "column_name": "confidence"
+  },
+  {
+    "table_name": "smart_unit_rules",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "smart_unit_rules",
+    "column_name": "id"
+  },
+  {
+    "table_name": "smart_unit_rules",
+    "column_name": "keyword_pattern"
+  },
+  {
+    "table_name": "smart_unit_rules",
+    "column_name": "package_type"
+  },
+  {
+    "table_name": "smart_unit_rules",
+    "column_name": "resulting_unit"
+  },
+  {
+    "table_name": "staff_activity_log",
+    "column_name": "action_type"
+  },
+  {
+    "table_name": "staff_activity_log",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "staff_activity_log",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "staff_activity_log",
+    "column_name": "details"
+  },
+  {
+    "table_name": "staff_activity_log",
+    "column_name": "id"
+  },
+  {
+    "table_name": "staff_activity_log",
+    "column_name": "item_id"
+  },
+  {
+    "table_name": "staff_activity_log",
+    "column_name": "item_name"
+  },
+  {
+    "table_name": "staff_activity_log",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "staff_activity_log",
+    "column_name": "user_name"
+  },
+  {
+    "table_name": "staff_checklist_completions",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "staff_checklist_completions",
+    "column_name": "checklist_date"
+  },
+  {
+    "table_name": "staff_checklist_completions",
+    "column_name": "completed_at"
+  },
+  {
+    "table_name": "staff_checklist_completions",
+    "column_name": "id"
+  },
+  {
+    "table_name": "staff_checklist_completions",
+    "column_name": "notes"
+  },
+  {
+    "table_name": "staff_checklist_completions",
+    "column_name": "slot"
+  },
+  {
+    "table_name": "staff_checklist_completions",
+    "column_name": "task_key"
+  },
+  {
+    "table_name": "staff_checklist_completions",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "staff_checklist_templates",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "staff_checklist_templates",
+    "column_name": "id"
+  },
+  {
+    "table_name": "staff_checklist_templates",
+    "column_name": "label"
+  },
+  {
+    "table_name": "staff_checklist_templates",
+    "column_name": "slot"
+  },
+  {
+    "table_name": "staff_checklist_templates",
+    "column_name": "sort_order"
+  },
+  {
+    "table_name": "staff_checklist_templates",
+    "column_name": "task_key"
+  },
+  {
+    "table_name": "stock_adjustment_log",
+    "column_name": "adjustment_type"
+  },
+  {
+    "table_name": "stock_adjustment_log",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "stock_adjustment_log",
+    "column_name": "id"
+  },
+  {
+    "table_name": "stock_adjustment_log",
+    "column_name": "item_id"
+  },
+  {
+    "table_name": "stock_adjustment_log",
+    "column_name": "new_qty"
+  },
+  {
+    "table_name": "stock_adjustment_log",
+    "column_name": "old_qty"
+  },
+  {
+    "table_name": "stock_adjustment_log",
+    "column_name": "reason"
+  },
+  {
+    "table_name": "stock_adjustment_log",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "stock_adjustment_log",
+    "column_name": "updated_by"
+  },
+  {
+    "table_name": "stock_adjustment_log",
+    "column_name": "updated_by_name"
+  },
+  {
+    "table_name": "stock_audit_items",
+    "column_name": "adjustment_type"
+  },
+  {
+    "table_name": "stock_audit_items",
+    "column_name": "audit_id"
+  },
+  {
+    "table_name": "stock_audit_items",
+    "column_name": "counted_qty"
+  },
+  {
+    "table_name": "stock_audit_items",
+    "column_name": "difference_qty"
+  },
+  {
+    "table_name": "stock_audit_items",
+    "column_name": "id"
+  },
+  {
+    "table_name": "stock_audit_items",
+    "column_name": "item_id"
+  },
+  {
+    "table_name": "stock_audit_items",
+    "column_name": "line_status"
+  },
+  {
+    "table_name": "stock_audit_items",
+    "column_name": "notes"
+  },
+  {
+    "table_name": "stock_audit_items",
+    "column_name": "reason"
+  },
+  {
+    "table_name": "stock_audit_items",
+    "column_name": "system_qty"
+  },
+  {
+    "table_name": "stock_audits",
+    "column_name": "audit_date"
+  },
+  {
+    "table_name": "stock_audits",
+    "column_name": "auditor_id"
+  },
+  {
+    "table_name": "stock_audits",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "stock_audits",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "stock_audits",
+    "column_name": "id"
+  },
+  {
+    "table_name": "stock_audits",
+    "column_name": "notes"
+  },
+  {
+    "table_name": "stock_audits",
+    "column_name": "status"
+  },
+  {
+    "table_name": "stock_audits",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "supplier_item_defaults",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "supplier_item_defaults",
+    "column_name": "catalog_item_id"
+  },
+  {
+    "table_name": "supplier_item_defaults",
+    "column_name": "id"
+  },
+  {
+    "table_name": "supplier_item_defaults",
+    "column_name": "last_discount"
+  },
+  {
+    "table_name": "supplier_item_defaults",
+    "column_name": "last_payment_days"
+  },
+  {
+    "table_name": "supplier_item_defaults",
+    "column_name": "last_price"
+  },
+  {
+    "table_name": "supplier_item_defaults",
+    "column_name": "purchase_count"
+  },
+  {
+    "table_name": "supplier_item_defaults",
+    "column_name": "supplier_id"
+  },
+  {
+    "table_name": "supplier_item_defaults",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "address"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "ai_memory_enabled"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "broker_id"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "default_billty_rate"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "default_delivered_rate"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "default_discount"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "default_payment_days"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "freight_type"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "gst_number"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "id"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "location"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "name"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "notes"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "phone"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "preferences_json"
+  },
+  {
+    "table_name": "suppliers",
+    "column_name": "whatsapp_number"
+  },
+  {
+    "table_name": "trade_purchase_drafts",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "trade_purchase_drafts",
+    "column_name": "id"
+  },
+  {
+    "table_name": "trade_purchase_drafts",
+    "column_name": "payload_json"
+  },
+  {
+    "table_name": "trade_purchase_drafts",
+    "column_name": "step"
+  },
+  {
+    "table_name": "trade_purchase_drafts",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "trade_purchase_drafts",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "billty_rate"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "box_mode"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "catalog_item_id"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "delivered_rate"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "description"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "discount"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "freight_type"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "freight_value"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "hsn_code"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "id"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "item_code"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "item_name"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "items_per_box"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "kg_per_box"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "kg_per_unit"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "landing_cost"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "landing_cost_per_kg"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "line_total"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "payment_days"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "profit"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "purchase_rate"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "qty"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "qty_in_stock_unit"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "selling_cost"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "selling_rate"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "tax_mode"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "tax_percent"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "total_weight"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "trade_purchase_id"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "unit"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "unit_type"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "weight_per_item"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "weight_per_tin"
+  },
+  {
+    "table_name": "trade_purchase_lines",
+    "column_name": "weight_per_unit"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "billty_rate"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "broker_id"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "commission_mode"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "commission_money"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "commission_percent"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "delivered_at"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "delivered_rate"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "delivery_notes"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "discount"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "due_date"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "freight_amount"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "freight_type"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "human_id"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "id"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "invoice_number"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "is_delivered"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "paid_amount"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "paid_at"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "payment_days"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "purchase_date"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "status"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "supplier_id"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "total_amount"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "total_landing_subtotal"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "total_line_profit"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "total_qty"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "total_selling_subtotal"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "updated_at"
+  },
+  {
+    "table_name": "trade_purchases",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "unit_confidence_logs",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "unit_confidence_logs",
+    "column_name": "catalog_item_id"
+  },
+  {
+    "table_name": "unit_confidence_logs",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "unit_confidence_logs",
+    "column_name": "id"
+  },
+  {
+    "table_name": "unit_confidence_logs",
+    "column_name": "payload_json"
+  },
+  {
+    "table_name": "unit_confidence_logs",
+    "column_name": "score"
+  },
+  {
+    "table_name": "unit_confidence_logs",
+    "column_name": "source"
+  },
+  {
+    "table_name": "user_sessions",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "user_sessions",
+    "column_name": "device_info"
+  },
+  {
+    "table_name": "user_sessions",
+    "column_name": "id"
+  },
+  {
+    "table_name": "user_sessions",
+    "column_name": "is_active"
+  },
+  {
+    "table_name": "user_sessions",
+    "column_name": "login_at"
+  },
+  {
+    "table_name": "user_sessions",
+    "column_name": "logout_at"
+  },
+  {
+    "table_name": "user_sessions",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "users",
+    "column_name": "ai_monthly_token_budget"
+  },
+  {
+    "table_name": "users",
+    "column_name": "ai_tokens_used_month"
+  },
+  {
+    "table_name": "users",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "users",
+    "column_name": "created_by"
+  },
+  {
+    "table_name": "users",
+    "column_name": "deleted_at"
+  },
+  {
+    "table_name": "users",
+    "column_name": "device_info"
+  },
+  {
+    "table_name": "users",
+    "column_name": "email"
+  },
+  {
+    "table_name": "users",
+    "column_name": "google_sub"
+  },
+  {
+    "table_name": "users",
+    "column_name": "id"
+  },
+  {
+    "table_name": "users",
+    "column_name": "is_active"
+  },
+  {
+    "table_name": "users",
+    "column_name": "is_blocked"
+  },
+  {
+    "table_name": "users",
+    "column_name": "is_super_admin"
+  },
+  {
+    "table_name": "users",
+    "column_name": "last_active_at"
+  },
+  {
+    "table_name": "users",
+    "column_name": "last_login_at"
+  },
+  {
+    "table_name": "users",
+    "column_name": "name"
+  },
+  {
+    "table_name": "users",
+    "column_name": "notes"
+  },
+  {
+    "table_name": "users",
+    "column_name": "password_hash"
+  },
+  {
+    "table_name": "users",
+    "column_name": "phone"
+  },
+  {
+    "table_name": "users",
+    "column_name": "username"
+  },
+  {
+    "table_name": "webhook_event_logs",
+    "column_name": "id"
+  },
+  {
+    "table_name": "webhook_event_logs",
+    "column_name": "payload_preview"
+  },
+  {
+    "table_name": "webhook_event_logs",
+    "column_name": "provider"
+  },
+  {
+    "table_name": "webhook_event_logs",
+    "column_name": "received_at"
+  },
+  {
+    "table_name": "whatsapp_report_schedules",
+    "column_name": "business_id"
+  },
+  {
+    "table_name": "whatsapp_report_schedules",
+    "column_name": "created_at"
+  },
+  {
+    "table_name": "whatsapp_report_schedules",
+    "column_name": "enabled"
+  },
+  {
+    "table_name": "whatsapp_report_schedules",
+    "column_name": "hour"
+  },
+  {
+    "table_name": "whatsapp_report_schedules",
+    "column_name": "id"
+  },
+  {
+    "table_name": "whatsapp_report_schedules",
+    "column_name": "last_sent_at"
+  },
+  {
+    "table_name": "whatsapp_report_schedules",
+    "column_name": "minute"
+  },
+  {
+    "table_name": "whatsapp_report_schedules",
+    "column_name": "schedule_type"
+  },
+  {
+    "table_name": "whatsapp_report_schedules",
+    "column_name": "timezone"
+  },
+  {
+    "table_name": "whatsapp_report_schedules",
+    "column_name": "to_e164"
+  },
+  {
+    "table_name": "whatsapp_report_schedules",
+    "column_name": "updated_at"
+  }
+]

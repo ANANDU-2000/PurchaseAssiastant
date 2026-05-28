@@ -10,7 +10,9 @@ import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/providers/stock_providers.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
+import '../../../core/unit_engine/stock_tracking_profile.dart';
 import '../../../shared/widgets/inline_search_field.dart';
+import '../../../shared/widgets/packaging_type_selector.dart';
 
 /// Full-screen quick catalog item create from Home (subcategory-first, optional broker, save loop).
 class QuickAddCatalogItemPage extends ConsumerStatefulWidget {
@@ -38,8 +40,43 @@ class _QuickAddCatalogItemPageState extends ConsumerState<QuickAddCatalogItemPag
   String? _supplierId;
   String? _brokerId;
   String _unit = 'kg';
+  String _packagingMode = StockTrackingMode.retailPacket;
   bool _saving = false;
   String? _error;
+
+  String _packageTypeForMode(String mode) {
+    switch (mode) {
+      case StockTrackingMode.wholesaleBag:
+        return 'SACK';
+      case StockTrackingMode.looseKg:
+        return 'LOOSE';
+      case StockTrackingMode.box:
+        return 'BOX';
+      case StockTrackingMode.tin:
+        return 'TIN';
+      case StockTrackingMode.piece:
+        return 'PIECE';
+      case StockTrackingMode.retailPacket:
+      default:
+        return 'RETAIL_PACKET';
+    }
+  }
+
+  String _modeForUnit(String unit) {
+    switch (unit) {
+      case 'bag':
+        return StockTrackingMode.wholesaleBag;
+      case 'kg':
+        return StockTrackingMode.looseKg;
+      case 'box':
+        return StockTrackingMode.box;
+      case 'tin':
+        return StockTrackingMode.tin;
+      case 'piece':
+      default:
+        return StockTrackingMode.retailPacket;
+    }
+  }
 
   @override
   void initState() {
@@ -270,6 +307,7 @@ class _QuickAddCatalogItemPageState extends ConsumerState<QuickAddCatalogItemPag
                 : null,
             defaultLandingCost: purchaseRate,
             defaultSellingCost: sellingRate,
+            packageType: _packageTypeForMode(_packagingMode),
           );
       ref.invalidate(catalogItemsListProvider);
       ref.invalidate(categoryTypesIndexProvider);
@@ -537,6 +575,16 @@ class _QuickAddCatalogItemPageState extends ConsumerState<QuickAddCatalogItemPag
                   textCapitalization: TextCapitalization.characters,
                 ),
                 const SizedBox(height: 12),
+                PackagingTypeSelector(
+                  selectedMode: _packagingMode,
+                  onModeChanged: (m) => setState(() {
+                    _packagingMode = m;
+                    _unit = StockTrackingMode.catalogUnitForMode(m);
+                    _kgCtrl.clear();
+                  }),
+                  weightController: _kgCtrl,
+                ),
+                const SizedBox(height: 12),
                 Row(
                   children: [
                     const Text('Unit: '),
@@ -549,6 +597,7 @@ class _QuickAddCatalogItemPageState extends ConsumerState<QuickAddCatalogItemPag
                           selected: _unit == u,
                           onSelected: (_) => setState(() {
                             _unit = u;
+                            _packagingMode = _modeForUnit(u);
                             _kgCtrl.clear();
                           }),
                         ),

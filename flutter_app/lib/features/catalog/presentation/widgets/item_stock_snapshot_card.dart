@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
+import '../../../../core/auth/dashboard_role.dart';
+import '../../../../core/auth/session_notifier.dart';
 import '../../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../../core/json_coerce.dart';
+import '../../../../core/providers/item_detail_providers.dart';
 import '../../../../core/providers/stock_providers.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/utils/unit_utils.dart';
@@ -19,6 +21,8 @@ class ItemStockSnapshotCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(sessionProvider);
+    final isOwner = session != null && sessionHasOwnerDashboard(session);
     final stock = ref.watch(stockItemDetailProvider(itemId)).valueOrNull ?? const <String, dynamic>{};
     final intel = ref.watch(stockItemIntelligenceProvider(itemId)).valueOrNull ?? const <String, dynamic>{};
     if (stock.isEmpty && intel.isEmpty) {
@@ -119,7 +123,12 @@ class ItemStockSnapshotCard extends ConsumerWidget {
                       ),
                     ),
                     TextButton(
-                      onPressed: () => context.push('/stock/opening-setup'),
+                      onPressed: () => _showOpeningStockSheet(
+                        context,
+                        ref,
+                        itemId,
+                        systemQty,
+                      ),
                       child: const Text('Set opening stock'),
                     ),
                   ],
@@ -150,6 +159,34 @@ class ItemStockSnapshotCard extends ConsumerWidget {
               ),
             ],
             const SizedBox(height: 10),
+            if (isOwner)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () async {
+                    try {
+                      await ref.read(hexaApiProvider).recomputeItemStock(
+                            businessId: session.primaryBusiness.id,
+                            itemId: itemId,
+                          );
+                      ref.invalidate(stockItemDetailProvider(itemId));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('System stock recomputed')),
+                        );
+                      }
+                    } catch (_) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Could not recompute stock')),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text('Recompute'),
+                ),
+              ),
+            if (isOwner) const SizedBox(height: 6),
             _row(
               leftLabel: 'System stock',
               leftValue: _qty(systemQty),
@@ -166,6 +203,49 @@ class ItemStockSnapshotCard extends ConsumerWidget {
               rightLabel: 'Purchased (period)',
               rightValue: _qty(purchasedQty),
               unitLabel: unitLabel,
+            ),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.warning_amber_outlined,
+                    size: 16,
+                    color: Color(0xFFE65100),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Reorder level:',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: reorder > 0.0001
+                        ? Text(
+                            '${_qty(reorder)} $unitLabel',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          )
+                        : Text(
+                            'Not set',
+                            style: TextStyle(
+                              color: Colors.grey.shade700,
+                              fontSize: 13,
+                            ),
+                          ),
+                  ),
+                  TextButton(
+                    onPressed: () => _showReorderSheet(context, ref, itemId, reorder),
+                    child: Text(reorder > 0.0001 ? 'Edit' : 'Set'),
+                  ),
+                ],
+              ),
             ),
             if (pendingDeliveryQty > 0.001) ...[
               const SizedBox(height: 8),
@@ -330,6 +410,214 @@ class ItemStockSnapshotCard extends ConsumerWidget {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
+  }
+
+  static void _showOpeningStockSheet(
+    BuildContext context,
+    WidgetRef ref,
+    String itemId,
+    double current,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) => _OpeningStockSheet(itemId: itemId, currentStock: current),
+    );
+  }
+
+  static void _showReorderSheet(
+    BuildContext context,
+    WidgetRef ref,
+    String itemId,
+    double current,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) => _ReorderLevelSheet(itemId: itemId, current: current),
+    );
+  }
+}
+
+class _OpeningStockSheet extends ConsumerStatefulWidget {
+  const _OpeningStockSheet({required this.itemId, required this.currentStock});
+
+  final String itemId;
+  final double currentStock;
+
+  @override
+  ConsumerState<_OpeningStockSheet> createState() => _OpeningStockSheetState();
+}
+
+class _OpeningStockSheetState extends ConsumerState<_OpeningStockSheet> {
+  final _ctrl = TextEditingController();
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.currentStock > 0) {
+      _ctrl.text = widget.currentStock.toStringAsFixed(0);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ctrl.selection = TextSelection(baseOffset: 0, extentOffset: _ctrl.text.length);
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final val = double.tryParse(_ctrl.text.trim());
+    if (val == null || val < 0) return;
+    setState(() => _saving = true);
+    try {
+      await ref.read(hexaApiProvider).setOpeningStock(
+            businessId: session.primaryBusiness.id,
+            itemId: widget.itemId,
+            qty: val,
+          );
+      ref.invalidate(stockItemDetailProvider(widget.itemId));
+      ref.invalidate(itemDetailBundleProvider(widget.itemId));
+      if (mounted) Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        8,
+        16,
+        MediaQuery.viewInsetsOf(context).bottom + 16,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Set Opening Stock',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _ctrl,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Opening quantity',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _save(),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: _saving ? null : _save,
+            child: const Text('SET OPENING STOCK'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReorderLevelSheet extends ConsumerStatefulWidget {
+  const _ReorderLevelSheet({required this.itemId, required this.current});
+
+  final String itemId;
+  final double current;
+
+  @override
+  ConsumerState<_ReorderLevelSheet> createState() => _ReorderLevelSheetState();
+}
+
+class _ReorderLevelSheetState extends ConsumerState<_ReorderLevelSheet> {
+  final _ctrl = TextEditingController();
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.current > 0) {
+      _ctrl.text = widget.current.toStringAsFixed(0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final val = double.tryParse(_ctrl.text.trim());
+    if (val == null || val < 0) return;
+    setState(() => _saving = true);
+    try {
+      await ref.read(hexaApiProvider).updateCatalogItem(
+            businessId: session.primaryBusiness.id,
+            itemId: widget.itemId,
+            patchReorderLevel: true,
+            reorderLevel: val,
+          );
+      ref.invalidate(stockItemDetailProvider(widget.itemId));
+      ref.invalidate(itemDetailBundleProvider(widget.itemId));
+      if (mounted) Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        8,
+        16,
+        MediaQuery.viewInsetsOf(context).bottom + 16,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Set Reorder Level',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _ctrl,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Reorder quantity',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _save(),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: _saving ? null : _save,
+            child: const Text('SAVE REORDER LEVEL'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

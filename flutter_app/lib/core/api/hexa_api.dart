@@ -1474,6 +1474,22 @@ class HexaApi {
     return res.data ?? {};
   }
 
+  Future<Map<String, dynamic>> verifyPurchaseDelivery({
+    required String businessId,
+    required String purchaseId,
+    required List<Map<String, dynamic>> lines,
+    String? notes,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/trade-purchases/$purchaseId/verify',
+      data: {
+        'lines': lines,
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      },
+    );
+    return res.data ?? {};
+  }
+
   /// Trade purchase line aggregates (replaces legacy Entry-based `/analytics/items`).
   Future<List<Map<String, dynamic>>> tradeReportItems({
     required String businessId,
@@ -2082,6 +2098,7 @@ class HexaApi {
     double? taxPercent,
     double? defaultLandingCost,
     double? defaultSellingCost,
+    String? packageType,
     List<String> defaultBrokerIds = const [],
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
@@ -2112,6 +2129,8 @@ class HexaApi {
           'default_landing_cost': defaultLandingCost,
         if (defaultSellingCost != null)
           'default_selling_cost': defaultSellingCost,
+        if (packageType != null && packageType.trim().isNotEmpty)
+          'package_type': packageType.trim(),
       },
     );
     return res.data ?? {};
@@ -3387,6 +3406,26 @@ class HexaApi {
   }) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/stock/warehouse/alerts-summary',
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> recomputeItemStock({
+    required String businessId,
+    required String itemId,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/stock/items/$itemId/recompute',
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> getItemPurchaseIntelligence({
+    required String businessId,
+    required String itemId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/stock/items/$itemId/purchase-intelligence',
     );
     return res.data ?? {};
   }

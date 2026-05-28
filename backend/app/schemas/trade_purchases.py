@@ -339,6 +339,18 @@ class TradePurchaseDeliveryPatch(DecimalModel):
     delivery_notes: str | None = Field(None, max_length=2000)
 
 
+class TradePurchaseVerificationLineIn(DecimalModel):
+    line_id: uuid.UUID
+    received_qty: Decimal = Field(..., ge=0)
+    damaged_qty: Decimal = Field(Decimal("0"), ge=0)
+    return_qty: Decimal = Field(Decimal("0"), ge=0)
+
+
+class TradePurchaseVerifyIn(DecimalModel):
+    lines: list[TradePurchaseVerificationLineIn] = Field(default_factory=list)
+    notes: str | None = Field(None, max_length=2000)
+
+
 class TradePurchaseUpdateRequest(TradePurchaseCreateRequest):
     """Full replace of header + lines (wizard edit)."""
 

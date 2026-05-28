@@ -26,6 +26,7 @@ from app.schemas.trade_purchases import (
     TradePurchaseOut,
     TradePurchaseDeliveryPatch,
     TradePurchasePaymentPatch,
+    TradePurchaseVerifyIn,
     TradePurchasePreviewOut,
     TradePurchaseUpdateRequest,
     TradePurchaseValidateOut,
@@ -299,6 +300,30 @@ async def patch_trade_purchase_delivery(
 ):
     del user
     out = await tps.patch_trade_purchase_delivery(db, business_id, purchase_id, body)
+    if not out:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found")
+    return _purchase_detail_response(_m.role, out)
+
+
+@router.post("/{purchase_id}/verify", response_model=TradePurchaseOut)
+async def verify_trade_purchase_delivery(
+    business_id: uuid.UUID,
+    purchase_id: uuid.UUID,
+    body: TradePurchaseVerifyIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_permission("stock_edit"))],
+):
+    try:
+        out = await tps.verify_trade_purchase_delivery(
+            db,
+            business_id,
+            purchase_id,
+            user,
+            body,
+        )
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     if not out:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found")
     return _purchase_detail_response(_m.role, out)

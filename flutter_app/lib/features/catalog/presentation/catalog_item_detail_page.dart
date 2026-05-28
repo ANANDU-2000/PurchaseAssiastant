@@ -47,9 +47,14 @@ import '../../stock/presentation/update_stock_sheet.dart';
 import '../../stock/presentation/widgets/stock_today_feed.dart';
 
 class CatalogItemDetailPage extends ConsumerStatefulWidget {
-  const CatalogItemDetailPage({super.key, required this.itemId});
+  const CatalogItemDetailPage({
+    super.key,
+    required this.itemId,
+    this.startInEditMode = false,
+  });
 
   final String itemId;
+  final bool startInEditMode;
 
   @override
   ConsumerState<CatalogItemDetailPage> createState() =>
@@ -449,6 +454,7 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
   @override
   void initState() {
     super.initState();
+    _inlineEditing = widget.startInEditMode;
     _histSearchCtrl.addListener(() => setState(() {}));
   }
 
@@ -604,6 +610,9 @@ class _CatalogItemDetailPageState extends ConsumerState<CatalogItemDetailPage> {
               ref.invalidate(catalogItemDetailProvider(widget.itemId)),
         ),
         data: (item) {
+          if (_inlineEditing && _inlineNameCtrl.text.trim().isEmpty) {
+            _inlineNameCtrl.text = item['name']?.toString() ?? '';
+          }
           final fromScan =
               GoRouterState.of(context).uri.queryParameters['source'] == 'scan';
           final session = ref.watch(sessionProvider);

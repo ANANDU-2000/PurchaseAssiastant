@@ -75,6 +75,12 @@ bool notificationMatchesCategoryFilter(
 
 NotificationCategoryFilter notificationCategoryForItem(NotificationItem n) {
   final kind = n.serverKind ?? '';
+  if (n.id.startsWith('wh_')) {
+    if (n.priority == 'critical' || n.priority == 'high') {
+      return NotificationCategoryFilter.critical;
+    }
+    return NotificationCategoryFilter.warehouse;
+  }
   if (kind == 'stock_variance' ||
       kind == 'stock_mismatch' ||
       kind == 'export_failed' ||
@@ -103,8 +109,7 @@ NotificationCategoryFilter notificationCategoryForItem(NotificationItem n) {
       kind == 'supplier_delayed' ||
       kind == 'missing_barcode' ||
       kind == 'missing_code' ||
-      kind == 'opening_stock_pending' ||
-      n.id.startsWith('wh_')) {
+      kind == 'opening_stock_pending') {
     return NotificationCategoryFilter.warehouse;
   }
   if (n.type == NotificationType.system ||
@@ -309,7 +314,31 @@ final mergedNotificationFeedProvider =
     ...tradeAlerts,
     ...manual,
   ]) {
-    byId[n.id] = n;
+    final prev = byId[n.id];
+    if (prev == null) {
+      byId[n.id] = n;
+      continue;
+    }
+    // Keep the newest row to avoid stale/duplicate merge artifacts across
+    // server + warehouse + local sources; preserve unread state if either is unread.
+    final pick = n.createdAt.isAfter(prev.createdAt) ? n : prev;
+    if (pick.isRead && (!n.isRead || !prev.isRead)) {
+      byId[n.id] = NotificationItem(
+        id: pick.id,
+        type: pick.type,
+        title: pick.title,
+        subtitle: pick.subtitle,
+        createdAt: pick.createdAt,
+        isRead: false,
+        actionRoute: pick.actionRoute,
+        serverNotificationId: pick.serverNotificationId,
+        serverKind: pick.serverKind,
+        priority: pick.priority,
+        category: pick.category,
+      );
+    } else {
+      byId[n.id] = pick;
+    }
   }
   final list = byId.values.toList()
     ..sort((a, b) => b.createdAt.compareTo(a.createdAt));

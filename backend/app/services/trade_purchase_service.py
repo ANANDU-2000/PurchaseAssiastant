@@ -27,6 +27,7 @@ from app.schemas.trade_purchases import (
     StockUpdateOut,
     TradePurchaseOut,
     TradePurchaseDeliveryPatch,
+    TradePurchaseVerifyIn,
     TradePurchasePaymentPatch,
     TradePurchaseUpdateRequest,
 )
@@ -1242,6 +1243,75 @@ async def patch_trade_purchase_delivery(
         .options(*_trade_purchase_load_opts())
     )
     return trade_purchase_to_out(res2.scalar_one(), stock_updates=stock_updates)
+
+
+async def verify_trade_purchase_delivery(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    purchase_id: uuid.UUID,
+    user: User,
+    body: TradePurchaseVerifyIn,
+) -> TradePurchaseOut | None:
+    res = await db.execute(
+        select(TradePurchase)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.id == purchase_id,
+        )
+        .options(*_trade_purchase_load_opts())
+    )
+    tp = res.scalar_one_or_none()
+    if not tp:
+        return None
+    if not bool(getattr(tp, "is_delivered", False)):
+        raise ValueError("Delivery must be marked received before verification")
+
+    by_id = {str(line.id): line for line in tp.lines}
+    total_received = Decimal("0")
+    total_damaged = Decimal("0")
+    total_return = Decimal("0")
+    for line in body.lines:
+        row = by_id.get(str(line.line_id))
+        if row is None:
+            continue
+        total_received += _dec(line.received_qty)
+        total_damaged += _dec(line.damaged_qty)
+        total_return += _dec(line.return_qty)
+
+    vnote = (
+        f"Verified by {user.name or user.username or user.email}"
+        f" | received={total_received} damaged={total_damaged} return={total_return}"
+    )
+    if body.notes and body.notes.strip():
+        vnote = f"{vnote} | notes={body.notes.strip()}"
+    existing = (tp.delivery_notes or "").strip()
+    tp.delivery_notes = f"{existing}\n{vnote}".strip() if existing else vnote
+    tp.updated_at = utcnow()
+    await db.commit()
+    bump_trade_read_caches_for_business(business_id)
+    try:
+        from app.services.notification_emitter import (
+            CATEGORY_PURCHASE,
+            PRIORITY_INFO,
+            emit_notification,
+        )
+
+        await emit_notification(
+            db,
+            business_id=business_id,
+            kind="delivery_verified",
+            title=f"Verified: {tp.human_id}",
+            body=f"{user.name or user.username or user.email} verified warehouse receipt",
+            priority=PRIORITY_INFO,
+            category=CATEGORY_PURCHASE,
+            dedupe_key=f"delivery_verified:{purchase_id}:{int(datetime.now(timezone.utc).timestamp())}",
+            action_route=f"/purchase/detail/{purchase_id}",
+            related_purchase_id=purchase_id,
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+    return await get_trade_purchase(db, business_id, purchase_id)
 
 
 async def mark_trade_purchase_paid(

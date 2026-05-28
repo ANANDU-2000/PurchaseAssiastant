@@ -235,7 +235,7 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
     }
     final byCount = optionCount * 56.0 + 48;
     final v = math.max(120.0, math.min(usable * 0.42, byCount));
-    return math.min(240.0, v);
+    return math.min(200.0, v);
   }
 
   @override
@@ -369,17 +369,19 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
                             ),
                           ),
                           Expanded(
-                            child: ListView.separated(
-                              shrinkWrap: false,
-                              padding: EdgeInsets.zero,
-                              physics: const ClampingScrollPhysics(),
-                              itemCount: opts.length,
-                              separatorBuilder: (_, __) => Divider(
-                                height: 1,
-                                thickness: 1,
-                                color: Colors.grey[200],
-                              ),
-                              itemBuilder: (BuildContext ctx, int i) {
+                            child: Scrollbar(
+                              thumbVisibility: true,
+                              child: ListView.separated(
+                                shrinkWrap: false,
+                                padding: EdgeInsets.zero,
+                                physics: const ClampingScrollPhysics(),
+                                itemCount: opts.length,
+                                separatorBuilder: (_, __) => Divider(
+                                  height: 1,
+                                  thickness: 1,
+                                  color: Colors.grey[200],
+                                ),
+                                itemBuilder: (BuildContext ctx, int i) {
                                 final it = opts[i];
                                 void commit() {
                                   _pendingSelection = null;
@@ -444,7 +446,8 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
                                     ),
                                   ),
                                 );
-                              },
+                                },
+                              ),
                             ),
                           ),
                         ],

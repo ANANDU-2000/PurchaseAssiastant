@@ -134,6 +134,23 @@ def _dedupe_preserve_order(ids: list[uuid.UUID]) -> list[uuid.UUID]:
     return out
 
 
+def _normalize_package_type(v: str | None) -> str | None:
+    if not v:
+        return None
+    m = v.strip().upper()
+    alias = {
+        "RETAIL_PACKET": "RETAIL_PACKET",
+        "WHOLESALE_BAG": "SACK",
+        "SACK": "SACK",
+        "LOOSE_KG": "LOOSE",
+        "LOOSE": "LOOSE",
+        "BOX": "BOX",
+        "TIN": "TIN",
+        "PIECE": "PIECE",
+    }
+    return alias.get(m, m)
+
+
 class CatalogItemCreate(BaseModel):
     category_id: uuid.UUID
     type_id: uuid.UUID | None = None
@@ -152,6 +169,7 @@ class CatalogItemCreate(BaseModel):
     default_selling_cost: float | None = Field(default=None, ge=0)
     default_supplier_ids: list[uuid.UUID] = Field(min_length=1)
     default_broker_ids: list[uuid.UUID] | None = None
+    package_type: str | None = Field(default=None, max_length=32)
 
     @field_validator("name", mode="before")
     @classmethod
@@ -202,6 +220,7 @@ class CatalogBatchItemIn(BaseModel):
     default_items_per_box: float | None = Field(default=None, gt=0)
     default_weight_per_tin: float | None = Field(default=None, gt=0)
     default_supplier_ids: list[uuid.UUID] = Field(min_length=1)
+    package_type: str | None = Field(default=None, max_length=32)
 
     @field_validator("name", mode="before")
     @classmethod
@@ -1969,6 +1988,9 @@ async def create_catalog_item(
         default_landing_cost=body.default_landing_cost,
         default_selling_cost=body.default_selling_cost,
     )
+    normalized_pt = _normalize_package_type(body.package_type)
+    if normalized_pt:
+        i.package_type = normalized_pt
     if u == "piece" and dkg:
         from decimal import Decimal as _Dec
 
@@ -2103,6 +2125,9 @@ async def batch_create_catalog_items(
             default_landing_cost=None,
             default_selling_cost=None,
         )
+        normalized_pt = _normalize_package_type(line.package_type)
+        if normalized_pt:
+            i.package_type = normalized_pt
         db.add(i)
         await db.flush()
         crn0 = await db.execute(

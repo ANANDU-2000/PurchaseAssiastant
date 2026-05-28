@@ -11,6 +11,8 @@ import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/widgets/hexa_error_card.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/router/navigation_ext.dart';
+import '../../../core/unit_engine/stock_tracking_profile.dart';
+import '../../../shared/widgets/packaging_type_selector.dart';
 
 class _BatchLine {
   _BatchLine()
@@ -23,6 +25,7 @@ class _BatchLine {
   String? categoryId;
   String? typeId;
   String unit = 'kg';
+  String packagingMode = StockTrackingMode.retailPacket;
   final TextEditingController kgPerBag;
   final TextEditingController itemsPerBox;
   final TextEditingController weightPerTin;
@@ -49,6 +52,40 @@ class BatchItemCreatePage extends ConsumerStatefulWidget {
 class _BatchItemCreatePageState extends ConsumerState<BatchItemCreatePage> {
   final _lines = <_BatchLine>[_BatchLine()];
   bool _saving = false;
+
+  String _packageTypeForMode(String mode) {
+    switch (mode) {
+      case StockTrackingMode.wholesaleBag:
+        return 'SACK';
+      case StockTrackingMode.looseKg:
+        return 'LOOSE';
+      case StockTrackingMode.box:
+        return 'BOX';
+      case StockTrackingMode.tin:
+        return 'TIN';
+      case StockTrackingMode.piece:
+        return 'PIECE';
+      case StockTrackingMode.retailPacket:
+      default:
+        return 'RETAIL_PACKET';
+    }
+  }
+
+  String _modeForUnit(String unit) {
+    switch (unit) {
+      case 'bag':
+        return StockTrackingMode.wholesaleBag;
+      case 'kg':
+        return StockTrackingMode.looseKg;
+      case 'box':
+        return StockTrackingMode.box;
+      case 'tin':
+        return StockTrackingMode.tin;
+      case 'piece':
+      default:
+        return StockTrackingMode.retailPacket;
+    }
+  }
 
   @override
   void dispose() {
@@ -119,6 +156,7 @@ class _BatchItemCreatePageState extends ConsumerState<BatchItemCreatePage> {
         'name': name,
         'type_id': l.typeId,
         'default_unit': u,
+        'package_type': _packageTypeForMode(l.packagingMode),
         if (u == 'bag') 'default_kg_per_bag': kg,
         if (u == 'box') 'default_items_per_box': ipb,
         if (u == 'tin') 'default_weight_per_tin': wpt,
@@ -340,6 +378,18 @@ class _BatchItemCreatePageState extends ConsumerState<BatchItemCreatePage> {
                       ),
                     ),
                     const SizedBox(height: 8),
+                    PackagingTypeSelector(
+                      selectedMode: line.packagingMode,
+                      onModeChanged: (m) => setState(() {
+                        line.packagingMode = m;
+                        line.unit = StockTrackingMode.catalogUnitForMode(m);
+                        line.kgPerBag.clear();
+                        line.itemsPerBox.clear();
+                        line.weightPerTin.clear();
+                      }),
+                      weightController: line.kgPerBag,
+                    ),
+                    const SizedBox(height: 8),
                     Wrap(
                       spacing: 6,
                       runSpacing: 6,
@@ -350,6 +400,7 @@ class _BatchItemCreatePageState extends ConsumerState<BatchItemCreatePage> {
                             selected: line.unit == u,
                             onSelected: (_) => setState(() {
                               line.unit = u;
+                              line.packagingMode = _modeForUnit(u);
                               line.kgPerBag.clear();
                               line.itemsPerBox.clear();
                               line.weightPerTin.clear();

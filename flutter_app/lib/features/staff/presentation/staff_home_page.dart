@@ -9,6 +9,7 @@ import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../core/providers/app_period_provider.dart';
 import '../../../core/providers/notifications_provider.dart';
+import '../../../core/providers/operations_providers.dart';
 import '../../../core/providers/staff_home_providers.dart';
 import '../../../core/providers/stock_providers.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
@@ -186,6 +187,15 @@ class StaffHomePage extends ConsumerWidget {
     final openingCount = ref.watch(staffOpeningStockCountProvider);
     final mismatchAsync = ref.watch(staffStockMismatchCountProvider);
     final mismatchCount = mismatchAsync.valueOrNull ?? 0;
+    final checklist = ref.watch(checklistTodayProvider).valueOrNull ?? const <String, dynamic>{};
+    final checklistTasks = [
+      for (final e in (checklist['tasks'] as List? ?? const []))
+        if (e is Map) Map<String, dynamic>.from(e),
+    ];
+    final myTasks = [
+      for (final t in checklistTasks)
+        if (t['completed'] != true) t,
+    ];
 
     final showAttention = (staffHomeShowsPurchaseTools(focus) &&
             pendingDeliveries > 0) ||
@@ -333,6 +343,36 @@ class StaffHomePage extends ConsumerWidget {
                     accent: const Color(0xFFA32D2D),
                     onTap: () => context.go('/reports'),
                   ),
+              ],
+              if (myTasks.isNotEmpty) ...[
+                const SizedBox(height: HexaOp.sectionGap),
+                const StaffHomeSectionHeader(
+                  title: 'My Tasks',
+                  subtitle: 'Assigned checklist items',
+                ),
+                ...myTasks.take(3).map((task) {
+                  final slot = task['slot']?.toString() ?? 'morning';
+                  final key = task['task_key']?.toString() ?? '';
+                  final label = task['label']?.toString() ?? 'Task';
+                  return ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+                    leading: Checkbox(
+                      value: false,
+                      onChanged: (_) async {
+                        final session = ref.read(sessionProvider);
+                        if (session == null || key.isEmpty) return;
+                        await ref.read(hexaApiProvider).completeChecklistTask(
+                              businessId: session.primaryBusiness.id,
+                              slot: slot,
+                              taskKey: key,
+                            );
+                        ref.invalidate(checklistTodayProvider);
+                      },
+                    ),
+                    title: Text(label),
+                  );
+                }),
               ],
               const SizedBox(height: HexaOp.sectionGap),
               const StaffHomeSectionHeader(

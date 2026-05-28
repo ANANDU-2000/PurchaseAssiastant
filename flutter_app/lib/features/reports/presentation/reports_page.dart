@@ -346,7 +346,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
       final qf = _debouncedQuery.trim().toLowerCase();
       final buf = StringBuffer();
       buf.writeln(
-        '# Purchase Assistant — Reports — ${_biTab.queryValue} — '
+        '# Harisree Warehouse — Reports — ${_biTab.queryValue} — '
         '${df.format(range.from)} to ${df.format(range.to)}',
       );
 

@@ -544,7 +544,7 @@ class LocalNotificationsService {
   static const _lowStockDigestId = 93012;
 
   /// Staff EOD usage, checklist, and owner low-stock digest (local only).
-  Future<void> scheduleStockEaseReminders({required bool enabled}) async {
+  Future<void> scheduleHarisreeReminders({required bool enabled}) async {
     if (kIsWeb || !_inited) return;
     if (!enabled) {
       await _p.cancel(id: _usageReminderId);

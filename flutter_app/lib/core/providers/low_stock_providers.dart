@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/session_notifier.dart';
@@ -85,14 +86,25 @@ final lowStockOperationsSummaryProvider =
   final bid = session.primaryBusiness.id;
   final periods = _periodStrings(ref);
 
-  return api.getLowStockSummary(
-    businessId: bid,
-    q: query.q,
-    category: query.category,
-    subcategory: query.subcategory,
-    periodStart: periods.periodStart,
-    periodEnd: periods.periodEnd,
-  );
+  try {
+    final result = await api.getLowStockSummary(
+      businessId: bid,
+      q: query.q,
+      category: query.category,
+      subcategory: query.subcategory,
+      periodStart: periods.periodStart,
+      periodEnd: periods.periodEnd,
+    );
+    if (kDebugMode) {
+      debugPrint('[LowStock] Summary response: $result');
+    }
+    return result;
+  } catch (e) {
+    if (kDebugMode) {
+      debugPrint('[LowStock] Summary error: $e');
+    }
+    rethrow;
+  }
 });
 
 /// Low-stock operations list items (priority-sorted v1).

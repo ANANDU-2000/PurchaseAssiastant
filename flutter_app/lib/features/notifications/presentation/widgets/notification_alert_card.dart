@@ -64,6 +64,7 @@ class NotificationAlertCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final pri = _priorityColor(context);
     final needsApproval = item.serverKind == 'approval_required';
+    final title = item.title.trim().isEmpty ? 'Warehouse alert' : item.title;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -95,7 +96,7 @@ class NotificationAlertCard extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                item.title,
+                                title,
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w800,
                                   fontSize: 14,

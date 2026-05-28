@@ -161,7 +161,7 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
 
       if (!kIsWeb) {
         await LocalNotificationsService.instance
-            .scheduleStockEaseReminders(enabled: notifOptIn);
+            .scheduleHarisreeReminders(enabled: notifOptIn);
       }
 
       final container = ProviderContainer(

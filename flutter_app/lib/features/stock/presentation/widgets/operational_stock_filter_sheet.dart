@@ -6,6 +6,7 @@ import '../../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../../core/providers/catalog_providers.dart';
 import '../../../../core/providers/stock_providers.dart';
 import '../../../../core/providers/suppliers_list_provider.dart';
+import '../../../../shared/widgets/inline_search_field.dart';
 import '../../../../shared/widgets/search_picker_sheet.dart';
 import 'stock_bulk_actions_sheet.dart';
 
@@ -212,16 +213,19 @@ class _OperationalFilterBodyState
     final typesAsync = ref.watch(categoryTypesIndexProvider);
 
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    return ListView(
-      controller: widget.scrollController,
-      padding: EdgeInsets.fromLTRB(
-        HexaOp.pageGutter,
-        12,
-        HexaOp.pageGutter,
-        24 + bottomInset + widget.bottomNavInset,
-      ),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      children: [
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: ListView(
+        controller: widget.scrollController,
+        padding: EdgeInsets.fromLTRB(
+          HexaOp.pageGutter,
+          12,
+          HexaOp.pageGutter,
+          24 + bottomInset + widget.bottomNavInset,
+        ),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        children: [
         Text(
           'Filters',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -345,35 +349,24 @@ class _OperationalFilterBodyState
           ),
           data: (types) {
             final options = _subcategoryOptions(types);
-            return Autocomplete<String>(
-              initialValue: TextEditingValue(text: _subcatField.text),
-              optionsBuilder: (text) {
-                final q = text.text.trim().toLowerCase();
-                if (q.isEmpty) return options.take(12);
-                return options.where((o) => o.toLowerCase().contains(q));
-              },
-              onSelected: (v) {
-                _subcatField.text = v;
-                setState(() {});
-              },
-              fieldViewBuilder: (ctx, controller, focusNode, onSubmitted) {
-                if (controller.text != _subcatField.text) {
-                  controller.text = _subcatField.text;
-                }
-                controller.addListener(() {
-                  _subcatField.text = controller.text;
-                });
-                return TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  decoration: const InputDecoration(
-                    labelText: 'Subcategory',
-                    hintText: 'Type to search types…',
-                    border: OutlineInputBorder(),
-                    isDense: true,
+            final items = options
+                .map(
+                  (label) => InlineSearchItem(
+                    id: label,
+                    label: label,
+                    subtitle: _category.isEmpty ? null : _category,
+                    searchText: '$label $_category',
                   ),
-                  onSubmitted: (_) => onSubmitted(),
-                );
+                )
+                .toList();
+            return InlineSearchField(
+              items: items,
+              controller: _subcatField,
+              placeholder: 'All subcategories',
+              textInputAction: TextInputAction.next,
+              onSelected: (item) {
+                _subcatField.text = item.label;
+                setState(() {});
               },
             );
           },
@@ -501,7 +494,8 @@ class _OperationalFilterBodyState
             label: const Text('Barcode bulk print'),
           ),
         ],
-      ],
+        ],
+      ),
     );
   }
 }

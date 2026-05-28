@@ -806,6 +806,156 @@ async def stock_inventory_summary(
     return InventorySummaryOut(**payload)
 
 
+@router.post("/items/{item_id}/recompute")
+async def recompute_item_stock(
+    business_id: uuid.UUID,
+    item_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+    _m: Annotated[Membership, Depends(require_permission("stock_edit"))],
+):
+    """Recompute item stock from delivered purchases + non-purchase movement deltas."""
+    del _m
+    item_r = await db.execute(
+        select(CatalogItem).where(
+            CatalogItem.id == item_id,
+            CatalogItem.business_id == business_id,
+            CatalogItem.deleted_at.is_(None),
+        )
+    )
+    item = item_r.scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
+
+    delivered_r = await db.execute(
+        select(TradePurchaseLine, CatalogItem)
+        .join(TradePurchase, TradePurchaseLine.trade_purchase_id == TradePurchase.id)
+        .join(CatalogItem, TradePurchaseLine.catalog_item_id == CatalogItem.id)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.status.notin_(("cancelled", "deleted")),
+            TradePurchase.is_delivered.is_(True),
+            TradePurchaseLine.catalog_item_id == item_id,
+            CatalogItem.business_id == business_id,
+            CatalogItem.deleted_at.is_(None),
+        )
+    )
+    delivered_total = Decimal("0")
+    for line, line_item in delivered_r.all():
+        delivered_total += line_qty_in_stock_unit(line, line_item)
+
+    non_purchase_delta_r = await db.execute(
+        select(func.coalesce(func.sum(StockMovement.delta_qty), 0)).where(
+            StockMovement.business_id == business_id,
+            StockMovement.item_id == item_id,
+            StockMovement.movement_kind.notin_(
+                (
+                    "delivery_receive",
+                    "purchase",
+                    "quick_purchase",
+                )
+            ),
+        )
+    )
+    non_purchase_delta = Decimal(non_purchase_delta_r.scalar_one() or 0)
+    recomputed_qty = delivered_total + non_purchase_delta
+    if recomputed_qty < 0:
+        recomputed_qty = Decimal("0")
+
+    result = await apply_stock_movement(
+        db,
+        business_id=business_id,
+        item_id=item_id,
+        user=user,
+        movement_kind="correction",
+        mode="absolute",
+        qty=recomputed_qty,
+        reason="Stock recompute from delivered purchases",
+        notes="Manual recompute",
+        source_type="stock_recompute",
+        source_id=item_id,
+        metadata={
+            "delivered_total": float(delivered_total),
+            "non_purchase_delta": float(non_purchase_delta),
+        },
+        create_projection=True,
+        create_activity=True,
+    )
+    await db.commit()
+    return {
+        "item_id": str(item_id),
+        "recomputed_qty": float(result.item.current_stock),
+        "delivered_total": float(delivered_total),
+        "non_purchase_delta": float(non_purchase_delta),
+    }
+
+
+@router.get("/items/{item_id}/purchase-intelligence")
+async def get_item_purchase_intelligence(
+    business_id: uuid.UUID,
+    item_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[User, Depends(get_current_user)],
+    _m: Annotated[Membership, Depends(require_membership)],
+):
+    del _m
+    rows_r = await db.execute(
+        select(
+            TradePurchaseLine.qty,
+            TradePurchase.created_at,
+            TradePurchase.supplier_id,
+        )
+        .join(TradePurchase, TradePurchaseLine.trade_purchase_id == TradePurchase.id)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchaseLine.catalog_item_id == item_id,
+            TradePurchase.status.notin_(("cancelled", "deleted")),
+        )
+        .order_by(desc(TradePurchase.created_at))
+        .limit(12)
+    )
+    rows = rows_r.all()
+    if not rows:
+        return {"suggested_qty": None, "avg_interval_days": None, "default_supplier": None}
+
+    qtys = [float(r[0] or 0) for r in rows]
+    avg_qty = sum(qtys) / max(len(qtys), 1)
+
+    dates = [r[1] for r in rows if r[1] is not None]
+    avg_interval_days = None
+    if len(dates) >= 2:
+        ordered = sorted(dates)
+        diffs = []
+        for i in range(len(ordered) - 1):
+            d = (ordered[i + 1] - ordered[i]).days
+            if d > 0:
+                diffs.append(d)
+        if diffs:
+            avg_interval_days = round(sum(diffs) / len(diffs))
+
+    supplier_counts: dict[str, int] = {}
+    for _, _, sid in rows:
+        if sid is None:
+            continue
+        k = str(sid)
+        supplier_counts[k] = supplier_counts.get(k, 0) + 1
+    top_supplier = max(supplier_counts, key=lambda k: supplier_counts[k]) if supplier_counts else None
+    default_supplier = None
+    if top_supplier:
+        supp_r = await db.execute(
+            select(Supplier.id, Supplier.name).where(Supplier.id == top_supplier)
+        )
+        srow = supp_r.first()
+        if srow:
+            default_supplier = {"id": str(srow[0]), "name": srow[1] or "Supplier"}
+
+    return {
+        "suggested_qty": round(avg_qty),
+        "avg_interval_days": avg_interval_days,
+        "default_supplier": default_supplier,
+    }
+
+
 async def _stock_totals_purchased_in_period(
     db: AsyncSession,
     business_id: uuid.UUID,
