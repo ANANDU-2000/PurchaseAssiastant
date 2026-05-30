@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import '../../../../core/router/shell_navigation.dart';
 import '../../../../features/shell/shell_branch_provider.dart';
 import '../../../../core/design_system/hexa_ds_tokens.dart';

@@ -26,7 +26,6 @@ import '../../../core/providers/home_owner_dashboard_providers.dart'
         stockLowTopHomeProvider,
         stockVariancesTodayProvider;
 import '../../../core/providers/purchase_post_save_provider.dart';
-import '../../shell/shell_branch_provider.dart';
 import '../../../core/notifications/local_notifications_service.dart';
 import '../../../core/providers/connectivity_provider.dart';
 import '../../../core/providers/notifications_provider.dart'

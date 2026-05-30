@@ -2481,7 +2481,7 @@ class _PurchaseHistoryFullscreenSearchPageState
       invalidateAfterDeliveryCommit(
         ref,
         purchaseId: p.id,
-        affectedItemIds: purchase.lines
+        affectedItemIds: p.lines
             .map((l) => l.catalogItemId?.trim())
             .whereType<String>()
             .where((id) => id.isNotEmpty)

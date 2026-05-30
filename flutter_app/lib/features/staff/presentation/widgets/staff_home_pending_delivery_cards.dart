@@ -14,6 +14,7 @@ import '../../../../core/utils/delivery_offline_actions.dart';
 import '../../../../core/utils/snack.dart';
 import '../../../../core/auth/session_notifier.dart';
 import '../../../../core/utils/unit_utils.dart';
+import '../../../purchase/providers/trade_purchase_detail_provider.dart';
 import '../../../purchase/presentation/widgets/staff_verification_sheet.dart';
 import 'staff_home_dashboard_widgets.dart';
 
@@ -107,7 +108,7 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
           },
         )
         .toList();
-    final changed = await showStaffVerificationSheet(
+    await showStaffVerificationSheet(
       context: context,
       ref: ref,
       purchaseId: widget.purchase.id,
