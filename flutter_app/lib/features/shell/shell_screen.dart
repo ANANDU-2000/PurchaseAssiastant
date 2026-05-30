@@ -57,9 +57,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     super.didUpdateWidget(oldWidget);
     final idx = widget.navigationShell.currentIndex;
     if (oldWidget.navigationShell.currentIndex != idx) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _syncShellBranch(idx);
-      });
+      _syncShellBranch(idx);
     }
   }
 

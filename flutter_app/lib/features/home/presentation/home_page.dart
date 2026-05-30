@@ -154,11 +154,13 @@ class _HomePageState extends ConsumerState<HomePage>
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      // HomePage only mounts on shell branch 0 — keep branch + fetches aligned.
-      ref.read(shellCurrentBranchProvider.notifier).state = ShellBranch.home;
       _lastUnread = ref.read(notificationsUnreadCountProvider);
-      _setHomePollingActive(true);
-      _scheduleRefresh(force: true);
+      // IndexedStack keeps Home mounted on other tabs — never reset shell branch here
+      // (ShellScreen owns branch sync). Doing so broke Reports error handling.
+      if (ref.read(shellCurrentBranchProvider) == ShellBranch.home) {
+        _setHomePollingActive(true);
+        _scheduleRefresh(force: true);
+      }
     });
   }
 
