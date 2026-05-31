@@ -27,6 +27,31 @@ def test_compute_expected_system_qty_includes_quick_purchase():
     assert expected == Decimal("175")
 
 
+def test_compute_expected_system_qty_full_warehouse_formula():
+    """System Stock = Opening + Deliveries + Quick - Sales - Damages - Usage + Adjustments."""
+    expected = compute_expected_system_qty(
+        Decimal("2500"),       # opening_stock_qty: 2500 bags initial
+        Decimal("500"),        # total_delivered_qty: 500 bags received via verified purchases
+        total_quick_purchase_qty=Decimal("100"),  # 100 bags via quick purchase
+        total_sales_qty=Decimal("800"),           # 800 bags sold
+        total_damage_qty=Decimal("20"),           # 20 bags damaged
+        total_usage_qty=Decimal("50"),            # 50 bags consumed/transferred
+        total_manual_adjustment_qty=Decimal("10"),  # 10 bags added via manual correction
+    )
+    # 2500 + 500 + 100 + 10 - 800 - 20 - 50 = 2240
+    assert expected == Decimal("2240")
+
+
+def test_compute_expected_system_qty_no_deductions_backwards_compat():
+    """When deduction params are not passed, formula still works (upper bound)."""
+    expected = compute_expected_system_qty(
+        Decimal("100"),
+        Decimal("50"),
+    )
+    # 100 + 50 + 0 - 0 - 0 - 0 + 0 = 150
+    assert expected == Decimal("150")
+
+
 def _owner_headers():
     suffix = uuid.uuid4().hex[:10]
     email = f"whlogic{suffix}@test.hexa.local"

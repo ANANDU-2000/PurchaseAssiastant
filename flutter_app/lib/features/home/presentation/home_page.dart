@@ -158,7 +158,7 @@ class _HomePageState extends ConsumerState<HomePage>
       return;
     }
     _rtPollHome?.cancel();
-    _rtPollHome = Timer.periodic(const Duration(seconds: 60), (_) {
+    _rtPollHome = Timer.periodic(const Duration(seconds: 120), (_) {
       if (!mounted) return;
       if (ref.read(sessionProvider) == null ||
           ref.read(authSessionExpiredProvider) ||
@@ -343,7 +343,10 @@ class _HomePageState extends ConsumerState<HomePage>
     }
 
     if (!providerSkipApi(ref)) {
-      ref.watch(notificationCenterCoordinatorProvider);
+      // NOTE: notificationCenterCoordinatorProvider is already watched by ShellScreen.
+      // Watching it here too caused redundant API calls (double-watch pattern).
+      // The shell owns the notification lifecycle; home page only listens for
+      // specific changes it needs to react to (e.g. purchase post-save).
     }
 
     ref.listen<PurchasePostSavePayload?>(purchasePostSaveProvider,

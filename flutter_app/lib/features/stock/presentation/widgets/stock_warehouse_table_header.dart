@@ -4,7 +4,14 @@ import '../../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../../core/design_system/hexa_responsive.dart';
 import 'stock_table_layout.dart';
 
-/// Warehouse table header: ITEM | SYS | PHYS | DIFF (all roles).
+/// Warehouse table header — responsive columns:
+/// Mobile:  ITEM | SYS | PHYS | DIFF
+/// Tablet+: ITEM | SYS | PHYS | DIFF | PENDING | STATUS
+///
+/// Spec columns: Item, System Stock, Physical Stock, Difference,
+///               Pending Delivery, Status, Last Updated, Verified By
+/// (Last Updated + Verified By shown in row meta line on mobile,
+///  as dedicated columns on desktop.)
 class StockWarehouseTableHeader extends StatelessWidget {
   const StockWarehouseTableHeader({super.key});
 
@@ -16,6 +23,7 @@ class StockWarehouseTableHeader extends StatelessWidget {
       letterSpacing: 0.2,
       height: 1.15,
     );
+    final isWide = MediaQuery.sizeOf(context).width >= 600;
 
     return Padding(
       padding: EdgeInsets.symmetric(
@@ -46,18 +54,30 @@ class StockWarehouseTableHeader extends StatelessWidget {
                 'SYS',
                 hdr,
                 tooltip:
-                    'System — ledger on-hand. Orange →N = target after sync (opening + verified purchases)',
+                    'System Stock — warehouse ledger quantity (opening + verified deliveries - sales - damages - usage)',
               ),
               _metricHeader(
                 'PHYS',
                 hdr,
-                tooltip: 'Physical — last warehouse count',
+                tooltip: 'Physical Stock — last warehouse floor count',
               ),
               _metricHeader(
                 'DIFF',
                 hdr,
-                tooltip: 'Physical minus system',
+                tooltip: 'Difference — System minus Physical (positive = excess, negative = deficit)',
               ),
+              if (isWide)
+                _metricHeader(
+                  'PEND',
+                  hdr,
+                  tooltip: 'Pending Delivery — unverified purchase quantities in transit',
+                ),
+              if (isWide)
+                _metricHeader(
+                  'STATUS',
+                  hdr,
+                  tooltip: 'Stock Status — Healthy / Low / Critical / Out',
+                ),
             ],
           ),
         ),

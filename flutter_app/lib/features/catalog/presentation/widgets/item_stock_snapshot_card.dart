@@ -53,8 +53,7 @@ class ItemStockSnapshotCard extends ConsumerWidget {
     final physicalQty = coerceToDouble(stock['physical_stock_qty']);
     final systemQty = coerceToDouble(stock['current_stock']);
     final systemOutOfSync = stock['system_stock_out_of_sync'] == true ||
-        (expectedSystemQty > 0.001 &&
-            (systemQty - expectedSystemQty).abs() > 0.001);
+        StockRowMetrics.isSystemOutOfSync(stock);
     final reorder = coerceToDouble(stock['reorder_level']);
     final needsVerification = stock['needs_verification'] == true;
     final hasPending = stock['has_pending_order'] == true;

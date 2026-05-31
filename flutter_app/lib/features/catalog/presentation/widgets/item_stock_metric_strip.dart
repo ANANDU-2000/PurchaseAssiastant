@@ -19,8 +19,7 @@ class ItemStockMetricStrip extends StatelessWidget {
     final delivered = coerceToDouble(stock['total_delivered_qty']);
     final expected = coerceToDouble(stock['expected_system_qty']);
     final system = coerceToDouble(stock['current_stock']);
-    final outOfSync = stock['system_stock_out_of_sync'] == true ||
-        (expected > 0.001 && (system - expected).abs() > 0.001);
+    final outOfSync = StockRowMetrics.isSystemOutOfSync(stock);
     final pendingRaw =
         stock['total_pending_delivery_qty'] ?? stock['pending_delivery_qty'];
     final pending = coerceToDouble(pendingRaw);
