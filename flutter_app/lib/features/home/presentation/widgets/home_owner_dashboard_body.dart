@@ -48,51 +48,56 @@ class HomeOwnerDashboardBody extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              if (low > 0)
-                _AlertChip(
-                  label: 'Low stock · $low',
-                  color: const Color(0xFFF59E0B),
-                  onTap: () => context.push('/stock/low-stock'),
-                ),
-              if (pending > 0) ...[
-                if (low > 0) const SizedBox(width: 8),
-                _AlertChip(
-                  label: 'Pending delivery · $pending',
-                  color: const Color(0xFFDC2626),
-                  filled: true,
-                  onTap: () => context.go('/purchase'),
-                ),
+        // ─── 1. CRITICAL ALERTS ───
+        // Alert chips at top: Low stock, Pending delivery, Opening stock, Out of stock
+        if (low > 0 || pending > 0 || openingN > 0 || out > 0)
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                if (pending > 0)
+                  _AlertChip(
+                    label: 'Pending delivery · $pending',
+                    color: const Color(0xFFDC2626),
+                    filled: true,
+                    onTap: () => context.go('/purchase'),
+                  ),
+                if (out > 0) ...[
+                  if (pending > 0) const SizedBox(width: 8),
+                  _AlertChip(
+                    label: 'Out of stock · $out',
+                    color: const Color(0xFFDC2626),
+                    onTap: () => goShellTab(
+                          context,
+                          ref,
+                          branch: ShellBranch.stock,
+                          location: '/stock?status=out',
+                        ),
+                  ),
+                ],
+                if (low > 0) ...[
+                  if (pending > 0 || out > 0) const SizedBox(width: 8),
+                  _AlertChip(
+                    label: 'Low stock · $low',
+                    color: const Color(0xFFF59E0B),
+                    onTap: () => context.push('/stock/low-stock'),
+                  ),
+                ],
+                if (openingN > 0) ...[
+                  if (low > 0 || pending > 0 || out > 0)
+                    const SizedBox(width: 8),
+                  _AlertChip(
+                    label: 'Opening stock · $openingN',
+                    color: const Color(0xFFCA8A04),
+                    onTap: () => context.push('/stock/opening-setup'),
+                  ),
+                ],
               ],
-              if (openingN > 0) ...[
-                if (low > 0 || pending > 0) const SizedBox(width: 8),
-                _AlertChip(
-                  label: 'Opening stock · $openingN',
-                  color: const Color(0xFFCA8A04),
-                  onTap: () => context.push('/stock/opening-setup'),
-                ),
-              ],
-              if (out > 0) ...[
-                if (low > 0 || pending > 0 || openingN > 0)
-                  const SizedBox(width: 8),
-                _AlertChip(
-                  label: 'Out of stock · $out',
-                  color: const Color(0xFFDC2626),
-                  onTap: () => goShellTab(
-                        context,
-                        ref,
-                        branch: ShellBranch.stock,
-                        location: '/stock?status=out',
-                      ),
-                ),
-              ],
-            ],
+            ),
           ),
-        ),
         SizedBox(height: gap),
+        // ─── 2. STOCK OVERVIEW + 3. PURCHASE OVERVIEW ───
+        // Combined KPI grid: Stock metrics + Purchase metrics
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
@@ -102,26 +107,7 @@ class HomeOwnerDashboardBody extends ConsumerWidget {
           childAspectRatio: MediaQuery.sizeOf(context).width / 2 / 100,
           children: [
             _KpiTile(
-              label: 'Purchases',
-              value: '${dash.purchaseCount}',
-              subtitle: dash.period.label,
-              onTap: () => context.go('/purchase'),
-            ),
-            _KpiTile(
-              label: 'Pending delivery',
-              value: '$pending',
-              subtitle: pending > 0 ? 'Needs action' : 'Clear',
-              accent: pending > 0 ? const Color(0xFFDC2626) : null,
-              onTap: () => context.go('/purchase'),
-            ),
-            _KpiTile(
-              label: 'Low stock',
-              value: '$lowCount',
-              subtitle: 'Items below reorder',
-              onTap: () => context.push('/stock/low-stock'),
-            ),
-            _KpiTile(
-              label: 'Warehouse',
+              label: 'Warehouse stock',
               value: inv != null && inventoryUnitsLine(inv).isNotEmpty
                   ? inventoryUnitsLine(inv)
                   : '${inv?.itemCount ?? dash.itemSlices.length}',
@@ -135,11 +121,33 @@ class HomeOwnerDashboardBody extends ConsumerWidget {
                     location: '/stock',
                   ),
             ),
+            _KpiTile(
+              label: 'Low stock',
+              value: '$lowCount',
+              subtitle: 'Items below reorder',
+              accent: lowCount > 0 ? const Color(0xFFF59E0B) : null,
+              onTap: () => context.push('/stock/low-stock'),
+            ),
+            _KpiTile(
+              label: 'Purchases',
+              value: '${dash.purchaseCount}',
+              subtitle: dash.period.label,
+              onTap: () => context.go('/purchase'),
+            ),
+            _KpiTile(
+              label: 'Pending delivery',
+              value: '$pending',
+              subtitle: pending > 0 ? 'Needs action' : 'All clear',
+              accent: pending > 0 ? const Color(0xFFDC2626) : null,
+              onTap: () => context.go('/purchase'),
+            ),
           ],
         ),
         SizedBox(height: gap),
+        // ─── 4. PENDING DELIVERIES + 5. VERIFICATION NEEDED ───
         const HomePurchaseControlCenter(),
         SizedBox(height: gap),
+        // ─── 9. TOOLS ───
         HomeOwnerQuickActions(
           lowStockCount: lowCount,
           onPurchase: () => context.push('/purchase/new'),
@@ -162,6 +170,7 @@ class HomeOwnerDashboardBody extends ConsumerWidget {
           onReorder: () => context.push('/stock/reorder'),
         ),
         SizedBox(height: gap),
+        // ─── 10. RECENT ACTIVITY ───
         const HomeWarehouseActivityFeed(maxRows: 3),
       ],
     );

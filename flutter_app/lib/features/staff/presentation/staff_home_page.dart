@@ -287,13 +287,13 @@ class StaffHomePage extends ConsumerWidget {
                 ),
               ],
               const SizedBox(height: HexaOp.cardGap),
-              const StaffHomeFloorKpiRow(),
-              const SizedBox(height: HexaOp.cardGap),
+              // ─── 1. TODAY'S TASKS (Shift snapshot) ───
               const StaffHomeSectionHeader(
-                title: 'Warehouse & purchases',
-                subtitle: 'Stock in hand and this month',
+                title: 'Your shift today',
+                subtitle: 'Scans, stock updates, purchases',
               ),
-              const StaffHomeWarehousePurchaseStats(),
+              const StaffHomeShiftSnapshotStrip(),
+              // ─── 2. PENDING DELIVERIES ───
               if (pendingDeliveries > 0) ...[
                 const SizedBox(height: HexaOp.cardGap),
                 const StaffHomeSectionHeader(
@@ -302,12 +302,54 @@ class StaffHomePage extends ConsumerWidget {
                 ),
                 const StaffHomePendingDeliveryCards(),
               ],
+              // ─── 3. VERIFICATION QUEUE + 4. PHYSICAL COUNT + 5. BARCODE TASKS ───
+              if (showAttention &&
+                  (openingCount > 0 ||
+                      (staffHomeShowsBarcodeTools(focus) && missingCount > 0) ||
+                      mismatchCount > 0)) ...[
+                const SizedBox(height: HexaOp.cardGap),
+                const StaffHomeSectionHeader(
+                  title: 'Needs attention',
+                  subtitle: 'Verification and warehouse tasks',
+                ),
+                if (mismatchCount > 0)
+                  StaffHomeAttentionTile(
+                    icon: Icons.compare_arrows_rounded,
+                    title: 'Stock mismatch',
+                    subtitle: 'Physical count differs from system',
+                    count: mismatchCount,
+                    accent: const Color(0xFFA32D2D),
+                    onTap: () => context.go('/reports'),
+                  ),
+                if (openingCount > 0)
+                  StaffHomeAttentionTile(
+                    icon: Icons.inventory_outlined,
+                    title: 'Opening stock',
+                    subtitle: 'Items need initial stock setup',
+                    count: openingCount,
+                    accent: HexaColors.warning,
+                    onTap: () => context.push('/stock/opening-setup'),
+                  ),
+                if (staffHomeShowsBarcodeTools(focus) && missingCount > 0)
+                  StaffHomeAttentionTile(
+                    icon: Icons.qr_code_2_outlined,
+                    title: 'Missing barcodes',
+                    subtitle: 'Items need labels before bulk print',
+                    count: missingCount,
+                    accent: HexaColors.loss,
+                    onTap: () => context.push('/stock/missing-barcodes'),
+                  ),
+              ],
+              // ─── 6. LOW STOCK (inside KPIs) ───
+              const SizedBox(height: HexaOp.cardGap),
+              const StaffHomeFloorKpiRow(),
               const SizedBox(height: HexaOp.cardGap),
               const StaffHomeSectionHeader(
-                title: 'Your shift today',
-                subtitle: 'Scans, stock updates, purchases',
+                title: 'Warehouse & purchases',
+                subtitle: 'Stock in hand and this month',
               ),
-              const StaffHomeShiftSnapshotStrip(),
+              const StaffHomeWarehousePurchaseStats(),
+              // ─── 7. TOOLS ───
               const SizedBox(height: HexaOp.cardGap),
               const StaffHomeSectionHeader(
                 title: 'Tools',
@@ -370,43 +412,7 @@ class StaffHomePage extends ConsumerWidget {
                   ),
                 ),
               ],
-              if (showAttention &&
-                  (openingCount > 0 ||
-                      (staffHomeShowsBarcodeTools(focus) && missingCount > 0) ||
-                      mismatchCount > 0)) ...[
-                const SizedBox(height: HexaOp.cardGap),
-                const StaffHomeSectionHeader(
-                  title: 'Needs attention',
-                  subtitle: 'Other warehouse items',
-                ),
-                if (openingCount > 0)
-                  StaffHomeAttentionTile(
-                    icon: Icons.inventory_outlined,
-                    title: 'Opening stock',
-                    subtitle: 'Items need initial stock setup',
-                    count: openingCount,
-                    accent: HexaColors.warning,
-                    onTap: () => context.push('/stock/opening-setup'),
-                  ),
-                if (staffHomeShowsBarcodeTools(focus) && missingCount > 0)
-                  StaffHomeAttentionTile(
-                    icon: Icons.qr_code_2_outlined,
-                    title: 'Missing barcodes',
-                    subtitle: 'Items need labels before bulk print',
-                    count: missingCount,
-                    accent: HexaColors.loss,
-                    onTap: () => context.push('/stock/missing-barcodes'),
-                  ),
-                if (mismatchCount > 0)
-                  StaffHomeAttentionTile(
-                    icon: Icons.compare_arrows_rounded,
-                    title: 'Stock mismatch',
-                    subtitle: 'Physical count differs from system',
-                    count: mismatchCount,
-                    accent: const Color(0xFFA32D2D),
-                    onTap: () => context.go('/reports'),
-                  ),
-              ],
+              // ─── 8. RECENT ACTIVITY ───
               const SizedBox(height: HexaOp.cardGap),
               const StaffHomeSectionHeader(
                 title: 'Recent activity',
