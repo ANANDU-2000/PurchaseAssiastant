@@ -55,12 +55,33 @@ def compute_expected_system_qty(
     total_delivered_qty: Decimal | None,
     *,
     total_quick_purchase_qty: Decimal | None = None,
+    total_sales_qty: Decimal | None = None,
+    total_damage_qty: Decimal | None = None,
+    total_usage_qty: Decimal | None = None,
+    total_manual_adjustment_qty: Decimal | None = None,
 ) -> Decimal:
-    """Opening + lifetime inbound movements used for audit reconciliation."""
+    """Correct warehouse stock formula for audit reconciliation.
+
+    System Stock = Opening Stock
+                 + Verified Deliveries
+                 + Quick Purchases
+                 + Manual Adjustments (net positive/negative)
+                 - Sales
+                 - Damages
+                 - Usage (transfers, consumption)
+
+    This formula is the ONLY source of truth for expected stock levels.
+    Purchase totals NEVER equal system stock.
+    Stock is NEVER updated before warehouse verification.
+    """
     opening = Decimal(opening_stock_qty or 0)
     delivered = Decimal(total_delivered_qty or 0)
     quick = Decimal(total_quick_purchase_qty or 0)
-    return opening + delivered + quick
+    sales = Decimal(total_sales_qty or 0)
+    damages = Decimal(total_damage_qty or 0)
+    usage = Decimal(total_usage_qty or 0)
+    adjustments = Decimal(total_manual_adjustment_qty or 0)
+    return opening + delivered + quick + adjustments - sales - damages - usage
 
 
 def catalog_unit_key(item: CatalogItem) -> str:
@@ -142,6 +163,62 @@ async def movement_quick_purchase_qty_map(
         business_id,
         item_ids,
         kinds=("quick_purchase",),
+    )
+
+
+async def movement_sales_qty_map(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    item_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, Decimal]:
+    """Lifetime qty deducted via sales movements."""
+    return await movement_qty_map_by_kind(
+        db,
+        business_id,
+        item_ids,
+        kinds=("sale",),
+    )
+
+
+async def movement_damage_qty_map(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    item_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, Decimal]:
+    """Lifetime qty deducted via damage/wastage movements."""
+    return await movement_qty_map_by_kind(
+        db,
+        business_id,
+        item_ids,
+        kinds=("damage",),
+    )
+
+
+async def movement_usage_qty_map(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    item_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, Decimal]:
+    """Lifetime qty deducted via usage/consumption movements."""
+    return await movement_qty_map_by_kind(
+        db,
+        business_id,
+        item_ids,
+        kinds=("usage",),
+    )
+
+
+async def movement_manual_adjustment_net_map(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    item_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, Decimal]:
+    """Net lifetime qty from manual corrections (can be positive or negative)."""
+    return await movement_qty_map_by_kind(
+        db,
+        business_id,
+        item_ids,
+        kinds=("correction", "undo", "opening_stock"),
     )
 
 

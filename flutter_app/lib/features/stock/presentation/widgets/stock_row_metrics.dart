@@ -56,11 +56,18 @@ abstract final class StockRowMetrics {
   }
 
   /// Ledger differs from opening + committed inbound (API flag or local check).
+  /// Uses relaxed threshold: only flags when discrepancy > 5% of delivered or > 1 unit.
+  /// This prevents false positives from un-tracked deductions (sales, damages, usage).
   static bool isSystemOutOfSync(Map<String, dynamic> item) {
     if (item['system_stock_out_of_sync'] == true) return true;
     final expected = coerceToDoubleNullable(item['expected_system_qty']);
     if (expected == null || !expected.isFinite) return false;
-    return (ledgerQty(item) - expected).abs() > 0.001;
+    final current = ledgerQty(item);
+    final diff = (current - expected).abs();
+    // Relaxed threshold: 5% of delivered lifetime or 1 unit minimum
+    final delivered = purchasedLifetimeQty(item);
+    final threshold = delivered > 0 ? (delivered * 0.05).clamp(1.0, double.infinity) : 1.0;
+    return diff > threshold;
   }
 
   /// How much SYS is short vs opening + committed purchases (stock unit).

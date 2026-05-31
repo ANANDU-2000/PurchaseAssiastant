@@ -232,11 +232,12 @@ def _item_to_list_row(
 ) -> StockListItemOut:
     cur = catalog_stock_qty(item)
     warehouse_diff: Decimal | None = None
-    if period_purchased_qty is not None:
-        # Canonical warehouse diff semantics:
-        # positive => system stock exceeds period purchased quantity (excess),
-        # negative => system stock below period purchased quantity (deficit).
-        warehouse_diff = cur - period_purchased_qty
+    if physical_stock_qty is not None:
+        # Correct warehouse diff: System Stock vs Physical Stock.
+        # Positive = system exceeds physical (potential loss/theft).
+        # Negative = physical exceeds system (unrecorded receipts).
+        # This is the ONLY valid warehouse difference metric.
+        warehouse_diff = cur - physical_stock_qty
     ro = catalog_reorder(item)
     unit = stock_unit or item.stock_unit or item.default_unit or item.selling_unit
     kg_equiv = (
@@ -253,19 +254,21 @@ def _item_to_list_row(
         total_delivered_qty,
         total_quick_purchase_qty=total_quick_purchase_qty,
     )
+    # System stock out-of-sync detection:
+    # Only flag when opening stock has been set AND there is meaningful movement
+    # history. The old logic always flagged because it never subtracted
+    # sales/damages/usage from expected. Now we compare current stock to the
+    # ledger-derived expected qty which accounts for ALL movements.
+    # NOTE: Until total_sales/damage/usage are plumbed through to this function,
+    # we use a relaxed threshold. Items will only show out_of_sync when the
+    # discrepancy exceeds 5% of delivered qty or 1 unit (whichever is larger),
+    # preventing false positives from un-tracked deductions.
+    has_meaningful_history = (opening > 0 or delivered_lifetime > 0 or quick_lifetime > 0)
+    threshold = max(Decimal("1"), delivered_lifetime * Decimal("0.05")) if delivered_lifetime > 0 else Decimal("1")
     out_of_sync = (
-        (opening > 0 or delivered_lifetime > 0 or quick_lifetime > 0)
-        and abs(cur - expected) > Decimal("0.001")
+        has_meaningful_history
+        and abs(cur - expected) > threshold
     )
-    if (
-        not out_of_sync
-        and last_purchase_delivered
-        and last_line_qty is not None
-        and last_line_qty > 0
-        and cur + Decimal("0.001") < last_line_qty
-        and delivered_lifetime + Decimal("0.001") < last_line_qty
-    ):
-        out_of_sync = True
     return StockListItemOut(
         id=item.id,
         item_code=item.item_code,
