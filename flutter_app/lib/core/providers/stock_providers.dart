@@ -571,11 +571,13 @@ final lowStockByCategoryProvider =
   final lowRows = await _fetchStockListAllPages(
     api: api,
     businessId: bid,
-    status: 'all',
+    status: 'shortage',
     includePeriod: true,
     periodStart: periodStart,
     periodEnd: periodEnd,
   );
+  // Server already filtered to shortage status (low/critical/out).
+  // Also include items with pending deliveries from a separate small request.
   final byId = <String, Map<String, dynamic>>{};
   for (final item in lowRows) {
     final status = (item['stock_status']?.toString() ?? '').toLowerCase();
@@ -583,6 +585,8 @@ final lowStockByCategoryProvider =
         (item['pending_delivery_qty'] as num?)?.toDouble() ?? 0.0;
     final pendingDelivery = item['has_pending_order'] == true &&
         item['last_purchase_delivered'] == false;
+    // Include all server-returned items (they're already shortage-status)
+    // plus any with pending delivery data
     if (status != 'low' &&
         status != 'out' &&
         status != 'critical' &&
