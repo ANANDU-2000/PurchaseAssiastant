@@ -54,10 +54,11 @@ import 'widgets/home_live_status_bar.dart';
 import 'widgets/home_owner_dashboard_body.dart';
 import 'widgets/home_sticky_period_header.dart';
 
-/// True when the Home IndexedStack tab is the active shell branch (URL + nav index).
+/// True when the Home IndexedStack tab is the active shell branch.
 bool _homeShellTabVisible(WidgetRef ref, BuildContext context) {
   final shell = StatefulNavigationShell.maybeOf(context);
   if (shell != null) {
+    // Trust the shell index (source of truth for which tab is painted).
     return shell.currentIndex == ShellBranch.home;
   }
   return ref.watch(shellCurrentBranchProvider) == ShellBranch.home;
@@ -313,8 +314,12 @@ class _HomePageState extends ConsumerState<HomePage>
     ref.listen<int>(shellCurrentBranchProvider, (prev, next) {
       final onHome = next == ShellBranch.home;
       _setHomePollingActive(onHome);
-      if (onHome && prev != ShellBranch.home && !_throttleHomeInvalidate()) {
-        _scheduleRefresh();
+      if (onHome && prev != ShellBranch.home) {
+        if (!_throttleHomeInvalidate()) {
+          _scheduleRefresh(force: true);
+        }
+        // Dashboard providers skip fetch while off-tab; kick a rebuild now.
+        ref.invalidate(homeDashboardDataProvider);
       }
     });
 

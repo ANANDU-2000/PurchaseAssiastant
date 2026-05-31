@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_failure_policy.dart';
+import '../auth/provider_api_guard.dart';
 import '../auth/session_notifier.dart';
 import 'business_aggregates_invalidation.dart';
 import 'low_stock_providers.dart';
@@ -66,10 +68,22 @@ final realtimeInvalidationProvider =
   var tick = 0;
 
   Future<RealtimeInvalidationSignal> poll({required bool initial}) async {
-    final rows = await api.listRealtimeEvents(
-      businessId: session.primaryBusiness.id,
-      limit: 40,
-    );
+    if (providerSkipApi(ref)) {
+      return RealtimeInvalidationSignal(tick: tick);
+    }
+    List<Map<String, dynamic>> rows;
+    try {
+      rows = await api.listRealtimeEvents(
+        businessId: session.primaryBusiness.id,
+        limit: 40,
+      );
+    } on DioException catch (e) {
+      final sc = e.response?.statusCode;
+      if (sc == 401 || sc == 403) {
+        ref.read(authSessionExpiredProvider.notifier).markExpired();
+      }
+      return RealtimeInvalidationSignal(tick: tick);
+    }
     var notifications = false;
     var warehouse = false;
     final affectedItemIds = <String>{};

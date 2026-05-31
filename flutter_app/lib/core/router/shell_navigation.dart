@@ -22,12 +22,12 @@ void _applyShellTabSwitch(
 }) {
   container.read(shellReturnBranchProvider.notifier).state =
       container.read(shellCurrentBranchProvider);
-  container.read(shellCurrentBranchProvider.notifier).state = branch;
   try {
     final shell = StatefulNavigationShell.of(context);
+    container.read(shellCurrentBranchProvider.notifier).state = branch;
     shell.goBranch(branch);
   } catch (_) {
-    // Outside shell (deep link) — go() still updates URL.
+    container.read(shellCurrentBranchProvider.notifier).state = branch;
   }
   context.go(path);
 }

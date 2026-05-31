@@ -63,10 +63,10 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     ref.watch(notificationCenterCoordinatorProvider);
     final navigationShell = widget.navigationShell;
     final idx = navigationShell.currentIndex;
+    // Keep provider aligned with IndexedStack index in the same frame (post-frame
+    // sync left Home providers empty while the Home tab was already visible).
     if (ref.read(shellCurrentBranchProvider) != idx) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _syncShellBranch(idx);
-      });
+      ref.read(shellCurrentBranchProvider.notifier).state = idx;
     }
     final routePath = GoRouterState.of(context).uri.path;
     final stockAlertN = ref.watch(notificationsUnreadCountProvider);
@@ -79,10 +79,8 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     void go(int branch) {
       HapticFeedback.selectionClick();
       ref.read(shellReturnBranchProvider.notifier).state = null;
+      ref.read(shellCurrentBranchProvider.notifier).state = branch;
       navigationShell.goBranch(branch);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _syncShellBranch(branch);
-      });
     }
 
     final loc = routePath;

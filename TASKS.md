@@ -10,6 +10,7 @@
 - [x] **Sort index:** `ix_catalog_items_business_active_updated` present
 - [ ] Manual: commit delivery → stock SYSTEM column refreshes without pull-to-refresh
 - [x] **Stock commit fix (2026-05-31):** reject empty commit; staff `stock_edit` can commit; truck hides after 5d; orange sync cue; home warehouse unit breakdown; recompute uses `stock_committed`
+- [x] **Home blank after Reports tab (2026-05-31):** sync `shellCurrentBranchProvider` with shell index same frame; refresh dashboard on tab return; skip realtime poll after 401
 
 ## Master prompt FIX-1–15 (2026-05-29)
 
@@ -19,6 +20,7 @@ All 15 fixes verified in codebase; pytest 10 passed; flutter repair tests 13 pas
 - [x] FIX-13–15 — empty states, dense rows, scrollable stock tabs / reports chips
 - [ ] Manual: commit delivery → stock SYSTEM column refreshes without pull-to-refresh
 - [x] **Stock commit fix (2026-05-31):** reject empty commit; staff `stock_edit` can commit; truck hides after 5d; orange sync cue; home warehouse unit breakdown; recompute uses `stock_committed`
+- [x] **Home blank after Reports tab (2026-05-31):** sync `shellCurrentBranchProvider` with shell index same frame; refresh dashboard on tab return; skip realtime poll after 401
 - [ ] Deploy Vercel after reports chart fix
 
 ## Reports module redesign (2026-05-29)
@@ -147,6 +149,7 @@ FIX-1–FIX-12: already shipped (invalidation hub, sheets, navigation, backend f
 - [x] **Deploy:** Alembic **044** on Render Postgres — verified live via Supabase MCP (`alembic_version`, CHECK, indexes)
 - [ ] Manual: commit delivery → stock SYSTEM column refreshes without pull-to-refresh
 - [x] **Stock commit fix (2026-05-31):** reject empty commit; staff `stock_edit` can commit; truck hides after 5d; orange sync cue; home warehouse unit breakdown; recompute uses `stock_committed`
+- [x] **Home blank after Reports tab (2026-05-31):** sync `shellCurrentBranchProvider` with shell index same frame; refresh dashboard on tab return; skip realtime poll after 401
 
 ## FIX_TODO_MASTER (2026-05-30)
 
