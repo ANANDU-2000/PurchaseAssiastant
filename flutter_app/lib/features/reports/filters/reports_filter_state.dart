@@ -14,6 +14,8 @@ enum ReportsStockStatusFilter {
   under,
 }
 
+enum ReportsUsageFilter { all, usageOnly, excludeUsage }
+
 class ReportsFilterState {
   const ReportsFilterState({
     this.searchQuery = '',
@@ -24,6 +26,7 @@ class ReportsFilterState {
     this.subcategoryIds = const {},
     this.supplierIds = const {},
     this.brokerIds = const {},
+    this.usage = ReportsUsageFilter.all,
     this.minPurchaseValue,
     this.maxPurchaseValue,
     this.activeViewId,
@@ -37,6 +40,7 @@ class ReportsFilterState {
   final Set<String> subcategoryIds;
   final Set<String> supplierIds;
   final Set<String> brokerIds;
+  final ReportsUsageFilter usage;
   final double? minPurchaseValue;
   final double? maxPurchaseValue;
   final String? activeViewId;
@@ -51,6 +55,7 @@ class ReportsFilterState {
     if (subcategoryIds.isNotEmpty) n++;
     if (supplierIds.isNotEmpty) n++;
     if (brokerIds.isNotEmpty) n++;
+    if (usage != ReportsUsageFilter.all) n++;
     if (minPurchaseValue != null || maxPurchaseValue != null) n++;
     return n;
   }
@@ -64,6 +69,7 @@ class ReportsFilterState {
     Set<String>? subcategoryIds,
     Set<String>? supplierIds,
     Set<String>? brokerIds,
+    ReportsUsageFilter? usage,
     double? minPurchaseValue,
     double? maxPurchaseValue,
     String? activeViewId,
@@ -79,6 +85,7 @@ class ReportsFilterState {
       subcategoryIds: subcategoryIds ?? this.subcategoryIds,
       supplierIds: supplierIds ?? this.supplierIds,
       brokerIds: brokerIds ?? this.brokerIds,
+      usage: usage ?? this.usage,
       minPurchaseValue:
           clearMin ? null : (minPurchaseValue ?? this.minPurchaseValue),
       maxPurchaseValue:

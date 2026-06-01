@@ -137,3 +137,26 @@ def test_quick_purchase_included_in_period_purchased():
     )
     row = next(i for i in listed.json()["items"] if i["id"] == iid)
     assert Decimal(str(row["period_purchased_qty"])) == Decimal("15")
+
+
+def test_stock_list_missing_item_code_server_filter():
+    """Operational filters must narrow total on the server, not only the first page."""
+    h, bid = _owner_headers()
+    iid, _ = _catalog_item_id(h, bid)
+    patch = client.patch(
+        f"/v1/businesses/{bid}/catalog-items/{iid}",
+        headers=h,
+        json={"item_code": ""},
+    )
+    assert patch.status_code == 200, patch.text
+
+    filtered = client.get(
+        f"/v1/businesses/{bid}/stock/list",
+        headers=h,
+        params={"missing_item_code": True, "per_page": 200},
+    )
+    assert filtered.status_code == 200, filtered.text
+    body = filtered.json()
+    assert body["total"] >= 1
+    assert all(i["missing_item_code"] is True for i in body["items"])
+    assert any(i["id"] == iid for i in body["items"])

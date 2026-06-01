@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/providers/home_dashboard_provider.dart';
 
-/// Compact warehouse stock top bar: Back, Stock, History, Filter, Search, More.
+/// Compact warehouse stock top bar: Back, Stock, Period, Filters, Search, More.
 class StockOperationalTopBar extends StatelessWidget implements PreferredSizeWidget {
   const StockOperationalTopBar({
     super.key,
@@ -14,7 +14,6 @@ class StockOperationalTopBar extends StatelessWidget implements PreferredSizeWid
     required this.onOpenFilters,
     required this.currentPeriod,
     required this.onOpenPeriod,
-    required this.onOpenHistory,
     this.onOpenMovement,
     this.onExportPdf,
     this.onExportExcel,
@@ -29,7 +28,6 @@ class StockOperationalTopBar extends StatelessWidget implements PreferredSizeWid
   final VoidCallback onOpenFilters;
   final HomePeriod currentPeriod;
   final VoidCallback onOpenPeriod;
-  final VoidCallback onOpenHistory;
   final VoidCallback? onOpenMovement;
   final VoidCallback? onExportPdf;
   final VoidCallback? onExportExcel;
@@ -97,11 +95,6 @@ class StockOperationalTopBar extends StatelessWidget implements PreferredSizeWid
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.history_rounded, size: 22),
-          tooltip: 'Stock history',
-          onPressed: onOpenHistory,
-        ),
-        IconButton(
           icon: Badge(
             isLabelVisible: currentPeriod != HomePeriod.allTime,
             label: Text(_periodLabel(currentPeriod)),
@@ -131,8 +124,6 @@ class StockOperationalTopBar extends StatelessWidget implements PreferredSizeWid
           icon: const Icon(Icons.more_vert_rounded, size: 22),
           onSelected: (v) {
             switch (v) {
-              case 'changes':
-                onOpenHistory();
               case 'scan':
                 context.push('/barcode/scan?return=stock');
               case 'movement':
@@ -166,15 +157,6 @@ class StockOperationalTopBar extends StatelessWidget implements PreferredSizeWid
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
-            const PopupMenuItem(
-              value: 'changes',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.history_rounded, size: 20),
-                title: Text('Stock changes'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
             const PopupMenuItem(
               value: 'scan',
               child: ListTile(

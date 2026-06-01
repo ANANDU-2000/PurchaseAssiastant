@@ -13,12 +13,7 @@ from app.database import get_db
 from app.deps import get_current_user, require_membership, require_permission, require_role
 from app.services.staff_audit import log_staff_activity
 from app.services.notification_emitter import CATEGORY_STAFF
-from app.services.stock_inventory import (
-    compute_expected_system_qty,
-    line_qty_for_stock_commit,
-    movement_delivered_qty_map,
-    movement_quick_purchase_qty_map,
-)
+from app.services.stock_inventory import movement_delivered_qty_map
 from app.models import (
     Broker,
     CatalogItem,
@@ -227,7 +222,6 @@ def _item_to_list_row(
     physical_stock_counted_at: datetime | None = None,
     physical_stock_counted_by: str | None = None,
     total_delivered_qty: Decimal | None = None,
-    total_quick_purchase_qty: Decimal | None = None,
     total_pending_delivery_qty: Decimal | None = None,
 ) -> StockListItemOut:
     cur = catalog_stock_qty(item)
@@ -245,27 +239,6 @@ def _item_to_list_row(
         else stock_qty_kg_equivalent(item, cur)
     )
     ledger_var = ledger_variance_qty if ledger_variance_qty is not None else period_variance_qty
-    opening = Decimal(getattr(item, "opening_stock_qty", None) or 0)
-    delivered_lifetime = Decimal(total_delivered_qty or 0)
-    quick_lifetime = Decimal(total_quick_purchase_qty or 0)
-    expected = compute_expected_system_qty(
-        getattr(item, "opening_stock_qty", None),
-        total_delivered_qty,
-        total_quick_purchase_qty=total_quick_purchase_qty,
-    )
-    out_of_sync = (
-        (opening > 0 or delivered_lifetime > 0 or quick_lifetime > 0)
-        and abs(cur - expected) > Decimal("0.001")
-    )
-    if (
-        not out_of_sync
-        and last_purchase_delivered
-        and last_line_qty is not None
-        and last_line_qty > 0
-        and cur + Decimal("0.001") < last_line_qty
-        and delivered_lifetime + Decimal("0.001") < last_line_qty
-    ):
-        out_of_sync = True
     return StockListItemOut(
         id=item.id,
         item_code=item.item_code,
@@ -314,8 +287,6 @@ def _item_to_list_row(
         stock_version=int(getattr(item, "stock_version", 0) or 0),
         total_delivered_qty=total_delivered_qty,
         total_pending_delivery_qty=total_pending_delivery_qty,
-        expected_system_qty=expected,
-        system_stock_out_of_sync=out_of_sync,
         public_token=getattr(item, "public_token", None),
     )
 
@@ -661,6 +632,10 @@ async def _query_items(
     sort: SortBy,
     page: int,
     per_page: int,
+    missing_barcode: bool = False,
+    missing_item_code: bool = False,
+    reorder_only: bool = False,
+    unit: str = "",
 ):
     stmt = (
         select(CatalogItem, ItemCategory.name, CategoryType.name)
@@ -684,12 +659,26 @@ async def _query_items(
         stmt = stmt.where(func.lower(ItemCategory.name) == category.strip().lower())
     if subcategory.strip():
         stmt = stmt.where(func.lower(CategoryType.name) == subcategory.strip().lower())
+    if unit.strip():
+        u = unit.strip().lower()
+        stmt = stmt.where(
+            or_(
+                func.lower(func.coalesce(CatalogItem.stock_unit, "")) == u,
+                func.lower(func.coalesce(CatalogItem.default_unit, "")) == u,
+            )
+        )
 
     rows = (await db.execute(stmt)).all()
     out: list[tuple[CatalogItem, str | None, str | None]] = []
     for item, cat_name, type_name in rows:
+        if missing_barcode and (item.barcode and str(item.barcode).strip()):
+            continue
+        if missing_item_code and (item.item_code and str(item.item_code).strip()):
+            continue
         cur = catalog_stock_qty(item)
         ro = catalog_reorder(item)
+        if reorder_only and (ro <= 0 or cur > ro):
+            continue
         st = stock_status(cur, ro)
         if status_val == "shortage":
             if st not in ("low", "critical", "out"):
@@ -908,92 +897,6 @@ async def stock_inventory_summary(
     return InventorySummaryOut(**payload)
 
 
-@router.post("/items/{item_id}/recompute")
-async def recompute_item_stock(
-    business_id: uuid.UUID,
-    item_id: uuid.UUID,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
-    _m: Annotated[Membership, Depends(require_permission("stock_edit"))],
-):
-    """Recompute item stock from delivered purchases + non-purchase movement deltas."""
-    del _m
-    item_r = await db.execute(
-        select(CatalogItem).where(
-            CatalogItem.id == item_id,
-            CatalogItem.business_id == business_id,
-            CatalogItem.deleted_at.is_(None),
-        )
-    )
-    item = item_r.scalar_one_or_none()
-    if item is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
-
-    delivered_r = await db.execute(
-        select(TradePurchaseLine, CatalogItem)
-        .join(TradePurchase, TradePurchaseLine.trade_purchase_id == TradePurchase.id)
-        .join(CatalogItem, TradePurchaseLine.catalog_item_id == CatalogItem.id)
-        .where(
-            TradePurchase.business_id == business_id,
-            TradePurchase.status.notin_(("cancelled", "deleted")),
-            TradePurchase.delivery_status == "stock_committed",
-            TradePurchaseLine.catalog_item_id == item_id,
-            CatalogItem.business_id == business_id,
-            CatalogItem.deleted_at.is_(None),
-        )
-    )
-    delivered_total = Decimal("0")
-    for line, line_item in delivered_r.all():
-        delivered_total += line_qty_for_stock_commit(line, line_item)
-
-    opening = Decimal(getattr(item, "opening_stock_qty", None) or 0)
-
-    non_purchase_delta_r = await db.execute(
-        select(func.coalesce(func.sum(StockMovement.delta_qty), 0)).where(
-            StockMovement.business_id == business_id,
-            StockMovement.item_id == item_id,
-            StockMovement.movement_kind.notin_(
-                (
-                    "delivery_receive",
-                    "purchase",
-                    "quick_purchase",
-                )
-            ),
-        )
-    )
-    non_purchase_delta = Decimal(non_purchase_delta_r.scalar_one() or 0)
-    recomputed_qty = opening + delivered_total + non_purchase_delta
-    if recomputed_qty < 0:
-        recomputed_qty = Decimal("0")
-
-    result = await apply_stock_movement(
-        db,
-        business_id=business_id,
-        item_id=item_id,
-        user=user,
-        movement_kind="correction",
-        mode="absolute",
-        qty=recomputed_qty,
-        reason="Stock recompute from delivered purchases",
-        notes="Manual recompute",
-        source_type="stock_recompute",
-        source_id=item_id,
-        metadata={
-            "delivered_total": float(delivered_total),
-            "non_purchase_delta": float(non_purchase_delta),
-        },
-        create_projection=True,
-        create_activity=True,
-    )
-    await db.commit()
-    return {
-        "item_id": str(item_id),
-        "recomputed_qty": float(result.item.current_stock),
-        "delivered_total": float(delivered_total),
-        "non_purchase_delta": float(non_purchase_delta),
-    }
-
-
 @router.get("/items/{item_id}/purchase-intelligence")
 async def get_item_purchase_intelligence(
     business_id: uuid.UUID,
@@ -1196,8 +1099,18 @@ async def list_stock(
     period_end: str | None = Query(None),
     include_today: bool = Query(True),
     purchased_in_period: bool = Query(False),
+    missing_barcode: bool = Query(False),
+    missing_item_code: bool = Query(False),
+    reorder_only: bool = Query(False),
+    unit: str = Query(""),
 ):
     ps, pe = _parse_period_dates(period_start, period_end)
+    op_kwargs = {
+        "missing_barcode": missing_barcode,
+        "missing_item_code": missing_item_code,
+        "reorder_only": reorder_only,
+        "unit": unit,
+    }
     if purchased_in_period and include_period and ps and pe:
         _, all_rows = await _query_items(
             db,
@@ -1209,6 +1122,7 @@ async def list_stock(
             sort=sort,
             page=1,
             per_page=10000,
+            **op_kwargs,
         )
         all_ids = [item.id for item, _, _ in all_rows]
         period_map_all = await _period_purchased_map(
@@ -1233,6 +1147,7 @@ async def list_stock(
             sort=sort,
             page=page,
             per_page=per_page,
+            **op_kwargs,
         )
     period_map: dict[uuid.UUID, Decimal] = {}
     period_usage_map: dict[uuid.UUID, Decimal] = {}
@@ -1271,7 +1186,6 @@ async def list_stock(
     pending_meta = await _pending_order_meta_map(db, business_id, item_ids)
     physical_meta = await _latest_physical_count_map(db, business_id, item_ids)
     movement_delivered = await movement_delivered_qty_map(db, business_id, item_ids)
-    movement_quick = await movement_quick_purchase_qty_map(db, business_id, item_ids)
     items_dict = {item.id: item for item, _, _ in rows}
     sup_map = await _supplier_names_bulk(db, items_dict)
     items: list[StockListItemOut] = []
@@ -1300,18 +1214,12 @@ async def list_stock(
         perishable = perishable_by_cat.get(item.category_id, False) if item.category_id else False
         su = catalog_stock_unit(item)
         total_delivered = movement_delivered.get(item.id, Decimal(0))
-        total_quick = movement_quick.get(item.id, Decimal(0))
-        expected_sys = compute_expected_system_qty(
-            getattr(item, "opening_stock_qty", None),
-            total_delivered,
-            total_quick_purchase_qty=total_quick,
-        )
         phys_qty = phys.counted_qty if phys else None
         spec_diff: Decimal | None = None
         if phys is not None:
             spec_diff = phys.difference_qty
         elif phys_qty is not None:
-            spec_diff = phys_qty - expected_sys
+            spec_diff = phys_qty - cur
         items.append(
             _item_to_list_row(
                 item,
@@ -1340,7 +1248,6 @@ async def list_stock(
                 physical_stock_counted_at=phys.counted_at if phys else None,
                 physical_stock_counted_by=phys.counted_by_name if phys else None,
                 total_delivered_qty=total_delivered,
-                total_quick_purchase_qty=total_quick,
                 total_pending_delivery_qty=pend[2],
             )
         )
@@ -3073,9 +2980,7 @@ async def get_stock_item(
     last_lq = getattr(item, "last_line_qty", None) if valid_last_trade else None
     last_pur_at = getattr(item, "last_purchase_at", None) if valid_last_trade else None
     movement_delivered = await movement_delivered_qty_map(db, business_id, [item_id])
-    movement_quick = await movement_quick_purchase_qty_map(db, business_id, [item_id])
     total_delivered = movement_delivered.get(item_id, Decimal(0))
-    total_quick = movement_quick.get(item_id, Decimal(0))
     _, pending_lifetime_map = await _lifetime_purchase_qty_maps(
         db, business_id, [item_id]
     )
@@ -3122,7 +3027,6 @@ async def get_stock_item(
         physical_stock_counted_at=phys.counted_at if phys else None,
         physical_stock_counted_by=phys.counted_by_name if phys else None,
         total_delivered_qty=total_delivered,
-        total_quick_purchase_qty=total_quick,
         total_pending_delivery_qty=total_pending_lifetime or pend[2],
     )
     purchases = await _recent_purchases(db, item)

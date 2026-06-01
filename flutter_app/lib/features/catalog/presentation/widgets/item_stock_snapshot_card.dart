@@ -3,17 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/auth/dashboard_role.dart';
-import '../../../../core/api/hexa_api.dart';
 import '../../../../core/auth/session_notifier.dart';
 import '../../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../../core/design_system/hexa_responsive.dart';
 import '../../../../core/json_coerce.dart';
 import '../../../../core/providers/item_detail_providers.dart';
 import '../../../../core/theme/hexa_colors.dart';
-import '../../../../core/errors/user_facing_errors.dart';
-import '../../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../../core/utils/unit_utils.dart';
-import '../../../stock/presentation/widgets/stock_row_metrics.dart';
 import 'item_stock_metric_strip.dart';
 import '../../domain/item_stock_snapshot.dart';
 
@@ -46,15 +42,8 @@ class ItemStockSnapshotCard extends ConsumerWidget {
     final lifetimeDelivered = coerceToDouble(stock['total_delivered_qty']);
     final periodPurchased = coerceToDouble(stock['period_purchased_qty']);
     final purchasedQty = lifetimeDelivered > 0 ? lifetimeDelivered : periodPurchased;
-    final expectedSystemQty = coerceToDouble(
-      stock['expected_system_qty'] ??
-          (openingQty + (lifetimeDelivered > 0 ? lifetimeDelivered : 0)),
-    );
     final physicalQty = coerceToDouble(stock['physical_stock_qty']);
     final systemQty = coerceToDouble(stock['current_stock']);
-    final systemOutOfSync = stock['system_stock_out_of_sync'] == true ||
-        (expectedSystemQty > 0.001 &&
-            (systemQty - expectedSystemQty).abs() > 0.001);
     final reorder = coerceToDouble(stock['reorder_level']);
     final needsVerification = stock['needs_verification'] == true;
     final hasPending = stock['has_pending_order'] == true;
@@ -88,9 +77,8 @@ class ItemStockSnapshotCard extends ConsumerWidget {
 
     final hasPhysicalCount = physicalQty > 0.001 ||
         stock['physical_stock_counted_at'] != null;
-    final ledgerQty = systemQty;
     final diff = (stock['physical_stock_difference_qty'] as num?)?.toDouble() ??
-        (hasPhysicalCount ? physicalQty - ledgerQty : 0.0);
+        (hasPhysicalCount ? physicalQty - systemQty : 0.0);
 
     final updatedAtRaw = stock['last_stock_updated_at']?.toString();
     final updatedAt = updatedAtRaw != null ? DateTime.tryParse(updatedAtRaw)?.toLocal() : null;
@@ -216,176 +204,40 @@ class ItemStockSnapshotCard extends ConsumerWidget {
               ),
             ],
             if (isOwner) ...[
-              if (systemOutOfSync) ...[
-                Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF7ED),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFFDBA74)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(
-                            Icons.sync_problem_rounded,
-                            size: 18,
-                            color: HexaColors.warning,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'System shows ${_qty(systemQty, unit)} $unitLabel but verified purchases need ${_qty(expectedSystemQty, unit)} $unitLabel',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.grey.shade900,
-                                  ),
-                                ),
-                                if (StockRowMetrics
-                                    .expectedSystemFormulaLine(stock)
-                                    .isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    StockRowMetrics.expectedSystemFormulaLine(
-                                      stock,
-                                    ),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.grey.shade700,
-                                    ),
-                                  ),
-                                ],
-                                if (showOpeningCta && systemQty > 0.001) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'If ${_qty(systemQty, unit)} $unitLabel was stock before purchases, set opening stock first.',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.grey.shade700,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      FilledButton.icon(
-                        onPressed: session == null
-                            ? null
-                            : () => _recomputeSystemStock(
-                                  context,
-                                  ref,
-                                  session.primaryBusiness.id,
-                                  itemId,
-                                ),
-                        icon: const Icon(Icons.sync_rounded, size: 18),
-                        label: Text(
-                          'Sync system stock to ${_qty(expectedSystemQty, unit)} $unitLabel',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ] else
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: session == null
-                        ? null
-                        : () => _recomputeSystemStock(
-                              context,
-                              ref,
-                              session.primaryBusiness.id,
-                              itemId,
-                            ),
-                    child: const Text('Recompute'),
-                  ),
-                ),
               const SizedBox(height: 6),
-              Theme(
-                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  childrenPadding: EdgeInsets.zero,
-                  title: Text(
-                    'Owner reconciliation',
-                    style: HexaOp.cardTitle(context).copyWith(fontSize: 14),
-                  ),
-                  subtitle: systemOutOfSync
-                      ? const Text(
-                          'Ledger differs from expected inbound total',
-                          style: TextStyle(fontSize: 11),
-                        )
-                      : null,
-                  children: [
-                    _summaryLine(
-                      label: 'Opening stock',
-                      value: _qty(openingQty, unit),
-                      unitLabel: unitLabel,
-                    ),
-                    _summaryLine(
-                      label: '+ Purchased (committed)',
-                      value: _qty(purchasedQty, unit),
-                      unitLabel: unitLabel,
-                      valueColor: const Color(0xFF2563EB),
-                    ),
-                    const Divider(height: 20),
-                    _summaryLine(
-                      label: '= Expected system total',
-                      value: _qty(expectedSystemQty, unit),
-                      unitLabel: unitLabel,
-                      emphasized: true,
-                    ),
-                    if (systemOutOfSync) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Ledger on-hand ${_qty(ledgerQty, unit)} $unitLabel — commit deliveries or recompute',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 6),
-                    _summaryLine(
-                      label: 'Physical count',
-                      value: physicalQty > 0.001 ? _qty(physicalQty, unit) : '—',
-                      unitLabel: unitLabel,
-                      subtitle: [
-                        if (updatedAt != null)
-                          updatedBy != null
-                              ? 'By $updatedBy · ${_timeAgo(updatedAt)}'
-                              : _timeAgo(updatedAt),
-                      ].join(),
-                    ),
-                    _summaryLine(
-                      label: 'Difference',
-                      value: hasPhysicalCount
-                          ? '${diff > 0 ? '+' : ''}${_qty(diff, unit)}'
-                          : '—',
-                      unitLabel: unitLabel,
-                      valueColor: hasPhysicalCount ? _diffColor(diff) : null,
-                      emphasized: hasPhysicalCount && diff.abs() > 0.001,
-                      subtitle: hasPhysicalCount
-                          ? null
-                          : 'Do a physical count to compare',
-                    ),
-                  ],
-                ),
+              _summaryLine(
+                label: 'Opening stock',
+                value: _qty(openingQty, unit),
+                unitLabel: unitLabel,
+              ),
+              _summaryLine(
+                label: 'Purchased (verified)',
+                value: _qty(purchasedQty, unit),
+                unitLabel: unitLabel,
+                valueColor: const Color(0xFF2563EB),
+              ),
+              _summaryLine(
+                label: 'Physical count',
+                value: physicalQty > 0.001 ? _qty(physicalQty, unit) : '—',
+                unitLabel: unitLabel,
+                subtitle: [
+                  if (updatedAt != null)
+                    updatedBy != null
+                        ? 'By $updatedBy · ${_timeAgo(updatedAt)}'
+                        : _timeAgo(updatedAt),
+                ].join(),
+              ),
+              _summaryLine(
+                label: 'Difference',
+                value: hasPhysicalCount
+                    ? '${diff > 0 ? '+' : ''}${_qty(diff, unit)}'
+                    : '—',
+                unitLabel: unitLabel,
+                valueColor: hasPhysicalCount ? _diffColor(diff) : null,
+                emphasized: hasPhysicalCount && diff.abs() > 0.001,
+                subtitle: hasPhysicalCount
+                    ? null
+                    : 'Do a physical count to compare',
               ),
             ],
             if (!isOwner && !isStaff) ...[
@@ -643,43 +495,6 @@ class ItemStockSnapshotCard extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: _ReorderLevelSheet(itemId: itemId, current: current),
     );
-  }
-}
-
-Future<void> _recomputeSystemStock(
-  BuildContext context,
-  WidgetRef ref,
-  String businessId,
-  String itemId,
-) async {
-  try {
-    final out = await ref.read(hexaApiProvider).recomputeItemStock(
-          businessId: businessId,
-          itemId: itemId,
-        );
-    invalidateWarehouseSurfaces(ref, itemId: itemId);
-    ref.invalidate(itemDetailBundleProvider(itemId));
-    if (context.mounted) {
-      final qty = out['recomputed_qty'];
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            qty != null
-                ? 'System stock now ${formatStockQtyNumber(coerceToDouble(qty))}'
-                : 'System stock synced from verified purchases',
-          ),
-        ),
-      );
-    }
-  } catch (e) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(userFacingError(e)),
-          backgroundColor: Colors.red.shade700,
-        ),
-      );
-    }
   }
 }
 

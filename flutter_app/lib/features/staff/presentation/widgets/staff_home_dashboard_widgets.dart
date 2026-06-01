@@ -885,13 +885,6 @@ class StaffHomeToolsGrid extends ConsumerWidget {
         () => context.push('/staff/low-stock'),
         badge: lowCount,
       ),
-      if (staffHomeShowsPurchaseTools(focus))
-        _ToolSpec(
-          'Cash buy',
-          Icons.add_shopping_cart_rounded,
-          HexaColors.profit,
-          () => context.push('/staff/quick-purchase'),
-        ),
     ];
 
     return GridView.count(

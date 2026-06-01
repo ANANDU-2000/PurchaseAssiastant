@@ -1,18 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-import '../../../core/auth/session_notifier.dart';
-import '../../../core/models/session.dart';
 import '../../../core/models/trade_purchase_models.dart';
-import '../../../core/router/post_auth_route.dart';
 import '../../../core/reporting/trade_report_aggregate.dart';
-import '../presentation/operational_reports_section.dart';
 import '../presentation/reports_overview_chart_section.dart';
-import '../presentation/widgets/reports_insights_strip.dart';
-import '../shell/reports_layout.dart';
-import '../widgets/reports_kpi_row.dart';
+import '../widgets/reports_overview_kpi_grid.dart';
 
-/// Overview tab: KPI row + insight chips + full-width charts.
+/// Overview tab: KPI grid first, charts below.
 class ReportsOverviewTab extends ConsumerWidget {
   const ReportsOverviewTab({
     super.key,
@@ -39,25 +34,25 @@ class ReportsOverviewTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final session = ref.watch(sessionProvider);
+    void goTab(String tab) => context.replace('/reports?tab=$tab');
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ReportsKpiRow(
-            totals: agg.totals,
-            itemCount: agg.itemsAll.length,
-            supplierCount: agg.suppliers.length,
+          ReportsOverviewKpiGrid(
+            agg: agg,
+            onTapStock: () => goTab('stock'),
+            onTapPurchases: () => goTab('purchase'),
+            onTapItems: () => goTab('items'),
           ),
-          const SizedBox(height: 8),
-          ReportsInsightsStrip(agg: agg),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           SizedBox(
-            height: kReportsChartMinHeight,
+            height: 160,
             child: ReportsOverviewChartSection(
               agg: agg,
-              viewportHeight: kReportsChartMinHeight,
+              viewportHeight: 160,
               isLoadingInitial: showSkeleton,
               loadFailed: hasFetchError && merged.isEmpty,
               loadError: purchasesError,
@@ -69,11 +64,6 @@ class ReportsOverviewTab extends ConsumerWidget {
               onPickRange: onPickRange,
             ),
           ),
-          if (session != null && sessionCanSeeFinancials(session))
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: OperationalReportsSection(),
-            ),
         ],
       ),
     );

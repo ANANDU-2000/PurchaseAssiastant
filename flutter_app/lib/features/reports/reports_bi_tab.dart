@@ -1,84 +1,111 @@
-/// Reports BI shell tabs (query param: `tab`).
+/// Reports shell tabs (query param: `tab`).
 enum ReportsBiTab {
   overview,
-  categories,
-  subcategories,
   items,
   purchases,
   stock,
-  suppliers,
-  brokers,
-  slowMoving,
-  deadStock,
-  usage,
-  stockMovement,
 }
 
 extension ReportsBiTabX on ReportsBiTab {
   String get queryValue => switch (this) {
         ReportsBiTab.overview => 'overview',
-        ReportsBiTab.categories => 'categories',
-        ReportsBiTab.subcategories => 'subcategories',
         ReportsBiTab.items => 'items',
         ReportsBiTab.purchases => 'purchase',
         ReportsBiTab.stock => 'stock',
-        ReportsBiTab.suppliers => 'suppliers',
-        ReportsBiTab.brokers => 'brokers',
-        ReportsBiTab.slowMoving => 'slow',
-        ReportsBiTab.deadStock => 'dead',
-        ReportsBiTab.usage => 'usage',
-        ReportsBiTab.stockMovement => 'movement',
       };
 
   String get shortLabel => switch (this) {
         ReportsBiTab.overview => 'Overview',
-        ReportsBiTab.categories => 'Categories',
-        ReportsBiTab.subcategories => 'Subcat',
         ReportsBiTab.items => 'Items',
         ReportsBiTab.purchases => 'Purchases',
         ReportsBiTab.stock => 'Stock',
-        ReportsBiTab.suppliers => 'Suppliers',
-        ReportsBiTab.brokers => 'Brokers',
-        ReportsBiTab.slowMoving => 'Stock intel',
-        ReportsBiTab.deadStock => 'Dead',
-        ReportsBiTab.usage => 'Usage',
-        ReportsBiTab.stockMovement => 'Activity',
       };
+
+  static const primaryTabs = [
+    ReportsBiTab.overview,
+    ReportsBiTab.items,
+    ReportsBiTab.purchases,
+    ReportsBiTab.stock,
+  ];
+
+  /// Maps legacy query values to a primary tab.
+  static ReportsBiTab resolveFromQuery(String? raw) {
+    return fromQuery(raw) ?? ReportsBiTab.overview;
+  }
 
   static ReportsBiTab? fromQuery(String? raw) {
     if (raw == null || raw.isEmpty) return null;
     final k = raw.trim().toLowerCase();
     return switch (k) {
       'overview' || 'ring' => ReportsBiTab.overview,
-      'categories' || 'category' => ReportsBiTab.categories,
-      'subcategories' || 'subcategory' || 'types' => ReportsBiTab.subcategories,
-      'items' || 'item' => ReportsBiTab.items,
-      'purchase' || 'purchases' => ReportsBiTab.purchases,
-      'stock' || 'stock_intel' => ReportsBiTab.stock,
-      'suppliers' || 'supplier' || 'supp' => ReportsBiTab.suppliers,
-      'brokers' || 'broker' => ReportsBiTab.brokers,
-      'slow' || 'slow_moving' || 'slowmoving' => ReportsBiTab.slowMoving,
-      'dead' || 'dead_stock' || 'deadstock' => ReportsBiTab.deadStock,
-      'usage' => ReportsBiTab.usage,
-      'movement' || 'stock_movement' || 'activity' => ReportsBiTab.stockMovement,
+      'items' ||
+      'item' ||
+      'categories' ||
+      'category' ||
+      'subcategories' ||
+      'subcategory' ||
+      'types' ||
+      'usage' =>
+        ReportsBiTab.items,
+      'purchase' ||
+      'purchases' ||
+      'suppliers' ||
+      'supplier' ||
+      'supp' ||
+      'brokers' ||
+      'broker' =>
+        ReportsBiTab.purchases,
+      'stock' ||
+      'stock_intel' ||
+      'slow' ||
+      'slow_moving' ||
+      'slowmoving' ||
+      'dead' ||
+      'dead_stock' ||
+      'deadstock' ||
+      'movement' ||
+      'stock_movement' ||
+      'activity' =>
+        ReportsBiTab.stock,
       _ => null,
     };
   }
 
-  /// Primary sticky row — no wrap; horizontal scroll on narrow screens.
-  static const primaryRow = [
-    ReportsBiTab.overview,
-    ReportsBiTab.items,
-    ReportsBiTab.purchases,
-    ReportsBiTab.stock,
-    ReportsBiTab.stockMovement,
-  ];
+  /// Optional stock section from `?section=` when tab is stock.
+  static String? stockSectionFromQuery(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    final k = raw.trim().toLowerCase();
+    return switch (k) {
+      'slow' || 'slow_moving' => 'slow',
+      'dead' || 'dead_stock' => 'dead',
+      'fast' || 'fast_moving' => 'fast',
+      'low' => 'low',
+      'out' => 'out',
+      'current' => 'current',
+      _ => null,
+    };
+  }
 
-  static const moreSheet = [
-    ReportsBiTab.categories,
-    ReportsBiTab.subcategories,
-    ReportsBiTab.suppliers,
-    ReportsBiTab.brokers,
-    ReportsBiTab.usage,
-  ];
+  /// Legacy tab query that implied a filter preset (applied on navigation).
+  static ReportsLegacyFilterPreset? legacyFilterPreset(String? tabRaw) {
+    if (tabRaw == null) return null;
+    final k = tabRaw.trim().toLowerCase();
+    return switch (k) {
+      'categories' || 'category' => ReportsLegacyFilterPreset.categoryFocus,
+      'subcategories' || 'subcategory' || 'types' =>
+        ReportsLegacyFilterPreset.subcategoryFocus,
+      'suppliers' || 'supplier' => ReportsLegacyFilterPreset.supplierFocus,
+      'brokers' || 'broker' => ReportsLegacyFilterPreset.brokerFocus,
+      'usage' => ReportsLegacyFilterPreset.usageOnly,
+      _ => null,
+    };
+  }
+}
+
+enum ReportsLegacyFilterPreset {
+  categoryFocus,
+  subcategoryFocus,
+  supplierFocus,
+  brokerFocus,
+  usageOnly,
 }

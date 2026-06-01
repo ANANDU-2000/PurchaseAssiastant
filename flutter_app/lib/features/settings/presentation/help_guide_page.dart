@@ -29,7 +29,7 @@ class HelpGuidePage extends StatelessWidget {
             title: 'Daily stock truth',
             items: const [
               'Formal purchase orders add stock only after delivery is confirmed.',
-              'Staff cash buys add stock immediately from Quick cash purchase.',
+              'Staff cash buys: open Stock, tap an item, then Quick purchase.',
               'Physical count records do not change stock unless you choose Update stock.',
             ],
           ),

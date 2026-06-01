@@ -1,17 +1,23 @@
-# Render Blueprint reference — service is usually configured in the dashboard.
-# Sync: my-purchases-api → rootDir backend, healthCheckPath /health/ready
+# Render Blueprint reference — mirror these in the Dashboard if not using Blueprint sync.
+# my-purchases-api → rootDir backend, healthCheckPath /health/ready
 services:
   - type: web
     name: my-purchases-api
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt
+    # Run migrations BEFORE the new instance binds $PORT (avoids 503 / port-scan timeout).
+    preDeployCommand: alembic upgrade head
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --log-level info
     healthCheckPath: /health/ready
     envVars:
       - key: APP_ENV
         value: production
+      # Migrations run in preDeployCommand — do not block uvicorn boot.
       - key: AUTO_MIGRATE
-        value: "1"
+        value: "0"
+      # Heavy repair script; run manually after deploy if needed (see scripts/README).
+      - key: AUTO_STOCK_BACKFILL_ON_START
+        value: "false"
       # Set in dashboard (never commit secrets):
       # DATABASE_URL, JWT_SECRET, CORS_ORIGINS, OPENAI_API_KEY, SENTRY_DSN

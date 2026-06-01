@@ -3,7 +3,7 @@
 Usage (from backend/, with DATABASE_URL set):
   python -m scripts.backfill_purchase_stock_commit [--business-id UUID] [--dry-run]
 
-Prefer per-item Recompute via API when only a few items are wrong.
+Idempotent: skips POs that already have stock_movements ledger rows.
 """
 
 from __future__ import annotations

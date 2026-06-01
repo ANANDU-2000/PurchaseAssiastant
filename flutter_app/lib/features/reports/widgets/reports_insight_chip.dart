@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/hexa_colors.dart';
-
 class ReportsInsightChip extends StatelessWidget {
   const ReportsInsightChip({
     super.key,

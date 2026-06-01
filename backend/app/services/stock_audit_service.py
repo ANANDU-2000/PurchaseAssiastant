@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -12,18 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import CatalogItem, User
-from app.models.stock_adjustment import StockAdjustmentLog
 from app.models.stock_audit import StockAudit, StockAuditItem
 from app.services.staff_audit import log_staff_activity
 from app.services.stock_inventory import catalog_stock_qty
+from app.services.stock_movement_service import apply_stock_movement
 
 # Default: variance above 2 units AND >2% of system qty requires approval.
 _APPROVAL_MIN_UNITS = Decimal("2")
 _APPROVAL_PCT = Decimal("0.02")
-
-
-def _user_display(user: User) -> str:
-    return user.name or user.username or "User"
 
 
 def variance_needs_approval(system_qty: Decimal, difference_qty: Decimal) -> bool:
@@ -90,28 +85,29 @@ async def apply_audit_line_to_stock(
     adjustment_type: str,
     reason: str,
     audit_id: uuid.UUID | None = None,
-) -> StockAdjustmentLog:
+) -> None:
     old_qty = catalog_stock_qty(item)
     if counted_qty < 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Stock cannot be negative")
-    display = _user_display(user)
     prefix = f"Audit {audit_id}: " if audit_id else ""
-    log = StockAdjustmentLog(
+    await apply_stock_movement(
+        db,
         business_id=business_id,
         item_id=item.id,
-        old_qty=old_qty,
-        new_qty=counted_qty,
-        adjustment_type=adjustment_type,
+        user=user,
+        movement_kind="correction",
+        mode="absolute",
+        qty=counted_qty,
         reason=f"{prefix}{reason}".strip(),
-        updated_by=user.id,
-        updated_by_name=display,
+        source_type="stock_audit",
+        source_id=audit_id,
+        metadata={
+            "audit_id": str(audit_id) if audit_id else None,
+            "adjustment_type": adjustment_type,
+            "old_qty": float(old_qty),
+        },
     )
-    item.current_stock = counted_qty
-    item.last_stock_updated_at = datetime.now(timezone.utc)
-    item.last_stock_updated_by = display
     item.updated_by_user_id = user.id
-    db.add(log)
-    return log
 
 
 async def upsert_audit_line(

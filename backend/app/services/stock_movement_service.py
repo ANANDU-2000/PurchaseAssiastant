@@ -51,6 +51,8 @@ def _activity_type_for(kind: str) -> str:
         return "STOCK_SALE_ADJUSTMENT"
     if k == "opening_stock":
         return "OPENING_STOCK_SET"
+    if k == "delivery_adjustment":
+        return "PURCHASE_STOCK_COMMITTED"
     return "STOCK_PHYSICAL_UPDATE"
 
 
@@ -64,6 +66,7 @@ def _adjustment_type_for(kind: str) -> str:
         "opening_stock": "opening_stock",
         "delivery_receive": "purchase",
         "delivery_revoke": "purchase_reversal",
+        "delivery_adjustment": "purchase_adjustment",
         "usage": "usage",
         "undo": "correction",
     }

@@ -1,116 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_notifier.dart';
-import '../../../core/providers/business_users_provider.dart';
-import '../../../core/router/post_auth_route.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/errors/user_facing_errors.dart';
+import '../../../core/providers/business_users_provider.dart';
 import '../../../core/router/navigation_ext.dart';
+import '../../../core/router/post_auth_route.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/hexa_error_card.dart';
+import '../users/user_activity_tab.dart';
+import '../users/user_overview_kpi_grid.dart';
+import '../users/user_permission_groups.dart';
+import '../users/user_profile_header.dart';
+import '../users/user_profile_providers.dart';
 
-final businessUserProfileProvider =
-    FutureProvider.autoDispose.family<Map<String, dynamic>, String>(
-  (ref, userId) async {
-    final session = ref.watch(sessionProvider);
-    if (session == null) return {};
-    return ref.read(hexaApiProvider).getBusinessUser(
-          businessId: session.primaryBusiness.id,
-          userId: userId,
-        );
-  },
-);
+export '../users/user_profile_providers.dart';
 
-final userActivityFeedProvider =
-    FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
-  (ref, userId) async {
-    final session = ref.watch(sessionProvider);
-    if (session == null) return [];
-    return ref.read(hexaApiProvider).listUserActivity(
-          businessId: session.primaryBusiness.id,
-          userId: userId,
-          days: 30,
-        );
-  },
-);
-
-final userStockHistoryProvider =
-    FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
-  (ref, userId) async {
-    final session = ref.watch(sessionProvider);
-    if (session == null) return [];
-    return ref.read(hexaApiProvider).listUserStockAdjustments(
-          businessId: session.primaryBusiness.id,
-          userId: userId,
-        );
-  },
-);
-
-final userPurchasesProvider =
-    FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
-  (ref, userId) async {
-    final session = ref.watch(sessionProvider);
-    if (session == null) return [];
-    return ref.read(hexaApiProvider).listUserPurchases(
-          businessId: session.primaryBusiness.id,
-          userId: userId,
-        );
-  },
-);
-
-final userLedgerProvider =
-    FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
-  (ref, userId) async {
-    final session = ref.watch(sessionProvider);
-    if (session == null) return [];
-    return ref.read(hexaApiProvider).listUserLedger(
-          businessId: session.primaryBusiness.id,
-          userId: userId,
-        );
-  },
-);
-
-final userPermissionsProvider =
-    FutureProvider.autoDispose.family<Map<String, dynamic>, String>(
-  (ref, userId) async {
-    final session = ref.watch(sessionProvider);
-    if (session == null) return {};
-    return ref.read(hexaApiProvider).getUserPermissions(
-          businessId: session.primaryBusiness.id,
-          userId: userId,
-        );
-  },
-);
-
-final userCreatedItemsProvider =
-    FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
-  (ref, userId) async {
-    final session = ref.watch(sessionProvider);
-    if (session == null) return [];
-    return ref.read(hexaApiProvider).listUserCreatedItems(
-          businessId: session.primaryBusiness.id,
-          userId: userId,
-        );
-  },
-);
-
-final userLedgerGroupedProvider =
-    FutureProvider.autoDispose.family<Map<String, dynamic>, String>(
-  (ref, userId) async {
-    final session = ref.watch(sessionProvider);
-    if (session == null) return {};
-    return ref.read(hexaApiProvider).listUserLedgerGrouped(
-          businessId: session.primaryBusiness.id,
-          userId: userId,
-        );
-  },
-);
-
-/// Tabbed user profile for owners/managers.
+/// Tabbed user profile — Overview / Activity / Permissions (ERP rebuild).
 class UserProfilePage extends ConsumerStatefulWidget {
   const UserProfilePage({super.key, required this.userId});
 
@@ -127,7 +36,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 7, vsync: this);
+    _tabs = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -178,81 +87,268 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
     }
   }
 
+  Future<void> _handleMoreAction(String action, Map<String, dynamic> user) async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final blocked = user['is_blocked'] == true;
+    final active = user['is_active'] == true && !blocked;
+    final email = user['email']?.toString() ?? user['login_email']?.toString() ?? '';
+
+    switch (action) {
+      case 'reset':
+        await _resetPassword();
+      case 'copy':
+        if (email.isEmpty) return;
+        await Clipboard.setData(ClipboardData(text: email));
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Email copied')),
+        );
+      case 'block':
+        try {
+          await ref.read(hexaApiProvider).patchBusinessUser(
+                businessId: session.primaryBusiness.id,
+                userId: widget.userId,
+                isBlocked: !blocked,
+              );
+          ref.invalidate(businessUserProfileProvider(widget.userId));
+          invalidateUserManagementCaches(ref);
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(userFacingError(e))),
+          );
+        }
+      case 'toggle_active':
+        try {
+          await ref.read(hexaApiProvider).patchBusinessUser(
+                businessId: session.primaryBusiness.id,
+                userId: widget.userId,
+                isActive: !active,
+              );
+          ref.invalidate(businessUserProfileProvider(widget.userId));
+          invalidateUserManagementCaches(ref);
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(userFacingError(e))),
+          );
+        }
+      case 'delete':
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Delete user?'),
+            content: const Text('User will be deactivated. Audit history is kept.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+            ],
+          ),
+        );
+        if (ok != true) return;
+        try {
+          await ref.read(hexaApiProvider).deleteBusinessUser(
+                businessId: session.primaryBusiness.id,
+                userId: widget.userId,
+              );
+          invalidateUserManagementCaches(ref);
+          if (!mounted) return;
+          context.popOrGo('/settings/users');
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(userFacingError(e))),
+          );
+        }
+    }
+  }
+
+  Future<void> _openEditSheet(Map<String, dynamic> user) async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final nameCtrl = TextEditingController(text: user['name']?.toString() ?? '');
+    final emailCtrl = TextEditingController(text: user['email']?.toString() ?? '');
+    final phoneCtrl = TextEditingController(text: user['phone']?.toString() ?? '');
+    var role = user['role']?.toString() ?? 'staff';
+    var saving = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModal) {
+            Future<void> save() async {
+              if (saving) return;
+              setModal(() => saving = true);
+              try {
+                await ref.read(hexaApiProvider).patchBusinessUser(
+                      businessId: session.primaryBusiness.id,
+                      userId: widget.userId,
+                      fullName: nameCtrl.text.trim(),
+                      email: emailCtrl.text.trim(),
+                      phone: phoneCtrl.text.trim(),
+                      role: role,
+                    );
+                ref.invalidate(businessUserProfileProvider(widget.userId));
+                invalidateUserManagementCaches(ref);
+                if (ctx.mounted) Navigator.pop(ctx);
+              } catch (e) {
+                setModal(() => saving = false);
+                if (!ctx.mounted) return;
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  SnackBar(content: Text(userFacingError(e))),
+                );
+              }
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                bottom: MediaQuery.viewInsetsOf(ctx).bottom + 16,
+                top: 8,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Edit user', style: HexaDsType.h3(ctx)),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Full name',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: emailCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: phoneCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Phone',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  if ((user['role']?.toString() ?? '') != 'owner')
+                    DropdownButtonFormField<String>(
+                      initialValue: role,
+                      decoration: const InputDecoration(
+                        labelText: 'Role',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'staff', child: Text('Staff')),
+                        DropdownMenuItem(value: 'manager', child: Text('Manager')),
+                        DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                      ],
+                      onChanged: saving ? null : (v) => setModal(() => role = v ?? role),
+                    ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: saving ? null : save,
+                    child: saving
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Save changes'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    nameCtrl.dispose();
+    emailCtrl.dispose();
+    phoneCtrl.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final profileAsync = ref.watch(businessUserProfileProvider(widget.userId));
-    final tt = Theme.of(context).textTheme;
+    final session = ref.watch(sessionProvider);
+    final canAdmin = session != null && sessionCanAdminUsers(session);
 
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
-      appBar: AppBar(
-        title: Text('User profile', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.popOrGo('/settings/users'),
-        ),
-      ),
       body: profileAsync.when(
-        loading: () => const Center(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: CircularProgressIndicator(),
-          ),
-        ),
+        loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => HexaErrorCard.fromError(
           error: e,
           title: 'Could not load user',
           onRetry: () => ref.invalidate(businessUserProfileProvider(widget.userId)),
         ),
-        data: (u) {
-          if (u.isEmpty) {
+        data: (user) {
+          if (user.isEmpty) {
             return const Center(child: Text('User not found.'));
           }
-          return Column(
-            children: [
-              _HeaderCard(user: u, onReset: _resetPassword, userId: widget.userId),
-              Material(
-                color: HexaColors.brandBackground,
-                child: TabBar(
-                  controller: _tabs,
-                  isScrollable: true,
-                  tabAlignment: TabAlignment.start,
-                  labelStyle: HexaDsType.body(12, weight: FontWeight.w800),
-                  unselectedLabelStyle: HexaDsType.body(12, weight: FontWeight.w600),
-                  labelColor: HexaColors.brandPrimary,
-                  unselectedLabelColor: HexaColors.textSecondary,
-                  indicatorSize: TabBarIndicatorSize.label,
-                  dividerColor: Colors.transparent,
-                  tabs: const [
-                    Tab(text: 'Overview'),
-                    Tab(text: 'Activity'),
-                    Tab(text: 'Stock'),
-                    Tab(text: 'Purchases'),
-                    Tab(text: 'Items'),
-                    Tab(text: 'Ledger'),
-                    Tab(text: 'Permissions'),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: TabBarView(
-                  controller: _tabs,
-                  children: [
-                    _OverviewTab(user: u),
-                    _FeedTab(
-                      async: ref.watch(userActivityFeedProvider(widget.userId)),
-                      onRetry: () => ref.invalidate(userActivityFeedProvider(widget.userId)),
-                      empty: 'No activity in the last 30 days.',
+
+          return NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) => [
+              SliverOverlapAbsorber(
+                handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+                sliver: SliverAppBar(
+                  pinned: true,
+                  expandedHeight: 148,
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    onPressed: () => context.popOrGo('/settings/users'),
+                  ),
+                  title: innerBoxIsScrolled
+                      ? UserProfileCollapsedTitle(user: user)
+                      : const Text('User profile'),
+                  flexibleSpace: FlexibleSpaceBar(
+                    collapseMode: CollapseMode.pin,
+                    background: UserProfileHeaderContent(
+                      user: user,
+                      userId: widget.userId,
+                      canAdmin: canAdmin,
+                      onEdit: () => _openEditSheet(user),
+                      onMoreSelected: (a) => _handleMoreAction(a, user),
                     ),
-                    _StockTab(userId: widget.userId),
-                    _PurchasesTab(userId: widget.userId),
-                    _ItemsTab(userId: widget.userId),
-                    _LedgerTab(userId: widget.userId),
-                    _PermissionsTab(userId: widget.userId),
-                  ],
+                  ),
+                  bottom: TabBar(
+                    controller: _tabs,
+                    labelStyle: HexaDsType.body(13, weight: FontWeight.w700),
+                    unselectedLabelStyle: HexaDsType.body(13, weight: FontWeight.w600),
+                    labelColor: HexaColors.brandPrimary,
+                    unselectedLabelColor: HexaColors.textSecondary,
+                    indicatorSize: TabBarIndicatorSize.label,
+                    tabs: const [
+                      Tab(text: 'Overview'),
+                      Tab(text: 'Activity'),
+                      Tab(text: 'Permissions'),
+                    ],
+                  ),
                 ),
               ),
             ],
+            body: TabBarView(
+              controller: _tabs,
+              children: [
+                _OverviewScroll(user: user),
+                UserActivityTab(userId: widget.userId),
+                _PermissionsScroll(
+                  userId: widget.userId,
+                  readOnly: !canAdmin,
+                ),
+              ],
+            ),
           );
         },
       ),
@@ -260,459 +356,63 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
   }
 }
 
-class _HeaderCard extends ConsumerWidget {
-  const _HeaderCard({
-    required this.user,
-    required this.onReset,
-    required this.userId,
-  });
-
+class _OverviewScroll extends StatelessWidget {
+  const _OverviewScroll({required this.user});
   final Map<String, dynamic> user;
-  final VoidCallback onReset;
-  final String userId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final session = ref.watch(sessionProvider);
-    final canAdmin = session != null && sessionCanAdminUsers(session);
-    final name = user['name']?.toString() ?? '—';
-    final role = user['role']?.toString() ?? '';
-    final blocked = user['is_blocked'] == true;
-    final active = user['is_active'] == true && !blocked;
-    final email = user['email']?.toString() ?? user['login_email']?.toString() ?? '';
-    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
-    final lastLogin = DateTime.tryParse(user['last_login_at']?.toString() ?? '');
-
-    return Card(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      key: const PageStorageKey('user_overview'),
+      slivers: [
+        SliverOverlapInjector(
+          handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: HexaColors.brandPrimary.withValues(alpha: 0.15),
-                  child: Text(initial, style: HexaDsType.heading(22)),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(name, style: HexaDsType.heading(18)),
-                      const SizedBox(height: 4),
-                      Wrap(
-                        spacing: 8,
+                UserOverviewKpiGrid(user: user),
+                const SizedBox(height: 12),
+                if (user['notes'] != null && user['notes'].toString().isNotEmpty)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Chip(
-                            label: Text(role, style: HexaDsType.body(12)),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          Chip(
-                            label: Text(
-                              blocked
-                                  ? 'Blocked'
-                                  : (active ? 'Active' : 'Inactive'),
-                              style: HexaDsType.body(12),
-                            ),
-                            backgroundColor: blocked
-                                ? Colors.red.withValues(alpha: 0.12)
-                                : (active
-                                    ? Colors.teal.withValues(alpha: 0.12)
-                                    : Colors.grey.withValues(alpha: 0.12)),
-                            visualDensity: VisualDensity.compact,
-                          ),
+                          Text('Notes', style: HexaDsType.labelCaps(context)),
+                          const SizedBox(height: 4),
+                          Text(user['notes'].toString()),
                         ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
               ],
             ),
-            const SizedBox(height: 8),
-            if (email.isNotEmpty)
-              Text('Email: $email', style: HexaDsType.body(14)),
-            Text('Phone: ${user['phone'] ?? '—'}', style: HexaDsType.body(14)),
-            if (lastLogin != null)
-              Text(
-                'Last login: ${DateFormat.yMMMd().add_jm().format(lastLogin.toLocal())}',
-                style: HexaDsType.body(14),
-              ),
-            if (user['warehouse_name'] != null)
-              Text('Warehouse: ${user['warehouse_name']}', style: HexaDsType.body(14)),
-            if (canAdmin) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: onReset,
-                    icon: const Icon(Icons.vpn_key_outlined, size: 18),
-                    label: const Text('Reset password'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      if (email.isEmpty) return;
-                      await Clipboard.setData(ClipboardData(text: email));
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Login email copied')),
-                      );
-                    },
-                    icon: const Icon(Icons.copy_outlined, size: 18),
-                    label: const Text('Copy email'),
-                  ),
-                  if (role != 'owner')
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final s = ref.read(sessionProvider);
-                        if (s == null) return;
-                        try {
-                          await ref.read(hexaApiProvider).patchBusinessUser(
-                                businessId: s.primaryBusiness.id,
-                                userId: userId,
-                                isBlocked: !blocked,
-                              );
-                          ref.invalidate(businessUserProfileProvider(userId));
-                          invalidateUserManagementCaches(ref);
-                        } catch (e) {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(userFacingError(e))),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.block_flipped, size: 18),
-                      label: Text(blocked ? 'Unblock' : 'Block'),
-                    ),
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      final s = ref.read(sessionProvider);
-                      if (s == null) return;
-                      final next = !active;
-                      try {
-                        await ref.read(hexaApiProvider).patchBusinessUser(
-                              businessId: s.primaryBusiness.id,
-                              userId: userId,
-                              isActive: next,
-                            );
-                        ref.invalidate(businessUserProfileProvider(userId));
-                        invalidateUserManagementCaches(ref);
-                      } catch (e) {
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(userFacingError(e))),
-                        );
-                      }
-                    },
-                    icon: Icon(active ? Icons.person_off_outlined : Icons.person_outline),
-                    label: Text(active ? 'Deactivate' : 'Activate'),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _OverviewTab extends StatelessWidget {
-  const _OverviewTab({required this.user});
-  final Map<String, dynamic> user;
-
-  @override
-  Widget build(BuildContext context) {
-    final stats = user['today_stats'] is Map
-        ? Map<String, dynamic>.from(user['today_stats'] as Map)
-        : <String, dynamic>{};
-    final totals = user['stats'] is Map
-        ? Map<String, dynamic>.from(user['stats'] as Map)
-        : <String, dynamic>{};
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-      children: [
-        Card(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Column(
-            children: [
-              _denseTile('Total stock edits', '${totals['stock_edits_total'] ?? 0}'),
-              const Divider(height: 1),
-              _denseTile('Total purchases', '${totals['purchases_total'] ?? 0}'),
-              const Divider(height: 1),
-              _denseTile('Total scans', '${totals['scans_total'] ?? 0}'),
-              const Divider(height: 1),
-              _denseTile('Items created', '${totals['items_created_total'] ?? 0}'),
-            ],
           ),
         ),
-        const SizedBox(height: 8),
-        Card(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Column(
-            children: [
-              _denseTile('7d activity', '${user['activity_count_7d'] ?? 0} events'),
-              const Divider(height: 1),
-              _denseTile('7d purchases', '${user['purchases_7d'] ?? 0}'),
-              const Divider(height: 1),
-              _denseTile('7d stock edits', '${user['stock_updates_7d'] ?? 0}'),
-              const Divider(height: 1),
-              _denseTile('Today scans', '${stats['scans'] ?? 0}'),
-              const Divider(height: 1),
-              _denseTile('Today stock updates', '${stats['stock_updates'] ?? 0}'),
-            ],
-          ),
-        ),
-        if (user['notes'] != null && user['notes'].toString().isNotEmpty)
-          _denseTile('Notes', user['notes'].toString()),
-        if (user['created_at'] != null)
-          _denseTile('Created', user['created_at'].toString()),
       ],
     );
   }
 }
 
-class _FeedTab extends StatelessWidget {
-  const _FeedTab({
-    required this.async,
-    required this.onRetry,
-    required this.empty,
+class _PermissionsScroll extends ConsumerStatefulWidget {
+  const _PermissionsScroll({
+    required this.userId,
+    required this.readOnly,
   });
 
-  final AsyncValue<List<Map<String, dynamic>>> async;
-  final VoidCallback onRetry;
-  final String empty;
-
-  @override
-  Widget build(BuildContext context) {
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => FriendlyLoadError(
-        onRetry: onRetry,
-        message: userFacingError(e),
-        subtitle: null,
-      ),
-      data: (rows) {
-        if (rows.isEmpty) {
-          return Center(child: Text(empty, style: HexaDsType.body(14)));
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-          itemCount: rows.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (_, i) => _activityRow(rows[i]),
-        );
-      },
-    );
-  }
-}
-
-Widget _activityRow(Map<String, dynamic> row) {
-  final at = DateTime.tryParse(row['created_at']?.toString() ?? '');
-  final time = at != null ? DateFormat('d MMM, HH:mm').format(at.toLocal()) : '';
-  final action = row['action_type']?.toString() ?? '';
-  final item = row['item_name']?.toString();
-  final details = row['details'] is Map
-      ? Map<String, dynamic>.from(row['details'] as Map)
-      : null;
-  String? delta;
-  if (details != null) {
-    final before = details['before'];
-    final after = details['after'];
-    if (before is Map && after is Map) {
-      delta = '${before.toString()} → ${after.toString()}';
-    } else {
-      final o = details['old_qty'] ?? (before is Map ? before['qty'] : null);
-      final n = details['new_qty'] ?? (after is Map ? after['qty'] : null);
-      if (o != null && n != null) delta = '$o → $n';
-    }
-  }
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(action, style: HexaDsType.body(13, weight: FontWeight.w700)),
-        if (item != null && item.isNotEmpty)
-          Text(item, style: HexaDsType.body(12, color: HexaColors.textSecondary)),
-        if (delta != null)
-          Text(delta, style: HexaDsType.body(11, color: HexaColors.textSecondary)),
-        Text(time, style: HexaDsType.body(10, color: HexaColors.textSecondary)),
-      ],
-    ),
-  );
-}
-
-class _StockTab extends ConsumerWidget {
-  const _StockTab({required this.userId});
   final String userId;
+  final bool readOnly;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(userStockHistoryProvider(userId));
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => FriendlyLoadError(
-        onRetry: () => ref.invalidate(userStockHistoryProvider(userId)),
-      ),
-      data: (rows) {
-        if (rows.isEmpty) {
-          return const Center(child: Text('No stock adjustments yet.'));
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-          itemCount: rows.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (_, i) {
-            final r = rows[i];
-            return _denseTile(
-              r['item_name']?.toString() ?? 'Item',
-              '${r['old_qty']} → ${r['new_qty']} · ${r['adjustment_type']}',
-            );
-          },
-        );
-      },
-    );
-  }
+  ConsumerState<_PermissionsScroll> createState() => _PermissionsScrollState();
 }
 
-class _PurchasesTab extends ConsumerWidget {
-  const _PurchasesTab({required this.userId});
-  final String userId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(userPurchasesProvider(userId));
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => FriendlyLoadError(
-        onRetry: () => ref.invalidate(userPurchasesProvider(userId)),
-      ),
-      data: (rows) {
-        if (rows.isEmpty) {
-          return const Center(child: Text('No purchases recorded.'));
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-          itemCount: rows.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (_, i) {
-            final p = rows[i];
-            return _denseTile(
-              p['human_id']?.toString() ?? p['id']?.toString() ?? 'Purchase',
-              '${p['status'] ?? ''} · ${p['total_amount'] ?? ''}',
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-class _ItemsTab extends ConsumerWidget {
-  const _ItemsTab({required this.userId});
-  final String userId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(userCreatedItemsProvider(userId));
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => FriendlyLoadError(
-        onRetry: () => ref.invalidate(userCreatedItemsProvider(userId)),
-      ),
-      data: (rows) {
-        if (rows.isEmpty) {
-          return const Center(child: Text('No items created yet.'));
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-          itemCount: rows.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (_, i) {
-            final it = rows[i];
-            return _denseTile(
-              it['name']?.toString() ?? 'Item',
-              '${it['category'] ?? ''} · reorder ${it['reorder_level'] ?? '—'}',
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-class _LedgerTab extends ConsumerWidget {
-  const _LedgerTab({required this.userId});
-  final String userId;
-
-  List<Map<String, dynamic>> _entries(dynamic raw) {
-    if (raw is! List) return [];
-    return raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(userLedgerGroupedProvider(userId));
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => FriendlyLoadError(
-        onRetry: () => ref.invalidate(userLedgerGroupedProvider(userId)),
-      ),
-      data: (grouped) {
-        final sections = <String, List<Map<String, dynamic>>>{
-          'Today': _entries(grouped['today']),
-          'Yesterday': _entries(grouped['yesterday']),
-          'This week': _entries(grouped['this_week']),
-        };
-        final hasAny = sections.values.any((l) => l.isNotEmpty);
-        if (!hasAny) {
-          return const Center(child: Text('No ledger entries.'));
-        }
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            for (final entry in sections.entries)
-              if (entry.value.isNotEmpty) ...[
-                Text(entry.key, style: HexaDsType.heading(16)),
-                const SizedBox(height: 8),
-                for (final e in entry.value)
-                  _denseTile(
-                    '${e['kind']}: ${e['title']}',
-                    '${e['subtitle'] ?? ''}',
-                  ),
-                const SizedBox(height: 12),
-              ],
-          ],
-        );
-      },
-    );
-  }
-}
-
-String _permissionLabel(String key) {
-  return key
-      .split('_')
-      .where((w) => w.isNotEmpty)
-      .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
-      .join(' ');
-}
-
-class _PermissionsTab extends ConsumerStatefulWidget {
-  const _PermissionsTab({required this.userId});
-  final String userId;
-
-  @override
-  ConsumerState<_PermissionsTab> createState() => _PermissionsTabState();
-}
-
-class _PermissionsTabState extends ConsumerState<_PermissionsTab> {
+class _PermissionsScrollState extends ConsumerState<_PermissionsScroll> {
   Map<String, bool>? _draft;
 
   @override
@@ -722,6 +422,8 @@ class _PermissionsTabState extends ConsumerState<_PermissionsTab> {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => FriendlyLoadError(
         onRetry: () => ref.invalidate(userPermissionsProvider(widget.userId)),
+        message: userFacingError(e),
+        subtitle: null,
       ),
       data: (body) {
         final perms = body['permissions'] is Map
@@ -729,71 +431,67 @@ class _PermissionsTabState extends ConsumerState<_PermissionsTab> {
             : <String, dynamic>{};
         _draft ??= perms.map((k, v) => MapEntry(k, v == true));
         final draft = _draft!;
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            ...draft.keys.map(
-              (k) => SwitchListTile(
-                title: Text(_permissionLabel(k), style: HexaDsType.body(14)),
-                value: draft[k] ?? false,
-                onChanged: (v) => setState(() => draft[k] = v),
-              ),
+
+        return CustomScrollView(
+          slivers: [
+            SliverOverlapInjector(
+              handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
             ),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: () async {
-                final session = ref.read(sessionProvider);
-                if (session == null) return;
-                try {
-                  await ref.read(hexaApiProvider).patchUserPermissions(
-                        businessId: session.primaryBusiness.id,
-                        userId: widget.userId,
-                        permissions: draft,
-                      );
-                  ref.invalidate(userPermissionsProvider(widget.userId));
-                  invalidateUserManagementCaches(ref);
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Permissions saved')),
-                  );
-                } catch (e) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(userFacingError(e))),
-                  );
-                }
-              },
-              child: const Text('Save permissions'),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (widget.readOnly)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          'View only — only owners and admins can edit permissions.',
+                          style: HexaDsType.bodySm(context),
+                        ),
+                      ),
+                    UserGroupedPermissions(
+                      draft: draft,
+                      readOnly: widget.readOnly,
+                      onChanged: (key, value) =>
+                          setState(() => draft[key] = value),
+                    ),
+                    if (!widget.readOnly) ...[
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        onPressed: () async {
+                          final session = ref.read(sessionProvider);
+                          if (session == null) return;
+                          try {
+                            await ref.read(hexaApiProvider).patchUserPermissions(
+                                  businessId: session.primaryBusiness.id,
+                                  userId: widget.userId,
+                                  permissions: draft,
+                                );
+                            ref.invalidate(userPermissionsProvider(widget.userId));
+                            invalidateUserManagementCaches(ref);
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Permissions saved')),
+                            );
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(userFacingError(e))),
+                            );
+                          }
+                        },
+                        child: const Text('Save permissions'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ],
         );
       },
     );
   }
-}
-
-Widget _denseTile(String title, String subtitle) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          flex: 5,
-          child: Text(
-            title,
-            style: HexaDsType.body(13, weight: FontWeight.w600),
-          ),
-        ),
-        Expanded(
-          flex: 4,
-          child: Text(
-            subtitle,
-            textAlign: TextAlign.end,
-            style: HexaDsType.body(13),
-          ),
-        ),
-      ],
-    ),
-  );
 }

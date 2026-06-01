@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/biometric_login.dart';
+import '../../../core/auth/auth_failure_policy.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/router/post_auth_route.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
@@ -91,7 +92,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       try {
         final notice =
             GoRouterState.of(context).uri.queryParameters['notice'];
-        if (notice == 'owner_only') {
+        if (notice == 'session_expired') {
+          _handledOwnerOnlyNotice = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _authSnack('Session expired. Please sign in again.');
+          });
+        } else if (notice == 'owner_only') {
           _handledOwnerOnlyNotice = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
@@ -145,6 +152,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   Future<void> _tryResumeSession() async {
+    if (ref.read(authSessionExpiredProvider) ||
+        ref.read(auth401CircuitOpenProvider)) {
+      return;
+    }
     final t = await ref.read(tokenStoreProvider).read();
     if (t.access == null || t.refresh == null) return;
     if (ref.read(sessionProvider) != null) {

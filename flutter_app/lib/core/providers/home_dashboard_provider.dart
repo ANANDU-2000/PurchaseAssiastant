@@ -546,6 +546,7 @@ String _mapDashboardDioBanner(DioException e) {
 String _dashMemKey(String bid, String from, String to) => '$bid|$from|$to';
 
 final Map<String, Map<String, dynamic>> _homeOverviewSnapMemory = {};
+final Map<String, DateTime> _homeOverviewFetchedAt = {};
 
 /// Clears in-flight fetches and RAM snapshots for [reportsHomeOverview] home aggregates.
 /// Call before invalidating [homeDashboardDataProvider] after purchase mutations so a
@@ -554,6 +555,7 @@ void bustHomeDashboardVolatileCaches() {
   _homeDashBustGeneration++;
   _dashInflight.clear();
   _homeOverviewSnapMemory.clear();
+  _homeOverviewFetchedAt.clear();
 }
 
 /// Thrown when [bustHomeDashboardVolatileCaches] ran while a fetch was in flight;
@@ -915,6 +917,19 @@ class HomeDashboardDataNotifier extends AutoDisposeNotifier<HomeDashboardDashSta
       );
     }
 
+    final hasRenderableCache = hydrated != null;
+    final fetchedAt = _homeOverviewFetchedAt[dedupeKey];
+    final cacheFresh = hasRenderableCache &&
+        fetchedAt != null &&
+        DateTime.now().difference(fetchedAt) <
+            const Duration(minutes: 3);
+    if (cacheFresh) {
+      return HomeDashboardDashState(
+        snapshot: seed,
+        refreshing: false,
+      );
+    }
+
     Future<void>.microtask(() async {
       try {
         final bustAtStart = _homeDashBustGeneration;
@@ -935,6 +950,7 @@ class HomeDashboardDataNotifier extends AutoDisposeNotifier<HomeDashboardDashSta
               ).whenComplete(() => _dashInflight.remove(dedupeKey)),
         );
         if (_dead) return;
+        _homeOverviewFetchedAt[dedupeKey] = DateTime.now();
         state = HomeDashboardDashState(snapshot: payload, refreshing: false);
       } on StaleHomeDashboardFetch {
         // Superseded by a newer refresh — do not re-invalidate (tab storms).
@@ -959,7 +975,6 @@ class HomeDashboardDataNotifier extends AutoDisposeNotifier<HomeDashboardDashSta
     // Only show the top progress / shell skeleton when we have no snapshot to
     // render yet. If memory or Hive already has this range, refresh in the
     // background without flashing loaders on every provider rebuild.
-    final hasRenderableCache = hydrated != null;
     if (!hasRenderableCache) {
       Future<void>.delayed(const Duration(seconds: 4), () {
         if (_dead) return;

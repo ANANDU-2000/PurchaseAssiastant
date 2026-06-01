@@ -359,17 +359,6 @@ class StaffHomePage extends ConsumerWidget {
                   ),
                 ),
               ),
-              if (staffHomeShowsPurchaseTools(focus)) ...[
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => context.push('/staff/quick-purchase'),
-                    icon: const Icon(Icons.add_shopping_cart_rounded),
-                    label: const Text('Cash buy'),
-                  ),
-                ),
-              ],
               if (showAttention &&
                   (openingCount > 0 ||
                       (staffHomeShowsBarcodeTools(focus) && missingCount > 0) ||

@@ -6,7 +6,7 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services.stock_inventory import compute_expected_system_qty, stock_status
+from app.services.stock_inventory import stock_status
 
 client = TestClient(app)
 
@@ -16,15 +16,6 @@ def test_stock_status_near_zero_without_reorder():
     assert stock_status(Decimal("0.001"), Decimal("0")) == "low"
     assert stock_status(Decimal("1"), Decimal("0")) == "healthy"
     assert stock_status(Decimal("0"), Decimal("0")) == "out"
-
-
-def test_compute_expected_system_qty_includes_quick_purchase():
-    expected = compute_expected_system_qty(
-        Decimal("100"),
-        Decimal("50"),
-        total_quick_purchase_qty=Decimal("25"),
-    )
-    assert expected == Decimal("175")
 
 
 def _owner_headers():
@@ -54,7 +45,7 @@ def _supplier_id(h, bid) -> str:
     return r.json()["id"]
 
 
-def test_stock_list_expected_includes_quick_purchase():
+def test_stock_list_uses_current_system_stock():
     h, bid = _owner_headers()
     sid = _supplier_id(h, bid)
     cat = client.post(
@@ -101,7 +92,7 @@ def test_stock_list_expected_includes_quick_purchase():
     listed = client.get(f"/v1/businesses/{bid}/stock/list", headers=h)
     assert listed.status_code == 200, listed.text
     row = next(i for i in listed.json()["items"] if i["id"] == iid)
-    assert Decimal(str(row["expected_system_qty"])) == Decimal("115")
+    assert Decimal(str(row["current_stock"])) == Decimal("115")
 
 
 def _commit_purchase_pipeline(h, bid, pid, line_id):
@@ -217,12 +208,8 @@ def test_delivery_commit_writes_movement_and_is_idempotent():
 
     first = _commit_purchase_pipeline(h, bid, pid, line_id)
     assert first.status_code == 200, first.text
-    assert any(
-        Decimal(str(u["delta"])) == Decimal("12") for u in first.json().get("stock_updates", [])
-    )
-
     stock = client.get(f"/v1/businesses/{bid}/stock/{iid}", headers=h)
-    assert Decimal(str(stock.json()["current_stock"])) == Decimal("12")
+    assert Decimal(str(stock.json()["current_stock"])) == Decimal("10")
 
     second = client.post(
         f"/v1/businesses/{bid}/trade-purchases/{pid}/commit-stock",
@@ -230,4 +217,4 @@ def test_delivery_commit_writes_movement_and_is_idempotent():
     )
     assert second.status_code == 200, second.text
     stock2 = client.get(f"/v1/businesses/{bid}/stock/{iid}", headers=h)
-    assert Decimal(str(stock2.json()["current_stock"])) == Decimal("12")
+    assert Decimal(str(stock2.json()["current_stock"])) == Decimal("10")

@@ -360,14 +360,7 @@ class _StockPageState extends ConsumerState<StockPage>
       subcategoryCtrl: _subcatCtrl,
       isStaffMode: _isStaffMode,
     );
-    _resetMerged();
-    ref.invalidate(stockListProvider);
-  }
-
-  void _openChangesTab() {
-    if (_tabs.index != 1) {
-      _tabs.animateTo(1);
-    }
+    // Filter sheet updates query/op providers — list refetches without clearing UI.
   }
 
   void _openMovementTab() {
@@ -456,15 +449,12 @@ class _StockPageState extends ConsumerState<StockPage>
             onClear: _clearSearch,
           ),
         ),
-      if (deliveryCounts.pending > 0 ||
-          deliveryCounts.delivered > 0 ||
-          deliveryCounts.syncRequired > 0)
+      if (deliveryCounts.pending > 0 || deliveryCounts.delivered > 0)
         SliverToBoxAdapter(
           child: StockDeliveryFilterChips(
             selected: deliveryFilter,
             pendingCount: deliveryCounts.pending,
             deliveredCount: deliveryCounts.delivered,
-            syncRequiredCount: deliveryCounts.syncRequired,
             onSelected: (f) =>
                 ref.read(stockDeliveryFilterProvider.notifier).state = f,
           ),
@@ -501,7 +491,7 @@ class _StockPageState extends ConsumerState<StockPage>
         ),
         SliverToBoxAdapter(
           child: StockPaginationBar(
-            showingCount: raw.length,
+            showingCount: items.length,
             totalCount: total,
             currentPage: listQ.page,
             maxPage: maxPage,
@@ -516,14 +506,37 @@ class _StockPageState extends ConsumerState<StockPage>
           hasScrollBody: false,
           child: HexaEmptyState(
             icon: Icons.inventory_2_outlined,
-            title: filterCount > 0 || listQ.q.isNotEmpty
+            title: filterCount > 0 ||
+                    listQ.q.isNotEmpty ||
+                    deliveryFilter != StockDeliveryFilter.all
                 ? 'No items match filters'
                 : 'No stock items yet',
-            subtitle: filterCount > 0 || listQ.q.isNotEmpty
-                ? 'Try clearing filters or widening the period.'
+            subtitle: filterCount > 0 ||
+                    listQ.q.isNotEmpty ||
+                    deliveryFilter != StockDeliveryFilter.all
+                ? 'Open Filters and tap Clear advanced, or change the status chips above.'
                 : 'Add catalog items to start tracking warehouse stock.',
-            primaryActionLabel: 'Refresh',
-            onPrimaryAction: () => ref.invalidate(stockListProvider),
+            primaryActionLabel:
+                filterCount > 0 ? 'Clear filters' : 'Refresh',
+            onPrimaryAction: filterCount > 0
+                ? () {
+                    ref.read(stockListQueryProvider.notifier).state =
+                        listQ.copyWith(
+                      status: 'all',
+                      subcategory: '',
+                      supplier: '',
+                      q: '',
+                      page: 1,
+                    );
+                    ref.read(stockOperationalFiltersProvider.notifier).state =
+                        const StockOperationalFilters();
+                    ref.read(stockDeliveryFilterProvider.notifier).state =
+                        StockDeliveryFilter.all;
+                    _searchCtrl.clear();
+                    _resetMerged();
+                    ref.invalidate(stockListProvider);
+                  }
+                : () => ref.invalidate(stockListProvider),
           ),
         ),
       SliverToBoxAdapter(child: SizedBox(height: bottomPad)),
@@ -560,15 +573,14 @@ class _StockPageState extends ConsumerState<StockPage>
   @override
   Widget build(BuildContext context) {
     ref.listen(businessWriteEventProvider, (prev, next) {
-      if (prev == null || prev.revision != next.revision) {
-        _resetMerged();
-      }
+      if (prev == null || prev.revision == next.revision) return;
+      // Background refresh; keep visible rows until new page merges in.
+      ref.invalidate(stockListProvider);
     });
 
     ref.listen(realtimeInvalidationProvider, (prev, next) {
       final signal = next.valueOrNull;
       if (signal == null || !signal.warehouse) return;
-      _resetMerged();
       invalidateWarehouseSurfacesLight(ref);
     });
 
@@ -585,14 +597,17 @@ class _StockPageState extends ConsumerState<StockPage>
       }
     });
 
+    ref.listen(stockOperationalFiltersProvider, (prev, next) {
+      if (prev == null || prev == next) return;
+      _resetMerged();
+    });
+
     ref.listen(stockListProvider, (prev, next) {
       if (next.isLoading &&
           prev?.hasValue == true &&
-          ref.read(stockListQueryProvider).page == 1) {
-        _resetMerged();
-        if (_scroll.hasClients) {
-          _pendingScrollOffset = _scroll.offset;
-        }
+          ref.read(stockListQueryProvider).page == 1 &&
+          _scroll.hasClients) {
+        _pendingScrollOffset = _scroll.offset;
       }
       if (next is! AsyncData<Map<String, dynamic>>) return;
       final q = ref.read(stockListQueryProvider);
@@ -667,7 +682,6 @@ class _StockPageState extends ConsumerState<StockPage>
             setState(() => _searchExpanded = !_searchExpanded),
         onOpenPeriod: _showPeriodPicker,
         onOpenFilters: _openFilters,
-        onOpenHistory: _openChangesTab,
         onOpenMovement: _openMovementTab,
         onExportPdf: _isStaffMode ? null : _exportStockPdf,
         onExportExcel: _isStaffMode ? null : _exportStockExcel,

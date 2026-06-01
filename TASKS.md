@@ -2,6 +2,32 @@
 
 **Last updated:** 2026-05-29 (Stock SSOT alignment — system vs physical)
 
+## Live DB (Supabase MCP 2026-06-01)
+
+- [x] **Alembic head:** `050_stock_ledger_replay_current_stock` (verified `alembic_version` + `/health/ready`)
+- [x] **API liveness:** `GET https://my-purchases-api.onrender.com/health/ready` → 200, `db: ok`, `stock_sync_ready: true`
+
+## Navigation / reload UX (2026-06-01)
+
+- [x] Staff shell: stop `invalidate` on every tab switch (Home/Stock/Tasks)
+- [x] Owner Home: no dashboard RAM bust on tab return; 3‑min fresh cache for overview
+- [x] Stock: stale-while-revalidate (keep list visible during refresh); 3‑min list cache TTL
+- [x] Warehouse light invalidation: do not wipe `stockListCacheProvider` on every write
+
+## Production 503 troubleshooting
+
+**Symptoms:** Flutter “HTTP request failed” / 503; Render shows unhealthy or spinning up.
+
+| Cause | Fix |
+|-------|-----|
+| **Migrations during boot** (`AUTO_MIGRATE=1` + slow `048`–`050`) | Render **Pre-Deploy:** `alembic upgrade head` (rootDir `backend`). Set `AUTO_MIGRATE=0`. Redeploy. |
+| **Stock backfill on every boot** | Set `AUTO_STOCK_BACKFILL_ON_START=false` on API service. Run `python -m scripts.backfill_purchase_stock_commit` once via Shell if needed. |
+| **Render cold start** (free/starter sleep) | First request after idle may 503 for ~30–60s; app retries. Wake via `/health/ready` or upgrade plan. |
+| **DB pool / Supabase timeout** | Check Supabase status; use pooler URL in `DATABASE_URL`; logs show `SQLAlchemy infrastructure` → 503. |
+| **Schema behind code** | `SELECT version_num FROM alembic_version` must be `050_stock_ledger_replay_current_stock`. Run `alembic upgrade head`. |
+
+**Verify after fix:** `curl https://my-purchases-api.onrender.com/health/ready` → `alembic_version` at head, `db: ok`.
+
 ## Live DB (Supabase MCP 2026-05-29)
 
 - [x] **Alembic head:** `044_catalog_current_stock_non_negative` (verified `alembic_version`)
@@ -19,7 +45,8 @@
 
 ## Pre-client deploy checklist (stock + auth)
 
-- [ ] Render API: `alembic upgrade head` through **047_purchase_line_received_qty** (+ **045** delete integrity)
+- [x] Render API: `alembic upgrade head` through **050_stock_ledger_replay_current_stock** (verified 2026-06-01)
+- [ ] Render Dashboard: **Pre-Deploy** `alembic upgrade head`, `AUTO_MIGRATE=0`, `AUTO_STOCK_BACKFILL_ON_START=false` (see `render.yaml`)
 - [ ] Run `python -m scripts.backfill_purchase_stock_commit` once for old verified POs
 - [ ] `GET /health/ready` → `stock_sync_ready: true`, `received_qty_column: true`
 - [ ] Vercel Flutter web: latest build (401 gate + stock invalidation + SYS/PHYS labels)

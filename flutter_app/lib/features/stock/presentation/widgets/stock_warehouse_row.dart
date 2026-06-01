@@ -171,7 +171,8 @@ class StockWarehouseRow extends StatelessWidget {
                   ),
                   _boxedMetric(
                     StockRowMetrics.systemCellLabel(item),
-                    StockRowMetrics.inlineStatusColor(item),
+                    StockRowMetrics.systemCellColor(item),
+                    subtitle: StockRowMetrics.systemCellTargetLabel(item),
                   ),
                   _boxedMetric(
                     StockRowMetrics.physicalCellLabel(item),
@@ -190,24 +191,44 @@ class StockWarehouseRow extends StatelessWidget {
     );
   }
 
-  Widget _boxedMetric(String primary, Color color) {
+  Widget _boxedMetric(String primary, Color color, {String? subtitle}) {
     return Container(
       width: StockTableLayout.metricColWidth,
       decoration: StockTableLayout.cellDecoration(),
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(
-          primary,
-          maxLines: 1,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w900,
-            color: color,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              primary,
+              maxLines: 1,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: color,
+              ),
+            ),
           ),
-        ),
+          if (subtitle != null && subtitle.isNotEmpty)
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                subtitle,
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w800,
+                  color: color.withValues(alpha: 0.85),
+                  height: 1,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

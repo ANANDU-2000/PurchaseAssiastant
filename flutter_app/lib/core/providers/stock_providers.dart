@@ -185,7 +185,7 @@ final stockSelectedItemIdProvider = StateProvider<String?>((ref) => null);
 /// Saved scroll offset for stock list — restored when returning from detail.
 final stockListScrollOffsetProvider = StateProvider<double>((ref) => 0);
 
-enum StockDeliveryFilter { all, pending, delivered, syncRequired }
+enum StockDeliveryFilter { all, pending, delivered }
 
 /// Client-side delivery truck filter on stock list.
 final stockDeliveryFilterProvider =
@@ -210,6 +210,27 @@ class StockOperationalFilters {
 
   /// Empty = all units; else match `unit` field lowercased.
   final String unit;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StockOperationalFilters &&
+          missingBarcodeOnly == other.missingBarcodeOnly &&
+          missingItemCodeOnly == other.missingItemCodeOnly &&
+          reorderOnly == other.reorderOnly &&
+          evictionOnly == other.evictionOnly &&
+          purchasedInPeriodOnly == other.purchasedInPeriodOnly &&
+          unit == other.unit;
+
+  @override
+  int get hashCode => Object.hash(
+        missingBarcodeOnly,
+        missingItemCodeOnly,
+        reorderOnly,
+        evictionOnly,
+        purchasedInPeriodOnly,
+        unit,
+      );
 
   StockOperationalFilters copyWith({
     bool? missingBarcodeOnly,
@@ -328,10 +349,28 @@ final stockChangesFeedProvider =
   return out;
 });
 
+/// Cache key for `/stock/list` — query + operational filters (server-side).
+class StockListCacheKey {
+  const StockListCacheKey(this.query, this.op);
+
+  final StockListQuery query;
+  final StockOperationalFilters op;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StockListCacheKey && query == other.query && op == other.op;
+
+  @override
+  int get hashCode => Object.hash(query, op);
+}
+
 /// Shared GET `/stock/list` cache — dedupes home + stock page watchers (30s TTL).
 final stockListCacheProvider = FutureProvider.autoDispose
-    .family<Map<String, dynamic>, StockListQuery>((ref, query) async {
-  providerKeepAlive(ref, const Duration(seconds: 30));
+    .family<Map<String, dynamic>, StockListCacheKey>((ref, key) async {
+  final query = key.query;
+  final op = key.op;
+  providerKeepAlive(ref, const Duration(minutes: 3));
   if (!_stockListFetchAllowed(ref, query)) {
     return _emptyStockListPayload(query);
   }
@@ -352,18 +391,22 @@ final stockListCacheProvider = FutureProvider.autoDispose
         periodStart: query.periodStart,
         periodEnd: query.periodEnd,
         purchasedInPeriod: query.purchasedInPeriod,
+        missingBarcode: op.missingBarcodeOnly,
+        missingItemCode: op.missingItemCodeOnly,
+        reorderOnly: op.reorderOnly,
+        unit: op.unit,
       );
 });
 
 /// Stock page list — reads [stockListCacheProvider] for the active [stockListQueryProvider].
 final stockListProvider = FutureProvider.autoDispose((ref) async {
   final query = ref.watch(stockListQueryProvider);
-  final purchasedInPeriod = query.purchasedInPeriod ||
-      ref.read(stockOperationalFiltersProvider).purchasedInPeriodOnly;
+  final op = ref.watch(stockOperationalFiltersProvider);
+  final purchasedInPeriod = query.purchasedInPeriod || op.purchasedInPeriodOnly;
   final effective = purchasedInPeriod == query.purchasedInPeriod
       ? query
       : query.copyWith(purchasedInPeriod: purchasedInPeriod);
-  return ref.watch(stockListCacheProvider(effective).future);
+  return ref.watch(stockListCacheProvider(StockListCacheKey(effective, op)).future);
 });
 
 /// Loads **all** stock rows matching [stockListQueryProvider] filters (paged API calls).
@@ -379,10 +422,12 @@ final bulkStockListProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final session = ref.watch(activeSessionProvider);
   final query = ref.watch(stockListQueryProvider);
+  final op = ref.watch(stockOperationalFiltersProvider);
   if (session == null) {
     return {'items': <Map<String, dynamic>>[], 'total': 0, 'loaded': 0};
   }
   final api = ref.read(hexaApiProvider);
+  final purchasedInPeriod = query.purchasedInPeriod || op.purchasedInPeriodOnly;
   // Smaller pages on web: large JSON over HTTP/3 (QUIC) often trips
   // ERR_QUIC_PROTOCOL_ERROR on flaky networks / Render cold paths.
   final pageSize = kIsWeb ? 100 : 500;
@@ -403,6 +448,11 @@ final bulkStockListProvider =
         includePeriod: query.includePeriod,
         periodStart: query.periodStart,
         periodEnd: query.periodEnd,
+        purchasedInPeriod: purchasedInPeriod,
+        missingBarcode: op.missingBarcodeOnly,
+        missingItemCode: op.missingItemCodeOnly,
+        reorderOnly: op.reorderOnly,
+        unit: op.unit,
       );
       total = (res['total'] as num?)?.toInt() ?? 0;
       final raw = (res['items'] as List?) ?? const [];
@@ -579,15 +629,8 @@ final lowStockByCategoryProvider =
   final byId = <String, Map<String, dynamic>>{};
   for (final item in lowRows) {
     final status = (item['stock_status']?.toString() ?? '').toLowerCase();
-    final pendingDel =
-        (item['pending_delivery_qty'] as num?)?.toDouble() ?? 0.0;
-    final pendingDelivery = item['has_pending_order'] == true &&
-        item['last_purchase_delivered'] == false;
-    if (status != 'low' &&
-        status != 'out' &&
-        status != 'critical' &&
-        pendingDel <= 0.001 &&
-        !pendingDelivery) {
+    // Low stock page: system stock vs reorder only (backend stock_status SSOT).
+    if (status != 'low' && status != 'out' && status != 'critical') {
       continue;
     }
     final id = item['id']?.toString();

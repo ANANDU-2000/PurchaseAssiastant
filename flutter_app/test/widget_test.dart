@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:harisree_warehouse/core/providers/prefs_provider.dart';
 import 'package:harisree_warehouse/core/widgets/friendly_load_error.dart';
-import 'package:harisree_warehouse/features/analytics/presentation/analytics_page.dart';
+import 'package:harisree_warehouse/features/reports/presentation/reports_page.dart';
 import 'package:harisree_warehouse/features/auth/presentation/login_page.dart';
 
 void main() {
@@ -26,8 +26,7 @@ void main() {
     expect(find.text('Sign In'), findsWidgets);
   });
 
-  testWidgets('Analytics screen shows date range UI',
-      (WidgetTester tester) async {
+  testWidgets('Reports shell renders title', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     await tester.pumpWidget(
@@ -36,14 +35,12 @@ void main() {
           sharedPreferencesProvider.overrideWithValue(prefs),
         ],
         child: const MaterialApp(
-          home: AnalyticsPage(),
+          home: ReportsPage(),
         ),
       ),
     );
-    await tester.pumpAndSettle();
-    expect(find.text('Summary'), findsOneWidget);
-    expect(find.text('Analytics'), findsOneWidget);
-    expect(find.text('Last 30 days'), findsWidgets);
+    await tester.pump();
+    expect(find.text('Reports'), findsOneWidget);
   });
 
   /// Uses [ProviderContainer] instead of pumping [HexaApp]: splash schedules a long

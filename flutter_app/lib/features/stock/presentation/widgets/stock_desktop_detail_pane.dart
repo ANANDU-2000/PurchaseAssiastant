@@ -92,12 +92,6 @@ class StockDesktopDetailPane extends ConsumerWidget {
                 : '${formatStockQtyForUnit(unit, pending)} $unit',
           ),
           _metricRow('System', '${formatStockQtyForUnit(unit, stock)} $unit'),
-          if (StockRowMetrics.isSystemOutOfSync(item!))
-            _metricRow(
-              'Should be',
-              '${formatStockQtyForUnit(unit, StockRowMetrics.expectedSystemQty(item!))} $unit',
-              valueColor: const Color(0xFFEA580C),
-            ),
           _metricRow(
             'Physical',
             physical == null

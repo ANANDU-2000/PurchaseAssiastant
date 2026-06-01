@@ -212,8 +212,9 @@ void invalidateWarehouseSurfaces(dynamic ref, {String? itemId}) {
 
 /// Background/realtime/home poll: refresh stock + alerts only (no KPI storm).
 void invalidateWarehouseSurfacesLight(dynamic ref, {String? itemId}) {
+  // Keep [stockListCacheProvider] entries alive so Stock tab does not flash
+  // empty on every write/realtime tick — list re-reads cache when query matches.
   ref.invalidate(stockListProvider);
-  ref.invalidate(stockListCacheProvider);
   ref.invalidate(bulkStockListProvider);
   ref.invalidate(stockTotalsProvider);
   ref.invalidate(stockOnHandTotalsProvider);

@@ -45,6 +45,7 @@ from app.schemas.operations import (
 )
 from app.services.staff_audit import log_staff_activity
 from app.services.stock_inventory import catalog_stock_qty
+from app.services.stock_movement_service import apply_stock_movement
 from app.services.unit_normalization import line_qty_in_stock_unit
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/operations", tags=["operations"])
@@ -350,23 +351,20 @@ async def usage_submit(
                     notes=line.notes,
                 )
             )
-        old_qty = cur
-        if closing != old_qty:
-            db.add(
-                StockAdjustmentLog(
-                    business_id=business_id,
-                    item_id=item.id,
-                    old_qty=old_qty,
-                    new_qty=closing,
-                    adjustment_type="manual",
-                    reason="Daily usage log",
-                    updated_by=user.id,
-                    updated_by_name=display,
-                )
+        if closing != cur:
+            await apply_stock_movement(
+                db,
+                business_id=business_id,
+                item_id=item.id,
+                user=user,
+                movement_kind="usage",
+                mode="absolute",
+                qty=closing,
+                reason="Daily usage log",
+                notes=line.notes,
+                source_type="daily_usage",
+                source_id=log.id if log else None,
             )
-            item.current_stock = closing
-            item.last_stock_updated_at = datetime.now(timezone.utc)
-            item.last_stock_updated_by = display
         total_used += line.used_qty
         logged += 1
     await log_staff_activity(
@@ -659,21 +657,33 @@ async def operational_reports_summary(
     rows = ir.all()
     item_ids = [item.id for item, _ in rows]
     usage_7d: dict[uuid.UUID, Decimal] = {}
+    usage_30d: dict[uuid.UUID, Decimal] = {}
     last_adj: dict[uuid.UUID, datetime] = {}
     if item_ids:
         from datetime import timedelta
 
-        since = today - timedelta(days=7)
+        since_7 = today - timedelta(days=7)
+        since_30 = today - timedelta(days=30)
         ur = await db.execute(
             select(DailyUsageLog.item_id, func.coalesce(func.sum(DailyUsageLog.used_qty), 0))
             .where(
                 DailyUsageLog.business_id == business_id,
-                DailyUsageLog.usage_date >= since,
+                DailyUsageLog.usage_date >= since_7,
                 DailyUsageLog.item_id.in_(item_ids),
             )
             .group_by(DailyUsageLog.item_id)
         )
         usage_7d = {row[0]: Decimal(row[1] or 0) for row in ur.all()}
+        ur30 = await db.execute(
+            select(DailyUsageLog.item_id, func.coalesce(func.sum(DailyUsageLog.used_qty), 0))
+            .where(
+                DailyUsageLog.business_id == business_id,
+                DailyUsageLog.usage_date >= since_30,
+                DailyUsageLog.item_id.in_(item_ids),
+            )
+            .group_by(DailyUsageLog.item_id)
+        )
+        usage_30d = {row[0]: Decimal(row[1] or 0) for row in ur30.all()}
         adj_r = await db.execute(
             select(
                 StockAdjustmentLog.item_id,
@@ -689,11 +699,23 @@ async def operational_reports_summary(
     dead: list[dict] = []
     fast: list[dict] = []
     slow: list[dict] = []
+    intel_items: list[dict] = []
+    summary = {
+        "all": 0,
+        "active": 0,
+        "slow": 0,
+        "dead": 0,
+        "fast": 0,
+        "no_activity": 0,
+    }
     for item, cat_name in rows:
         cur = catalog_stock_qty(item)
         u = usage_7d.get(item.id, Decimal("0"))
+        u30 = usage_30d.get(item.id, Decimal("0"))
         idle_days = _idle_days_for_item(item, last_adj.get(item.id), u)
         bucket, insight = _aging_bucket(idle_days, cur, u)
+        is_dead = _is_dead_stock_item(item, cur, u, stale_days)
+        movement_status = _movement_status(cur, u, u30, idle_days, is_dead)
         entry = {
             "id": str(item.id),
             "name": item.name,
@@ -702,23 +724,37 @@ async def operational_reports_summary(
             "unit": item.stock_unit or item.default_unit,
             "current_stock": float(cur),
             "used_7d": float(u),
+            "used_30d": float(u30),
             "last_movement_at": (
                 last_adj[item.id].isoformat() if item.id in last_adj else None
             ),
             "idle_days": idle_days,
             "aging_bucket": bucket,
             "insight_key": insight,
+            "movement_status": movement_status,
         }
-        if cur > 0 and u <= 0:
-            days = _days_since_last_purchase_ops(item)
-            if days is None or days >= stale_days:
-                dead.append(entry)
+        intel_items.append(entry)
+        if cur > 0:
+            summary["all"] += 1
+        if movement_status == "active":
+            summary["active"] += 1
+        elif movement_status in ("slow", "very_slow"):
+            summary["slow"] += 1
+        elif movement_status == "dead":
+            summary["dead"] += 1
+        elif movement_status == "fast":
+            summary["fast"] += 1
+        elif movement_status == "no_activity":
+            summary["no_activity"] += 1
+        if is_dead:
+            dead.append(entry)
         if u > 0:
             fast.append(entry)
         elif cur > 0:
             slow.append(entry)
     fast.sort(key=lambda x: x["used_7d"], reverse=True)
     slow.sort(key=lambda x: x["current_stock"], reverse=True)
+    intel_items.sort(key=lambda x: x["current_stock"], reverse=True)
     sr = await db.execute(
         select(TradePurchase.supplier_id, func.count())
         .where(
@@ -735,11 +771,47 @@ async def operational_reports_summary(
         for row in sr.all()
     ]
     return {
+        "summary": summary,
+        "items": intel_items,
         "dead_stock": dead[:50],
         "fast_moving": fast[:30],
         "slow_moving": slow[:30],
         "supplier_frequency": supplier_freq,
     }
+
+
+def _is_dead_stock_item(
+    item: CatalogItem,
+    cur: Decimal,
+    used_7d: Decimal,
+    stale_days: int,
+) -> bool:
+    if cur <= 0 or used_7d > 0:
+        return False
+    days = _days_since_last_purchase_ops(item)
+    return days is None or days >= stale_days
+
+
+def _movement_status(
+    cur: Decimal,
+    used_7d: Decimal,
+    used_30d: Decimal,
+    idle_days: int,
+    is_dead: bool,
+) -> str:
+    if cur <= 0:
+        return "out_of_stock"
+    if is_dead or idle_days >= 60:
+        return "dead"
+    if used_7d > 0:
+        return "fast"
+    if idle_days >= 30:
+        return "very_slow"
+    if idle_days >= 7:
+        return "slow"
+    if idle_days >= 999 and used_7d <= 0 and used_30d <= 0:
+        return "no_activity"
+    return "active"
 
 
 def _days_since_last_purchase_ops(item: CatalogItem) -> int | None:

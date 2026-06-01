@@ -11,7 +11,6 @@ import '../../../../shared/widgets/stock_summary_widget.dart';
 ///
 /// Truck badges (under item name):
 /// - Orange truck = active pending PO (not in system stock yet).
-/// - Orange "sync" = committed but system qty short — owner should commit/adjust.
 /// - Never shown for deleted/cancelled purchases (API filters snapshots).
 enum StockDeliveryIndicator { none, pending, delivered }
 
@@ -55,39 +54,6 @@ abstract final class StockRowMetrics {
     return DateTime.now().difference(dt).inDays;
   }
 
-  /// Ledger differs from opening + committed inbound (API flag or local check).
-  static bool isSystemOutOfSync(Map<String, dynamic> item) {
-    if (item['system_stock_out_of_sync'] == true) return true;
-    final expected = coerceToDoubleNullable(item['expected_system_qty']);
-    if (expected == null || !expected.isFinite) return false;
-    return (ledgerQty(item) - expected).abs() > 0.001;
-  }
-
-  /// How much SYS is short vs opening + committed purchases (stock unit).
-  static double systemSyncGap(Map<String, dynamic> item) {
-    if (!isSystemOutOfSync(item)) return 0;
-    return expectedSystemQty(item) - ledgerQty(item);
-  }
-
-  /// Committed purchase qty not reflected in ledger (active PO only — not after delete).
-  static bool needsStockSync(Map<String, dynamic> item) {
-    if (isSystemOutOfSync(item)) return true;
-    final po = item['last_purchase_human_id']?.toString().trim() ?? '';
-    if (po.isEmpty) return false;
-    if (item['last_purchase_delivered'] != true) return false;
-    final lastLine = lastDeliveryLineQty(item) ?? 0;
-    if (lastLine <= 0.001) return false;
-    final lifetime = purchasedLifetimeQty(item);
-    final sys = ledgerQty(item);
-    final expected = coerceToDoubleNullable(item['expected_system_qty']);
-    if (expected != null &&
-        expected.isFinite &&
-        (sys - expected).abs() > 0.001) {
-      return true;
-    }
-    return lifetime + 0.001 < lastLine && sys + 0.001 < lastLine;
-  }
-
   static double? openingQty(Map<String, dynamic> item) =>
       coerceToDoubleNullable(item['opening_stock_qty']);
 
@@ -113,15 +79,6 @@ abstract final class StockRowMetrics {
   static double ledgerQty(Map<String, dynamic> item) =>
       coerceToDouble(item['current_stock']);
 
-  /// Opening + committed inbound movements (audit/reconciliation only).
-  static double expectedSystemQty(Map<String, dynamic> item) {
-    final expected = coerceToDoubleNullable(item['expected_system_qty']);
-    if (expected != null && expected.isFinite) return expected;
-    final opening = openingQty(item) ?? 0;
-    final quick = coerceToDoubleNullable(item['total_quick_purchase_qty']) ?? 0;
-    return opening + purchasedLifetimeQty(item) + quick;
-  }
-
   /// Display SSOT for operational stock rows (ledger on-hand).
   static double systemQty(Map<String, dynamic> item) => ledgerQty(item);
 
@@ -142,17 +99,9 @@ abstract final class StockRowMetrics {
   static String systemCellLabel(Map<String, dynamic> item) =>
       formatStockQtyForUnit(unit(item), ledgerQty(item));
 
-  /// Target SYS after sync (opening + committed) when ledger is behind.
-  static String? systemCellTargetLabel(Map<String, dynamic> item) {
-    if (!isSystemOutOfSync(item)) return null;
-    final u = unit(item);
-    return '→${formatStockQtyForUnit(u, expectedSystemQty(item))}';
-  }
+  static String? systemCellTargetLabel(Map<String, dynamic> item) => null;
 
-  static Color systemCellColor(Map<String, dynamic> item) {
-    if (isSystemOutOfSync(item)) return const Color(0xFFEA580C);
-    return inlineStatusColor(item);
-  }
+  static Color systemCellColor(Map<String, dynamic> item) => inlineStatusColor(item);
 
   /// Compact warehouse table cell — physical qty or em dash.
   static String physicalCellLabel(Map<String, dynamic> item) {
@@ -258,22 +207,11 @@ abstract final class StockRowMetrics {
     Map<String, dynamic> item,
   ) {
     const pendingColor = Color(0xFFEA580C);
-    const deliveredColor = Color(0xFF16A34A);
     const muted = Color(0xFF94A3B8);
     final u = unit(item);
     final pending = pendingDeliveryQty(item) ?? 0;
     final days = (item['pending_order_days'] as num?)?.toInt();
     final kind = deliveryIndicator(item);
-
-    if (needsStockSync(item) && pending <= 0.001) {
-      final gap = systemSyncGap(item);
-      final qty = gap > 0.001 ? gap : (lastDeliveryLineQty(item) ?? 0);
-      return (
-        primary: qty > 0.001 ? formatStockQtyForUnit(u, qty) : '!',
-        secondary: 'sync SYS',
-        color: const Color(0xFFDC2626),
-      );
-    }
 
     if (pending > 0.001 || kind == StockDeliveryIndicator.pending) {
       final qty = pending > 0.001 ? pending : 0.0;
@@ -300,26 +238,7 @@ abstract final class StockRowMetrics {
     return 'Open ${formatStockQtyForUnit(u, opening)}${u.isNotEmpty ? ' $u' : ''}';
   }
 
-  /// Owner hint: opening + committed = target system qty.
-  static String expectedSystemFormulaLine(Map<String, dynamic> item) {
-    final u = unit(item);
-    final opening = openingQty(item) ?? 0;
-    final committed = purchasedLifetimeQty(item);
-    final quick = coerceToDoubleNullable(item['total_quick_purchase_qty']) ?? 0;
-    final expected = expectedSystemQty(item);
-    final parts = <String>[];
-    if (opening > 0.001) {
-      parts.add('Open ${formatStockQtyForUnit(u, opening)}');
-    }
-    if (committed > 0.001) {
-      parts.add('Purch ${formatStockQtyForUnit(u, committed)}');
-    }
-    if (quick > 0.001) {
-      parts.add('Quick ${formatStockQtyForUnit(u, quick)}');
-    }
-    if (parts.isEmpty) return '';
-    return '${parts.join(' + ')} = ${formatStockQtyForUnit(u, expected)} $u';
-  }
+  static String expectedSystemFormulaLine(Map<String, dynamic> item) => '';
 
   static StockDeliveryIndicator deliveryIndicator(Map<String, dynamic> item) {
     final pendingDel = pendingDeliveryQty(item) ?? 0;
@@ -340,9 +259,6 @@ abstract final class StockRowMetrics {
     return StockDeliveryIndicator.none;
   }
 
-  /// Ledger behind committed purchases — not an undelivered truck.
-  static bool syncRequired(Map<String, dynamic> item) => needsStockSync(item);
-
   static String? _pendingDaysLabel(int? days) {
     if (days == null) return null;
     if (days <= 0) return 'today';
@@ -354,24 +270,18 @@ abstract final class StockRowMetrics {
     StockDeliveryFilter filter,
   ) {
     if (filter == StockDeliveryFilter.all) return true;
-    if (filter == StockDeliveryFilter.syncRequired) {
-      return syncRequired(item);
-    }
     final ind = deliveryIndicator(item);
     return filter == StockDeliveryFilter.pending
         ? ind == StockDeliveryIndicator.pending
         : ind == StockDeliveryIndicator.delivered;
   }
 
-  static ({int pending, int delivered, int syncRequired})
-      countDeliveryIndicators(
+  static ({int pending, int delivered}) countDeliveryIndicators(
     List<Map<String, dynamic>> items,
   ) {
     var pending = 0;
     var delivered = 0;
-    var syncRequiredCount = 0;
     for (final it in items) {
-      if (syncRequired(it)) syncRequiredCount++;
       switch (deliveryIndicator(it)) {
         case StockDeliveryIndicator.pending:
           pending++;
@@ -384,7 +294,6 @@ abstract final class StockRowMetrics {
     return (
       pending: pending,
       delivered: delivered,
-      syncRequired: syncRequiredCount,
     );
   }
 

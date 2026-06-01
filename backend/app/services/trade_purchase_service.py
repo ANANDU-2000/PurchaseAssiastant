@@ -1241,6 +1241,8 @@ async def update_trade_purchase(
                 old_lines_snapshot,
                 new_lines_snapshot,
                 purchase_human_id=tp.human_id,
+                purchase_id=tp.id,
+                actor=user,
             )
             catalog_ids = await catalog_ids_affected_by_purchase_lines(
                 db, business_id, old_lines_snapshot + new_lines_snapshot

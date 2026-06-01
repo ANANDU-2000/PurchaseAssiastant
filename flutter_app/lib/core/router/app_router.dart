@@ -80,7 +80,6 @@ import '../../features/stock/presentation/low_stock_dashboard_page.dart';
 import '../../features/stock/presentation/reorder_list_page.dart';
 import '../../features/staff/presentation/staff_shell_screen.dart';
 import '../../features/staff/presentation/staff_activity_page.dart';
-import '../../features/staff/presentation/staff_quick_purchase_page.dart';
 import '../../features/staff/presentation/staff_purchase_order_detail_page.dart';
 import '../../features/staff/presentation/staff_pending_deliveries_page.dart';
 import '../../features/staff/presentation/staff_purchase_history_page.dart';
@@ -761,14 +760,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
-        path: '/staff/quick-purchase',
-        name: 'staff_quick_purchase',
-        pageBuilder: (context, state) => iosPushPage(
-          key: state.pageKey,
-          child: const StaffQuickPurchasePage(),
-        ),
-      ),
-      GoRoute(
         path: '/staff/purchase-history',
         name: 'staff_purchase_history',
         pageBuilder: (context, state) => iosPushPage(
@@ -963,15 +954,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/stock/dead',
-        redirect: (_, __) => '/reports?tab=dead',
+        redirect: (_, __) => '/reports?tab=stock&section=dead',
       ),
       GoRoute(
         path: '/stock/fast-moving',
-        redirect: (_, __) => '/reports?tab=movement',
+        redirect: (_, __) => '/reports?tab=stock&section=fast',
       ),
       GoRoute(
         path: '/stock/slow-moving',
-        redirect: (_, __) => '/reports?tab=slow',
+        redirect: (_, __) => '/reports?tab=stock&section=slow',
       ),
       GoRoute(
         path: '/reports/category-drill',

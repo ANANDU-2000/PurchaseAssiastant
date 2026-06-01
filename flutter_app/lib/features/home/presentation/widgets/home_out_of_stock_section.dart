@@ -14,14 +14,25 @@ class HomeOutOfStockSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final listAsync = ref.watch(stockListCacheProvider(kHomeOutOfStockListQuery));
+    final listAsync = ref.watch(
+      stockListCacheProvider(
+        StockListCacheKey(kHomeOutOfStockListQuery, const StockOperationalFilters()),
+      ),
+    );
 
     return listAsync.when(
       loading: () => const HomeSectionSkeleton(rows: 2),
       error: (_, __) => SectionInlineError(
         message: 'Could not load out-of-stock items',
         onRetry: () =>
-            ref.invalidate(stockListCacheProvider(kHomeOutOfStockListQuery)),
+            ref.invalidate(
+              stockListCacheProvider(
+                StockListCacheKey(
+                  kHomeOutOfStockListQuery,
+                  const StockOperationalFilters(),
+                ),
+              ),
+            ),
       ),
       data: (payload) {
         final raw = payload['items'];

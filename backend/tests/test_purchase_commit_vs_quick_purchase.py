@@ -103,7 +103,7 @@ def test_double_commit_stock_is_idempotent_via_movements():
     assert Decimal(str(stock_final.json()["current_stock"])) == Decimal("10")
 
 
-def test_stock_detail_exposes_expected_system_qty():
+def test_stock_detail_hides_expected_system_qty():
     h, bid = _register()
     cat = client.post(
         f"/v1/businesses/{bid}/item-categories", headers=h, json={"name": "CatExp"}
@@ -135,5 +135,5 @@ def test_stock_detail_exposes_expected_system_qty():
     detail = client.get(f"/v1/businesses/{bid}/stock/{iid}", headers=h)
     assert detail.status_code == 200, detail.text
     body = detail.json()
-    assert "expected_system_qty" in body
-    assert Decimal(str(body["expected_system_qty"])) >= Decimal("101")
+    assert "expected_system_qty" not in body
+    assert Decimal(str(body["current_stock"])) >= Decimal("101")

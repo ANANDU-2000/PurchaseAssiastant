@@ -5,15 +5,12 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/catalog/item_trade_history.dart';
 import '../../../../core/models/trade_purchase_models.dart';
-import '../../../../core/providers/item_detail_providers.dart';
 import '../../../../core/providers/trade_purchases_provider.dart';
 import '../../../../core/router/post_auth_route.dart';
 import '../../../../core/auth/session_notifier.dart';
 import '../../../../core/widgets/friendly_load_error.dart';
 import '../../../../core/design_system/hexa_operational_tokens.dart';
-import '../../../../core/json_coerce.dart';
 import '../../../../core/utils/unit_utils.dart';
-import '../../../stock/presentation/widgets/stock_row_metrics.dart';
 
 enum ItemPurchaseRange { d7, d30, d90, d365, all }
 
@@ -44,10 +41,6 @@ class _ItemPurchaseHistorySectionState
 
     final purchasesAsync =
         ref.watch(tradePurchasesForItemParsedProvider(widget.itemId));
-    final stock =
-        ref.watch(itemDetailStockProvider(widget.itemId)).valueOrNull ??
-            const <String, dynamic>{};
-
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
@@ -101,11 +94,6 @@ class _ItemPurchaseHistorySectionState
                 final totalsLine = itemTradeHistoryTotalsLine(filtered);
                 final committedLine =
                     itemTradeHistoryCommittedTotalsLine(filtered);
-                final stockUnit = (stock['stock_unit'] ?? stock['unit'] ?? 'piece')
-                    .toString();
-                final expectedSys = coerceToDouble(stock['expected_system_qty']);
-                final sysNow = coerceToDouble(stock['current_stock']);
-                final outOfSync = StockRowMetrics.isSystemOutOfSync(stock);
                 final take = filtered.take(12).toList();
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -136,9 +124,7 @@ class _ItemPurchaseHistorySectionState
                             const SizedBox(height: 4),
                             Text(
                               committedLine.isNotEmpty
-                                  ? outOfSync && expectedSys > 0.001
-                                      ? 'Committed in stock unit: ${formatStockQtyForUnit(stockUnit, expectedSys)} $stockUnit (SYS now ${formatStockQtyForUnit(stockUnit, sysNow)} — tap Sync system stock on summary)'
-                                      : 'In system stock (committed): $committedLine · compare to System chip above'
+                                  ? 'In system stock (committed): $committedLine · compare to System chip above'
                                   : 'Not in system stock yet — verify delivery to update SYS',
                               style: const TextStyle(
                                 fontSize: 11,

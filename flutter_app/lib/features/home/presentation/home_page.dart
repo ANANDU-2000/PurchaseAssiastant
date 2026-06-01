@@ -15,6 +15,7 @@ import '../../../core/auth/session_notifier.dart'
 import '../../../core/providers/api_degraded_provider.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/models/trade_purchase_models.dart';
+import '../../../core/navigation/surface_refresh_policy.dart';
 import '../../../core/providers/app_period_provider.dart'
     show homePeriodSyncListenerProvider;
 import '../../../core/providers/home_dashboard_provider.dart'
@@ -134,10 +135,12 @@ class _HomePageState extends ConsumerState<HomePage>
     });
   }
 
-  void _invalidateHomeDataProviders() {
+  void _invalidateHomeDataProviders({bool bustVolatileCaches = true}) {
     if (providerSkipApi(ref)) return;
     _homeLastRefreshedAt = DateTime.now();
-    bustHomeDashboardVolatileCaches();
+    if (bustVolatileCaches) {
+      bustHomeDashboardVolatileCaches();
+    }
     ref.invalidate(homeDashboardDataProvider);
     ref.invalidate(homeInventorySummaryProvider);
     ref.invalidate(homeRecentActivityFeedProvider);
@@ -326,13 +329,15 @@ class _HomePageState extends ConsumerState<HomePage>
     ref.listen<int>(shellCurrentBranchProvider, (prev, next) {
       final onHome = next == ShellBranch.home;
       _setHomePollingActive(onHome);
-      if (onHome && prev != ShellBranch.home) {
-        if (!providerSkipApi(ref)) {
-          if (!_throttleHomeInvalidate()) {
-            _scheduleRefresh(force: true);
-          }
-          // Dashboard providers skip fetch while off-tab; kick a rebuild now.
-          ref.invalidate(homeDashboardDataProvider);
+      // Returning to Home: keep cached dashboard; [HomeDashboardDataNotifier]
+      // background-refreshes when visible. Do not bust RAM/Hive or invalidate
+      // here — that caused full reload loops on every tab switch.
+      if (onHome &&
+          prev != null &&
+          prev != ShellBranch.home &&
+          !providerSkipApi(ref)) {
+        if (shouldRefreshOnShellTabReturn(_homeLastRefreshedAt)) {
+          _scheduleRefresh(alertsOnly: true);
         }
       }
     });

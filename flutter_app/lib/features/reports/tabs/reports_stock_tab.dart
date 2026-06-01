@@ -1,71 +1,82 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/providers/operations_providers.dart';
-import '../../../core/theme/hexa_colors.dart';
-import '../presentation/widgets/reports_stock_intel_tab.dart';
+import '../../../core/widgets/friendly_load_error.dart';
+import '../stock/reports_stock_providers.dart';
+import '../stock/reports_stock_status.dart';
+import '../widgets/reports_stock_filter_sort_bar.dart';
+import '../widgets/reports_stock_intel_card.dart';
+import '../widgets/reports_stock_summary_bar.dart';
 
-/// Stock tab: fast / slow / dead sections (rolling ops window).
-class ReportsStockTab extends ConsumerWidget {
-  const ReportsStockTab({
-    super.key,
-    this.initialSection,
-    required this.onSectionChanged,
-  });
+/// Reports → Stock — card-based warehouse intel (ERP rebuild).
+class ReportsStockTab extends ConsumerStatefulWidget {
+  const ReportsStockTab({super.key, this.highlightSection});
 
-  final String? initialSection;
-  final void Function(String section) onSectionChanged;
+  final String? highlightSection;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ReportsStockTab> createState() => _ReportsStockTabState();
+}
+
+class _ReportsStockTabState extends ConsumerState<ReportsStockTab> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final chip = ReportsStockChipFilterX.fromHighlight(widget.highlightSection);
+      if (chip != null) {
+        ref.read(reportsStockChipFilterProvider.notifier).state = chip;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final ops = ref.watch(operationalReportsProvider);
-    final section = initialSection ?? 'slow';
+
     return ops.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, __) => const Center(child: Text('Could not load stock intel')),
-      data: (data) {
-        final slow = (data['slow_moving'] as List?)?.length ?? 0;
-        final dead = (data['dead_stock'] as List?)?.length ?? 0;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-              child: Text(
-                'Rolling warehouse intel — not filtered by report period',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade600,
+      error: (e, _) => Center(
+        child: FriendlyLoadError(
+          message: 'Could not load stock intel',
+          onRetry: () => ref.invalidate(operationalReportsProvider),
+        ),
+      ),
+      data: (_) {
+        final items = ref.watch(filteredReportsStockItemsProvider);
+        final chip = ref.watch(reportsStockChipFilterProvider);
+
+        return CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                child: Text(
+                  'Rolling warehouse intel — not filtered by report period',
+                  style: HexaDsType.labelCaps(context),
                 ),
               ),
             ),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  _SectionChip(
-                    label: 'Slow',
-                    count: slow,
-                    color: const Color(0xFFEA580C),
-                    selected: section == 'slow',
-                    onTap: () => onSectionChanged('slow'),
-                  ),
-                  _SectionChip(
-                    label: 'Dead',
-                    count: dead,
-                    color: const Color(0xFFDC2626),
-                    selected: section == 'dead',
-                    onTap: () => onSectionChanged('dead'),
-                  ),
-                ],
+            const SliverToBoxAdapter(child: ReportsStockSummaryBar()),
+            const SliverToBoxAdapter(child: ReportsStockFilterSortBar()),
+            if (items.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _EmptyState(filter: chip),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+                sliver: SliverList.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) =>
+                      ReportsStockIntelCard(item: items[index]),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: ReportsStockIntelTab(dead: section == 'dead'),
-            ),
           ],
         );
       },
@@ -73,35 +84,36 @@ class ReportsStockTab extends ConsumerWidget {
   }
 }
 
-class _SectionChip extends StatelessWidget {
-  const _SectionChip({
-    required this.label,
-    required this.count,
-    required this.color,
-    required this.selected,
-    required this.onTap,
-  });
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.filter});
 
-  final String label;
-  final int count;
-  final Color color;
-  final bool selected;
-  final VoidCallback onTap;
+  final ReportsStockChipFilter filter;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: FilterChip(
-        label: Text('$label ($count)'),
-        selected: selected,
-        onSelected: (_) => onTap(),
-        selectedColor: color.withValues(alpha: 0.15),
-        checkmarkColor: color,
-        labelStyle: TextStyle(
-          fontWeight: FontWeight.w800,
-          fontSize: 12,
-          color: selected ? color : HexaColors.textBody,
+    final message = switch (filter) {
+      ReportsStockChipFilter.dead => 'No dead stock found.',
+      ReportsStockChipFilter.slow => 'No slow-moving items found.',
+      ReportsStockChipFilter.fast => 'No fast-moving items in this window.',
+      ReportsStockChipFilter.active => 'No active items with on-hand stock.',
+      ReportsStockChipFilter.all => 'No stock items match your search.',
+    };
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.inventory_2_outlined,
+                size: 48, color: Colors.grey.shade400),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: HexaDsType.bodyPrimary(context),
+            ),
+          ],
         ),
       ),
     );

@@ -340,6 +340,26 @@ class SessionNotifier extends Notifier<Session?> {
     });
   }
 
+  /// After `/v1/me/businesses` returns 401, drop stale JWTs so splash/login do not retry forever.
+  Future<void> _clearSessionAfterAuthFailure({
+    required SecureTokenStore store,
+    required SessionCache cache,
+    required HexaApi api,
+  }) async {
+    await store.clear();
+    await cache.clear();
+    api.setAuthToken(null);
+    state = null;
+    if (_disposed) return;
+    try {
+      ref.read(authRefreshFailureTrackerProvider).reset();
+      ref.read(authApiGateProvider.notifier).reset();
+      ref.read(authSessionExpiredProvider.notifier).markExpired();
+      authRefresh.value++;
+      _notifySessionExpiredBanner();
+    } catch (_) {}
+  }
+
   /// Post-login bootstrap: does not block [restore] / [login] UI — runs after a microtask.
   /// Soft-fail: [HexaApi.bootstrapWorkspace] returns null on 404/501 (older server).
   void _scheduleWorkspaceBootstrap() {
@@ -492,15 +512,12 @@ class SessionNotifier extends Notifier<Session?> {
           return;
         } on DioException catch (re) {
           final rsc = re.response?.statusCode;
-          // Once /me/businesses has already returned 401, any refresh failure
-          // means this session cannot be trusted. Clear to prevent 401 loops.
           if (rsc == 401 || rsc == 403) {
-            await store.clear();
-            await cache.clear();
-            api.setAuthToken(null);
-            state = null;
-            authRefresh.value++;
-            _notifySessionExpiredBanner();
+            await _clearSessionAfterAuthFailure(
+              store: store,
+              cache: cache,
+              api: api,
+            );
             return;
           }
           final cached = cache.loadBusinesses();
@@ -514,16 +531,18 @@ class SessionNotifier extends Notifier<Session?> {
             _notifyOfflineCachedWorkspaceBanner();
             return;
           }
-          state = null;
-          authRefresh.value++;
+          await _clearSessionAfterAuthFailure(
+            store: store,
+            cache: cache,
+            api: api,
+          );
           return;
         } catch (_) {
-          await store.clear();
-          await cache.clear();
-          api.setAuthToken(null);
-          state = null;
-          authRefresh.value++;
-          _notifySessionExpiredBanner();
+          await _clearSessionAfterAuthFailure(
+            store: store,
+            cache: cache,
+            api: api,
+          );
           return;
         }
       }
@@ -708,6 +727,11 @@ class SessionNotifier extends Notifier<Session?> {
 
   /// Reload workspaces from API (e.g. after branding update).
   Future<void> refreshBusinesses() async {
+    if (_disposed) return;
+    if (ref.read(authSessionExpiredProvider) ||
+        ref.read(authApiGateProvider).circuitOpen) {
+      return;
+    }
     final cur = state;
     if (cur == null) return;
     final api = ref.read(hexaApiProvider);

@@ -7,7 +7,6 @@ void main() {
     test('uses physical minus ledger on-hand when both present', () {
       final item = {
         'current_stock': 100,
-        'expected_system_qty': 120,
         'physical_stock_qty': 80,
       };
       expect(StockRowMetrics.diffQty(item), -20);
@@ -16,7 +15,6 @@ void main() {
     test('prefers physical_stock_difference_qty when physical missing', () {
       final item = {
         'current_stock': 100,
-        'expected_system_qty': 100,
         'physical_stock_difference_qty': 5,
       };
       expect(StockRowMetrics.diffQty(item), 5);
@@ -25,13 +23,11 @@ void main() {
     test('ledgerQty reads current_stock not expected formula', () {
       final item = {
         'current_stock': 42,
-        'expected_system_qty': 99,
         'opening_stock_qty': 10,
         'total_delivered_qty': 50,
       };
       expect(StockRowMetrics.ledgerQty(item), 42);
       expect(StockRowMetrics.systemQty(item), 42);
-      expect(StockRowMetrics.expectedSystemQty(item), 99);
     });
 
     test('does not subtract purchased qty', () {
@@ -145,41 +141,13 @@ void main() {
       expect(cell.primary, '—');
     });
 
-    test('no sync cue without active purchase id', () {
-      expect(
-        StockRowMetrics.needsStockSync({
-          'current_stock': 0,
-          'last_line_qty': 100,
-          'last_purchase_delivered': true,
-          'total_delivered_qty': 0,
-          'stock_unit': 'bag',
-        }),
-        isFalse,
-      );
-    });
-
-    test('shows sync cue when expected system exceeds ledger', () {
+    test('no sync cue is shown in production', () {
       final cell = StockRowMetrics.pendingCellDisplay({
         'current_stock': 101,
-        'expected_system_qty': 711,
-        'system_stock_out_of_sync': true,
         'stock_unit': 'bag',
       });
-      expect(cell.primary, '610');
-      expect(cell.secondary, 'sync SYS');
-    });
-
-    test('shows add-stock cue when committed qty missing from ledger', () {
-      final cell = StockRowMetrics.pendingCellDisplay({
-        'current_stock': 0,
-        'last_line_qty': 5000,
-        'last_purchase_human_id': 'PUR-2026-0009',
-        'last_purchase_delivered': true,
-        'total_delivered_qty': 0,
-        'stock_unit': 'kg',
-      });
-      expect(cell.primary, '5,000');
-      expect(cell.secondary, 'sync SYS');
+      expect(cell.primary, '—');
+      expect(cell.secondary, isNull);
     });
   });
 

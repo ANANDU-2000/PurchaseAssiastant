@@ -16,11 +16,6 @@ class ItemStockMetricStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final unit = (stock['stock_unit'] ?? stock['unit'] ?? 'piece').toString();
-    final delivered = coerceToDouble(stock['total_delivered_qty']);
-    final expected = coerceToDouble(stock['expected_system_qty']);
-    final system = coerceToDouble(stock['current_stock']);
-    final outOfSync = stock['system_stock_out_of_sync'] == true ||
-        (expected > 0.001 && (system - expected).abs() > 0.001);
     final pendingRaw =
         stock['total_pending_delivery_qty'] ?? stock['pending_delivery_qty'];
     final pending = coerceToDouble(pendingRaw);
@@ -29,34 +24,18 @@ class ItemStockMetricStrip extends StatelessWidget {
     String qtyOrDash(double v) =>
         v > 0.001 ? formatStockQtyForUnit(unit, v) : '—';
 
-    String _metricQty(double v) => qtyOrDash(v);
-
     final cells = <_MetricCell>[
       _MetricCell(
         'System',
         StockRowMetrics.systemCellLabel(stock),
-        outOfSync ? const Color(0xFFEA580C) : const Color(0xFF2563EB),
-        subtitle: outOfSync
-            ? StockRowMetrics.systemCellTargetLabel(stock)
-            : null,
-        tooltip: outOfSync
-            ? 'Ledger ${_metricQty(system)} — tap Sync system stock to reach ${formatStockQtyForUnit(unit, expected > 0.001 ? expected : delivered)}'
-            : 'ERP digital on-hand',
+        const Color(0xFF2563EB),
+        tooltip: 'ERP digital on-hand',
       ),
       _MetricCell(
         'Physical',
         StockRowMetrics.physicalCellLabel(stock),
         const Color(0xFF0F766E),
         tooltip: 'Last warehouse count',
-      ),
-      _MetricCell(
-        'Expected',
-        expected > 0.001
-            ? formatStockQtyForUnit(unit, expected)
-            : qtyOrDash(delivered),
-        const Color(0xFF16A34A),
-        tooltip:
-            'Committed purchases in stock unit (bags + kg converted)',
       ),
       _MetricCell(
         'Pending',
@@ -89,13 +68,11 @@ class _MetricCell {
     this.value,
     this.color, {
     this.tooltip,
-    this.subtitle,
   });
   final String label;
   final String value;
   final Color color;
   final String? tooltip;
-  final String? subtitle;
 }
 
 class _MiniMetricCard extends StatelessWidget {
@@ -140,22 +117,6 @@ class _MiniMetricCard extends StatelessWidget {
               ),
             ),
           ),
-          if (cell.subtitle != null && cell.subtitle!.isNotEmpty) ...[
-            const SizedBox(height: 1),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                cell.subtitle!,
-                maxLines: 1,
-                style: TextStyle(
-                  fontSize: 8,
-                  fontWeight: FontWeight.w800,
-                  color: cell.color.withValues(alpha: 0.9),
-                  height: 1,
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );

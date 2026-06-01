@@ -67,9 +67,7 @@ class _PublicItemScanPageState extends State<PublicItemScanPage> {
           final name = data['name']?.toString() ?? 'Item';
           final category = data['category']?.toString() ?? 'Catalog item';
           final unit = (data['stock_unit']?.toString() ?? 'unit').toUpperCase();
-          final qty = coerceToDouble(
-            data['expected_system_qty'] ?? data['current_stock'],
-          );
+          final qty = coerceToDouble(data['current_stock']);
           final status = (data['status']?.toString() ?? 'healthy').replaceAll('_', ' ');
           final code = data['item_code']?.toString() ?? '—';
           final rack = data['rack_location']?.toString() ?? '—';

@@ -28,6 +28,6 @@ void main() {
     expect(find.text('Search'), findsOneWidget);
     expect(find.text('Stock'), findsOneWidget);
     expect(find.text('Low stock'), findsOneWidget);
-    expect(find.text('Cash buy'), findsOneWidget);
+    expect(find.text('Purchases'), findsOneWidget);
   });
 }

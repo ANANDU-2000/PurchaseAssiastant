@@ -7,7 +7,6 @@ import '../../../../core/design_system/hexa_responsive.dart';
 import '../../../../core/providers/catalog_providers.dart';
 import '../../../../core/providers/stock_providers.dart';
 import '../../../../core/providers/suppliers_list_provider.dart';
-import '../../../../shared/widgets/inline_search_field.dart';
 import '../../../../shared/widgets/search_picker_sheet.dart';
 import 'stock_bulk_actions_sheet.dart';
 
@@ -88,14 +87,14 @@ class _OperationalFilterBody extends ConsumerStatefulWidget {
 class _OperationalFilterBodyState
     extends ConsumerState<_OperationalFilterBody> {
   late String _sort;
-  late String _category;
+  late String _status;
+  late String _subcategory;
   late String _supplier;
   late bool _missingBarcode;
   late bool _missingItemCode;
   late bool _reorderOnly;
   late bool _purchasedInPeriodOnly;
   late String _unit;
-  late final TextEditingController _subcatField;
 
   @override
   void initState() {
@@ -103,31 +102,26 @@ class _OperationalFilterBodyState
     final q = ref.read(stockListQueryProvider);
     final op = ref.read(stockOperationalFiltersProvider);
     _sort = q.sort;
-    _category = '';
+    _status = q.status;
+    _subcategory = widget.subcategoryCtrl?.text.trim().isNotEmpty == true
+        ? widget.subcategoryCtrl!.text.trim()
+        : q.subcategory;
     _supplier = q.supplier;
     _missingBarcode = op.missingBarcodeOnly;
     _missingItemCode = op.missingItemCodeOnly;
     _reorderOnly = op.reorderOnly;
     _purchasedInPeriodOnly = op.purchasedInPeriodOnly;
     _unit = op.unit;
-    _subcatField = TextEditingController(
-      text: widget.subcategoryCtrl?.text ?? q.subcategory,
-    );
-  }
-
-  @override
-  void dispose() {
-    _subcatField.dispose();
-    super.dispose();
   }
 
   void _apply() {
     ref.read(stockListQueryProvider.notifier).state =
         ref.read(stockListQueryProvider).copyWith(
               sort: _sort,
+              status: _status,
               category: '',
               supplier: _supplier,
-              subcategory: _subcatField.text.trim(),
+              subcategory: _subcategory.trim(),
               purchasedInPeriod: _purchasedInPeriodOnly,
               page: 1,
             );
@@ -140,7 +134,7 @@ class _OperationalFilterBodyState
       unit: _unit,
     );
     ref.read(stockSelectedItemIdProvider.notifier).state = null;
-    widget.subcategoryCtrl?.text = _subcatField.text.trim();
+    widget.subcategoryCtrl?.text = _subcategory.trim();
     Navigator.pop(context);
   }
 
@@ -150,22 +144,23 @@ class _OperationalFilterBodyState
               category: '',
               subcategory: '',
               supplier: '',
+              status: 'all',
               sort: 'name',
               page: 1,
             );
     ref.read(stockOperationalFiltersProvider.notifier).state =
-        StockOperationalFilters(
-            unit: ref.read(stockOperationalFiltersProvider).unit);
+        const StockOperationalFilters();
     widget.subcategoryCtrl?.clear();
-    _subcatField.clear();
     setState(() {
       _sort = 'name';
-      _category = '';
+      _status = 'all';
+      _subcategory = '';
       _supplier = '';
       _missingBarcode = false;
       _missingItemCode = false;
       _reorderOnly = false;
       _purchasedInPeriodOnly = false;
+      _unit = '';
     });
   }
 
@@ -178,6 +173,25 @@ class _OperationalFilterBodyState
     }
     out.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     return out;
+  }
+
+  Future<void> _pickSubcategory(List<String> options) async {
+    final pickRows = <SearchPickerRow<String>>[
+      const SearchPickerRow<String>(
+        value: '',
+        title: 'All subcategories',
+      ),
+      for (final name in options)
+        SearchPickerRow<String>(value: name, title: name),
+    ];
+    final picked = await showSearchPickerSheet<String>(
+      context: context,
+      title: 'Select subcategory',
+      rows: pickRows,
+      selectedValue: _subcategory.isEmpty ? '' : _subcategory,
+    );
+    if (!mounted || picked == null) return;
+    setState(() => _subcategory = picked);
   }
 
   Future<void> _pickSupplier(List<Map<String, dynamic>> rows) async {
@@ -290,20 +304,9 @@ class _OperationalFilterBodyState
             ])
               FilterChip(
                 label: Text(e.$1, style: const TextStyle(fontSize: 12)),
-                selected: ref.read(stockListQueryProvider).status == e.$2,
+                selected: _status == e.$2,
                 onSelected: (_) {
-                  final q = ref.read(stockListQueryProvider);
-                  final on = q.status == e.$2;
-                  ref.read(stockListQueryProvider.notifier).state = q.copyWith(
-                    status: on ? 'all' : e.$2,
-                    page: 1,
-                  );
-                  ref.read(stockOperationalFiltersProvider.notifier).state =
-                      ref.read(stockOperationalFiltersProvider).copyWith(
-                            reorderOnly: false,
-                            clearMissingItemCode: true,
-                          );
-                  setState(() {});
+                  setState(() => _status = _status == e.$2 ? 'all' : e.$2);
                 },
               ),
           ],
@@ -338,44 +341,19 @@ class _OperationalFilterBodyState
           onChanged: (v) => setState(() => _missingItemCode = v),
         ),
         const SizedBox(height: 8),
+        Text('Subcategory', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 8),
         typesAsync.when(
-          loading: () => TextField(
-            controller: _subcatField,
-            decoration: const InputDecoration(
-              labelText: 'Subcategory',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-          ),
-          error: (_, __) => TextField(
-            controller: _subcatField,
-            decoration: const InputDecoration(
-              labelText: 'Subcategory',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-          ),
+          loading: () => const LinearProgressIndicator(),
+          error: (_, __) => const SizedBox.shrink(),
           data: (types) {
             final options = _subcategoryOptions(types);
-            final items = options
-                .map(
-                  (label) => InlineSearchItem(
-                    id: label,
-                    label: label,
-                    subtitle: _category.isEmpty ? null : _category,
-                    searchText: '$label $_category',
-                  ),
-                )
-                .toList();
-            return InlineSearchField(
-              items: items,
-              controller: _subcatField,
-              placeholder: 'All subcategories',
-              textInputAction: TextInputAction.next,
-              onSelected: (item) {
-                _subcatField.text = item.label;
-                setState(() {});
-              },
+            return _FilterPickerRow(
+              label: _subcategory.isEmpty ? 'All subcategories' : _subcategory,
+              onTap: () => _pickSubcategory(options),
+              onClear: _subcategory.isEmpty
+                  ? null
+                  : () => setState(() => _subcategory = ''),
             );
           },
         ),
@@ -387,58 +365,12 @@ class _OperationalFilterBodyState
             loading: () => const LinearProgressIndicator(),
             error: (_, __) => const SizedBox.shrink(),
             data: (rows) {
-              return Row(
-                children: [
-                  Expanded(
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => _pickSupplier(rows),
-                        borderRadius: BorderRadius.circular(8),
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  _supplier.isEmpty
-                                      ? 'All suppliers'
-                                      : _supplier,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const Icon(
-                                Icons.search_rounded,
-                                size: 20,
-                                color: Colors.black45,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    tooltip: 'Search supplier',
-                    onPressed: () => _pickSupplier(rows),
-                    icon: const Icon(Icons.search_rounded),
-                  ),
-                  if (_supplier.isNotEmpty)
-                    IconButton(
-                      tooltip: 'Clear supplier',
-                      onPressed: () => setState(() => _supplier = ''),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                ],
+              return _FilterPickerRow(
+                label: _supplier.isEmpty ? 'All suppliers' : _supplier,
+                onTap: () => _pickSupplier(rows),
+                onClear: _supplier.isEmpty
+                    ? null
+                    : () => setState(() => _supplier = ''),
               );
             },
           ),
@@ -489,6 +421,56 @@ class _OperationalFilterBodyState
           onChanged: (v) => setState(() => _sort = v ?? 'name'),
         ),
     ];
+  }
+}
+
+class _FilterPickerRow extends StatelessWidget {
+  const _FilterPickerRow({
+    required this.label,
+    required this.onTap,
+    this.onClear,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: InputDecorator(
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            isDense: true,
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (onClear != null)
+                IconButton(
+                  tooltip: 'Clear',
+                  onPressed: onClear,
+                  icon: const Icon(Icons.close_rounded, size: 20),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                ),
+              const Icon(Icons.arrow_drop_down_rounded, color: Colors.black45),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

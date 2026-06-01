@@ -2404,6 +2404,10 @@ class HexaApi {
     String? periodEnd,
     bool includeToday = true,
     bool purchasedInPeriod = false,
+    bool missingBarcode = false,
+    bool missingItemCode = false,
+    bool reorderOnly = false,
+    String unit = '',
   }) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/stock/list',
@@ -2418,6 +2422,10 @@ class HexaApi {
         if (includePeriod) 'include_period': true,
         if (includeToday) 'include_today': true,
         if (purchasedInPeriod) 'purchased_in_period': true,
+        if (missingBarcode) 'missing_barcode': true,
+        if (missingItemCode) 'missing_item_code': true,
+        if (reorderOnly) 'reorder_only': true,
+        if (unit.trim().isNotEmpty) 'unit': unit.trim(),
         if (periodStart != null && periodStart.isNotEmpty)
           'period_start': periodStart,
         if (periodEnd != null && periodEnd.isNotEmpty) 'period_end': periodEnd,
@@ -3542,16 +3550,6 @@ class HexaApi {
   }) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/stock/warehouse/alerts-summary',
-    );
-    return res.data ?? {};
-  }
-
-  Future<Map<String, dynamic>> recomputeItemStock({
-    required String businessId,
-    required String itemId,
-  }) async {
-    final res = await _dio.post<Map<String, dynamic>>(
-      '/v1/businesses/$businessId/stock/items/$itemId/recompute',
     );
     return res.data ?? {};
   }

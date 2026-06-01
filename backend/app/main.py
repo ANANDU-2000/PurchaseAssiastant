@@ -135,6 +135,15 @@ async def lifespan(app: FastAPI):
                 type(e).__name__,
                 e,
             )
+        run_backfill = os.getenv("AUTO_STOCK_BACKFILL_ON_START", "true").strip().lower()
+        if run_backfill not in {"0", "false", "no"}:
+            try:
+                from scripts.backfill_purchase_stock_commit import run as run_stock_backfill
+
+                await run_stock_backfill(business_id=None, dry_run=False)
+                logger.info("Stock backfill: startup repair completed")
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Stock backfill skipped/failed: %s", e, exc_info=True)
 
     low_stock_task: asyncio.Task | None = None
     idle_delivery_task: asyncio.Task | None = None

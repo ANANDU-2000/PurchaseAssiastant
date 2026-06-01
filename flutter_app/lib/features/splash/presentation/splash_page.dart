@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/auth/auth_failure_policy.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/router/post_auth_route.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -53,9 +54,16 @@ class _SplashPageState extends ConsumerState<SplashPage>
       // Timeout / offline — continue to token check below.
     }
     if (!mounted) return;
+    final expired = ref.read(authSessionExpiredProvider) ||
+        ref.read(auth401CircuitOpenProvider);
     final s = ref.read(sessionProvider);
     if (s != null) {
       context.go(authenticatedHomePath(s));
+      return;
+    }
+    if (expired) {
+      await ref.read(sessionProvider.notifier).logout();
+      if (mounted) context.go('/login?notice=session_expired');
       return;
     }
     ({String? access, String? refresh}) t;

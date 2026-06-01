@@ -14,12 +14,8 @@ import '../../../core/providers/notification_center_provider.dart'
     show notificationCenterCoordinatorProvider;
 import '../../../core/providers/notifications_provider.dart';
 import '../../../core/providers/api_degraded_provider.dart';
-import '../../../core/providers/home_dashboard_provider.dart';
-import '../../../core/providers/home_owner_dashboard_providers.dart';
-import '../../../core/providers/operations_providers.dart';
 import '../../../core/providers/staff_home_providers.dart'
     show staffPendingDeliveryCountProvider;
-import '../../../core/providers/stock_providers.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/hexa_count_badge.dart';
 import '../../shell/app_shell.dart';
@@ -55,23 +51,10 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
 
   void _syncStaffBranch(int idx) {
     if (!mounted) return;
-    final prev = ref.read(staffShellCurrentBranchProvider);
-    if (prev == idx) return;
+    if (ref.read(staffShellCurrentBranchProvider) == idx) return;
+    // Branch index only — do not invalidate providers here (caused full
+    // reload/skeleton flash every time staff switched Home ↔ Stock).
     ref.read(staffShellCurrentBranchProvider.notifier).state = idx;
-    switch (idx) {
-      case StaffShellBranch.home:
-        ref.invalidate(homeDashboardDataProvider);
-        break;
-      case StaffShellBranch.stock:
-        ref.invalidate(stockListProvider);
-        ref.invalidate(stockLowCountProvider);
-        break;
-      case StaffShellBranch.tasks:
-        ref.invalidate(checklistTodayProvider);
-        break;
-      default:
-        break;
-    }
   }
 
   @override

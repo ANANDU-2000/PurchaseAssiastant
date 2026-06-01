@@ -5,26 +5,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
-import '../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../core/design_system/hexa_responsive.dart';
-import 'widgets/user_management_detail_panel.dart';
 import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/providers/business_users_provider.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/router/post_auth_route.dart';
-import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
 import '../../../core/widgets/hexa_error_card.dart';
 import '../../../core/widgets/list_skeleton.dart';
+import '../users/user_compact_card.dart';
+import '../users/user_list_filters.dart';
+import 'widgets/user_management_detail_panel.dart';
 
-enum _UserFilter { all, active, staff, managers, admin, blocked, recent }
-
-/// Owner / admin: warehouse user list, create staff, bulk actions, profile drill-down.
+/// Owner / admin / manager: warehouse user list (ERP rebuild).
 class UserManagementPage extends ConsumerStatefulWidget {
   const UserManagementPage({super.key});
 
@@ -33,63 +30,21 @@ class UserManagementPage extends ConsumerStatefulWidget {
 }
 
 class _UserManagementPageState extends ConsumerState<UserManagementPage> {
-  _UserFilter _filter = _UserFilter.all;
   bool _selectMode = false;
   final Set<String> _selected = {};
+  final TextEditingController _searchCtl = TextEditingController();
 
-  List<Map<String, dynamic>> _filtered(List<Map<String, dynamic>> rows) {
-    Iterable<Map<String, dynamic>> it = rows;
-    switch (_filter) {
-      case _UserFilter.active:
-        it = it.where((u) => u['is_active'] == true && u['is_blocked'] != true);
-        break;
-      case _UserFilter.staff:
-        it = it.where((u) => (u['role']?.toString() ?? '') == 'staff');
-        break;
-      case _UserFilter.managers:
-        it = it.where((u) => (u['role']?.toString() ?? '') == 'manager');
-        break;
-      case _UserFilter.admin:
-        it = it.where((u) {
-          final r = u['role']?.toString() ?? '';
-          return r == 'admin' || r == 'owner';
-        });
-        break;
-      case _UserFilter.blocked:
-        it = it.where((u) => u['is_blocked'] == true);
-        break;
-      case _UserFilter.recent:
-        it = it.where((u) => _recentActive(u['last_active_at']?.toString()));
-        break;
-      case _UserFilter.all:
-        break;
-    }
-    return it.toList();
+  @override
+  void initState() {
+    super.initState();
+    _searchCtl.text = ref.read(userListFilterProvider).search;
   }
 
-  static bool _recentActive(String? iso) {
-    final d = DateTime.tryParse(iso ?? '');
-    if (d == null) return false;
-    return DateTime.now().toUtc().difference(d.toUtc()) < const Duration(minutes: 5);
+  @override
+  void dispose() {
+    _searchCtl.dispose();
+    super.dispose();
   }
-
-  static String _relativeActive(String? iso) {
-    final d = DateTime.tryParse(iso ?? '');
-    if (d == null) return 'No recent activity';
-    final diff = DateTime.now().toUtc().difference(d.toUtc());
-    if (diff < const Duration(minutes: 1)) return 'Active now';
-    if (diff < const Duration(hours: 1)) return '${diff.inMinutes}m ago';
-    if (diff < const Duration(days: 1)) return '${diff.inHours}h ago';
-    return DateFormat.yMMMd().format(d.toLocal());
-  }
-
-  Color _roleColor(String role, ColorScheme cs) => switch (role) {
-        'owner' => HexaColors.brandPrimary,
-        'admin' => HexaColors.accentPurple,
-        'manager' => const Color(0xFF2563EB),
-        'staff' => cs.onSurfaceVariant,
-        _ => cs.primary,
-      };
 
   Future<void> _openCreateSheet() async {
     final session = ref.read(sessionProvider);
@@ -109,155 +64,153 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
       compact: false,
       padding: EdgeInsets.zero,
       child: StatefulBuilder(
-            builder: (ctx, setModal) {
-              Future<void> submit() async {
-                if (saving) return;
-                final name = nameCtrl.text.trim();
-                final email = emailCtrl.text.trim();
-                final phone = phoneCtrl.text.trim();
-                if (name.isEmpty || email.length < 5 || phone.length < 6) return;
-                setModal(() => saving = true);
-                try {
-                  final body = await ref.read(hexaApiProvider).createBusinessUser(
-                        businessId: bid,
-                        fullName: name,
-                        email: email,
-                        phone: phone,
-                        role: role,
-                        notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
-                        password: passCtrl.text.trim().isEmpty ? null : passCtrl.text.trim(),
-                        isActive: active,
-                      );
-                  if (!ctx.mounted) return;
-                  Navigator.pop(ctx);
-                  invalidateUserManagementCaches(ref);
-                  if (!mounted) return;
-                  final user = body['user'] is Map
-                      ? Map<String, dynamic>.from(body['user'] as Map)
-                      : <String, dynamic>{};
-                  final gen = body['generated_password']?.toString();
-                  final pwd = gen ??
-                      (passCtrl.text.trim().isNotEmpty ? passCtrl.text.trim() : null);
-                  final loginEmail =
-                      body['login_email']?.toString() ?? user['email']?.toString() ?? email;
-                  if (pwd != null && pwd.isNotEmpty) {
-                    await _showCredentialShareDialog(
-                      context: context,
-                      user: user,
-                      password: pwd,
-                      loginEmail: loginEmail,
-                    );
-                  } else if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('User created')),
-                    );
-                  }
-                } on DioException catch (e) {
-                  setModal(() => saving = false);
-                  if (!ctx.mounted) return;
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    SnackBar(content: Text(userFacingError(e))),
+        builder: (ctx, setModal) {
+          Future<void> submit() async {
+            if (saving) return;
+            final name = nameCtrl.text.trim();
+            final email = emailCtrl.text.trim();
+            final phone = phoneCtrl.text.trim();
+            if (name.isEmpty || email.length < 5 || phone.length < 6) return;
+            setModal(() => saving = true);
+            try {
+              final body = await ref.read(hexaApiProvider).createBusinessUser(
+                    businessId: bid,
+                    fullName: name,
+                    email: email,
+                    phone: phone,
+                    role: role,
+                    notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+                    password: passCtrl.text.trim().isEmpty ? null : passCtrl.text.trim(),
+                    isActive: active,
                   );
-                } catch (e) {
-                  setModal(() => saving = false);
-                  if (!ctx.mounted) return;
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    SnackBar(content: Text(userFacingError(e))),
-                  );
-                }
+              if (!ctx.mounted) return;
+              Navigator.pop(ctx);
+              invalidateUserManagementCaches(ref);
+              if (!mounted) return;
+              final user = body['user'] is Map
+                  ? Map<String, dynamic>.from(body['user'] as Map)
+                  : <String, dynamic>{};
+              final gen = body['generated_password']?.toString();
+              final pwd = gen ??
+                  (passCtrl.text.trim().isNotEmpty ? passCtrl.text.trim() : null);
+              final loginEmail =
+                  body['login_email']?.toString() ?? user['email']?.toString() ?? email;
+              if (pwd != null && pwd.isNotEmpty) {
+                await _showCredentialShareDialog(
+                  context: context,
+                  user: user,
+                  password: pwd,
+                  loginEmail: loginEmail,
+                );
+              } else if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('User created')),
+                );
               }
-
-              return SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text('Add user', style: HexaDsType.formSectionLabel),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: nameCtrl,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: const InputDecoration(
-                        labelText: 'Full name',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: emailCtrl,
-                      keyboardType: TextInputType.emailAddress,
-                      autocorrect: false,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: phoneCtrl,
-                      keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(
-                        labelText: 'Phone number',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: notesCtrl,
-                      maxLines: 2,
-                      decoration: const InputDecoration(
-                        labelText: 'Notes (optional)',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(
-                      initialValue: role,
-                      decoration: const InputDecoration(
-                        labelText: 'Role',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: 'staff', child: Text('Staff')),
-                        DropdownMenuItem(value: 'manager', child: Text('Manager')),
-                        DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                      ],
-                      onChanged: saving
-                          ? null
-                          : (v) => setModal(() => role = v ?? 'staff'),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: passCtrl,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Password (optional)',
-                        helperText: 'Leave empty to generate a readable password',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Active'),
-                      value: active,
-                      onChanged: saving ? null : (v) => setModal(() => active = v),
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton(
-                      onPressed: saving ? null : () => unawaited(submit()),
-                      child: saving
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Create user'),
-                    ),
-                  ],
-                ),
+            } on DioException catch (e) {
+              setModal(() => saving = false);
+              if (!ctx.mounted) return;
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                SnackBar(content: Text(userFacingError(e))),
               );
-            },
-          ),
+            } catch (e) {
+              setModal(() => saving = false);
+              if (!ctx.mounted) return;
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                SnackBar(content: Text(userFacingError(e))),
+              );
+            }
+          }
+
+          return SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Add user', style: HexaDsType.formSectionLabel),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nameCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Full name',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone number',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: notesCtrl,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Notes (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: role,
+                  decoration: const InputDecoration(
+                    labelText: 'Role',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'staff', child: Text('Staff')),
+                    DropdownMenuItem(value: 'manager', child: Text('Manager')),
+                    DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                  ],
+                  onChanged: saving ? null : (v) => setModal(() => role = v ?? 'staff'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: passCtrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Password (optional)',
+                    helperText: 'Leave empty to generate a readable password',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Active'),
+                  value: active,
+                  onChanged: saving ? null : (v) => setModal(() => active = v),
+                ),
+                const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: saving ? null : () => unawaited(submit()),
+                  child: saving
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Create user'),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
     nameCtrl.dispose();
     emailCtrl.dispose();
@@ -454,24 +407,52 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
     }
   }
 
-  static String _filterLabel(_UserFilter f) => switch (f) {
-        _UserFilter.all => 'All',
-        _UserFilter.active => 'Active',
-        _UserFilter.staff => 'Staff',
-        _UserFilter.managers => 'Managers',
-        _UserFilter.admin => 'Admin',
-        _UserFilter.blocked => 'Blocked',
-        _UserFilter.recent => 'Recent',
-      };
+  Widget _searchBar(int filterBadge) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _searchCtl,
+              decoration: InputDecoration(
+                hintText: 'Search users…',
+                prefixIcon: const Icon(Icons.search_rounded),
+                isDense: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              onChanged: (v) {
+                ref.read(userListFilterProvider.notifier).state =
+                    ref.read(userListFilterProvider).copyWith(search: v);
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          Badge(
+            isLabelVisible: filterBadge > 0,
+            label: Text('$filterBadge'),
+            child: IconButton(
+              tooltip: 'Filter by role',
+              onPressed: () => showUserListFilterDrawer(context, ref),
+              icon: const Icon(Icons.tune_rounded),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final session = ref.watch(sessionProvider);
     final canCreate = session != null && sessionCanCreateUsers(session);
     final canAdmin = session != null && sessionCanAdminUsers(session);
     final async = ref.watch(businessUsersListProvider);
+    final filterState = ref.watch(userListFilterProvider);
 
     return Scaffold(
       backgroundColor: context.adaptiveScaffold,
@@ -480,7 +461,7 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
         surfaceTintColor: Colors.transparent,
         title: Text(
           _selectMode ? '${_selected.length} selected' : 'Users',
-          style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800, fontSize: 24),
         ),
         leading: IconButton(
           icon: Icon(_selectMode ? Icons.close_rounded : Icons.arrow_back_rounded),
@@ -530,39 +511,24 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
                   runSpacing: 8,
                   alignment: WrapAlignment.center,
                   children: [
-                    OutlinedButton(
-                      onPressed: () => _bulkAction('activate'),
-                      child: const Text('Activate'),
-                    ),
-                    OutlinedButton(
-                      onPressed: () => _bulkAction('deactivate'),
-                      child: const Text('Deactivate'),
-                    ),
-                    OutlinedButton(
-                      onPressed: () => _bulkAction('block'),
-                      child: const Text('Block'),
-                    ),
-                    OutlinedButton(
-                      onPressed: () => _bulkAction('delete'),
-                      child: const Text('Delete'),
-                    ),
+                    OutlinedButton(onPressed: () => _bulkAction('activate'), child: const Text('Activate')),
+                    OutlinedButton(onPressed: () => _bulkAction('deactivate'), child: const Text('Deactivate')),
+                    OutlinedButton(onPressed: () => _bulkAction('block'), child: const Text('Block')),
+                    OutlinedButton(onPressed: () => _bulkAction('delete'), child: const Text('Delete')),
                   ],
                 ),
               ),
             )
           : null,
       body: async.when(
-        loading: () => const Padding(
-          padding: EdgeInsets.all(16),
-          child: ListSkeleton(),
-        ),
+        loading: () => const Padding(padding: EdgeInsets.all(16), child: ListSkeleton()),
         error: (e, _) => HexaErrorCard.fromError(
           error: e,
           title: 'Could not load users',
           onRetry: () => invalidateUserManagementCaches(ref),
         ),
         data: (rows) {
-          final filtered = _filtered(rows);
+          final filtered = applyUserListFilters(rows, filterState);
           final desktop = context.isDesktopLayout && !_selectMode;
           final selectedId = ref.watch(selectedUserIdProvider);
           Map<String, dynamic>? selectedUser;
@@ -585,34 +551,12 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
             }
           }
 
-          Widget filterChips() => Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final f in _UserFilter.values)
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          minHeight: HexaOp.touchTargetMin,
-                        ),
-                        child: FilterChip(
-                          label: Text(_filterLabel(f)),
-                          selected: _filter == f,
-                          materialTapTargetSize: MaterialTapTargetSize.padded,
-                          onSelected: (_) => setState(() => _filter = f),
-                        ),
-                      ),
-                  ],
-                ),
-              );
-
           Widget userList({required bool desktopSelect}) {
             if (filtered.isEmpty) {
               return Center(
                 child: Text(
-                  'No users in this filter.',
-                  style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant),
+                  'No users match your filters.',
+                  style: tt.bodyLarge,
                 ),
               );
             }
@@ -622,23 +566,18 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
                 await ref.read(businessUsersListProvider.future);
               },
               child: ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
                 itemCount: filtered.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                separatorBuilder: (_, __) => const SizedBox(height: 6),
                 itemBuilder: (ctx, i) {
                   final u = filtered[i];
                   final id = u['id']?.toString() ?? '';
-                  return _UserRowCard(
+                  return UserCompactCard(
                     user: u,
                     selectMode: _selectMode,
                     selected: _selected.contains(id),
                     listHighlighted: desktopSelect && selectedId == id,
                     canAdmin: canAdmin,
-                    roleColor: _roleColor(u['role']?.toString() ?? '', cs),
-                    recentActive:
-                        _recentActive(u['last_active_at']?.toString()),
-                    lastActiveLabel:
-                        _relativeActive(u['last_active_at']?.toString()),
                     onToggleSelect: () {
                       setState(() {
                         if (_selected.contains(id)) {
@@ -668,7 +607,6 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
                     onViewProfile: () {
                       if (id.isNotEmpty) context.push('/settings/users/$id');
                     },
-                    onEdit: () {},
                     onBlock: () => _patchUser(id, {'is_blocked': true}),
                     onResetPassword: () => _resetPassword(id),
                     onDelete: () => _deleteUser(id),
@@ -679,42 +617,25 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
             );
           }
 
+          final listChrome = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _searchBar(filterState.drawerActiveCount),
+              UserListPrimaryFilterBar(rows: rows),
+              Expanded(child: userList(desktopSelect: desktop)),
+            ],
+          );
+
           if (desktop) {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(
-                  width: 120,
-                  child: ListView(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    children: [
-                      for (final f in _UserFilter.values)
-                        ListTile(
-                          dense: true,
-                          selected: _filter == f,
-                          title: Text(
-                            _filterLabel(f),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          onTap: () => setState(() => _filter = f),
-                        ),
-                    ],
-                  ),
-                ),
-                const VerticalDivider(width: 1, thickness: 1),
-                Expanded(
-                  flex: 4,
-                  child: userList(desktopSelect: true),
-                ),
+                Expanded(flex: 4, child: listChrome),
                 const VerticalDivider(width: 1, thickness: 1),
                 Expanded(
                   flex: 5,
                   child: UserManagementDetailPanel(
-                    user: selectedUser ??
-                        (filtered.isNotEmpty ? filtered.first : null),
+                    user: selectedUser ?? (filtered.isNotEmpty ? filtered.first : null),
                     canAdmin: canAdmin,
                     onPatch: (data) => _patchUser(
                       selectedUser?['id']?.toString() ??
@@ -738,212 +659,8 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
             );
           }
 
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              filterChips(),
-              Expanded(child: userList(desktopSelect: false)),
-            ],
-          );
+          return listChrome;
         },
-      ),
-    );
-  }
-}
-
-class _UserRowCard extends StatelessWidget {
-  const _UserRowCard({
-    required this.user,
-    required this.selectMode,
-    required this.selected,
-    this.listHighlighted = false,
-    required this.canAdmin,
-    required this.roleColor,
-    required this.recentActive,
-    required this.lastActiveLabel,
-    required this.onToggleSelect,
-    required this.onTap,
-    required this.onViewProfile,
-    required this.onEdit,
-    required this.onBlock,
-    required this.onResetPassword,
-    required this.onDelete,
-    required this.onCopyCredentials,
-  });
-
-  final Map<String, dynamic> user;
-  final bool selectMode;
-  final bool selected;
-  final bool listHighlighted;
-  final bool canAdmin;
-  final Color roleColor;
-  final bool recentActive;
-  final String lastActiveLabel;
-  final VoidCallback onToggleSelect;
-  final VoidCallback onTap;
-  final VoidCallback onViewProfile;
-  final VoidCallback onEdit;
-  final VoidCallback onBlock;
-  final VoidCallback onResetPassword;
-  final VoidCallback onDelete;
-  final VoidCallback onCopyCredentials;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-    final name = user['name']?.toString() ?? '—';
-    final email = user['email']?.toString() ?? '';
-    final role = user['role']?.toString() ?? '';
-    final blocked = user['is_blocked'] == true;
-    final active = user['is_active'] == true && !blocked;
-    final isOwner = role == 'owner';
-
-    String statusLabel;
-    Color statusColor;
-    if (blocked) {
-      statusLabel = 'Blocked';
-      statusColor = const Color(0xFFDC2626);
-    } else if (active) {
-      statusLabel = 'Active';
-      statusColor = const Color(0xFF15803D);
-    } else {
-      statusLabel = 'Inactive';
-      statusColor = cs.onSurfaceVariant;
-    }
-
-    return Card(
-      color: listHighlighted
-          ? const Color(0xFFE8F4F2)
-          : context.adaptiveCard,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (selectMode)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8, top: 4),
-                  child: Checkbox(
-                    value: selected,
-                    onChanged: (_) => onToggleSelect(),
-                  ),
-                ),
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  CircleAvatar(
-                    backgroundColor: cs.primaryContainer,
-                    child: Text(
-                      name.isNotEmpty ? name[0].toUpperCase() : '?',
-                      style: TextStyle(
-                        color: cs.onPrimaryContainer,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  if (recentActive && active)
-                    Positioned(
-                      right: -1,
-                      bottom: -1,
-                      child: Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF22C55E),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: context.adaptiveCard, width: 2),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                    if (email.isNotEmpty)
-                      Text(
-                        email,
-                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    Text(
-                      lastActiveLabel,
-                      style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: roleColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      role.toUpperCase(),
-                      style: tt.labelSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: roleColor,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    statusLabel,
-                    style: tt.labelSmall?.copyWith(
-                      color: statusColor,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  if (canAdmin && !selectMode)
-                    PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_vert_rounded, size: 20),
-                      onSelected: (v) {
-                        switch (v) {
-                          case 'profile':
-                            onViewProfile();
-                          case 'reset':
-                            onResetPassword();
-                          case 'block':
-                            onBlock();
-                          case 'copy':
-                            onCopyCredentials();
-                          case 'delete':
-                            if (!isOwner) onDelete();
-                        }
-                      },
-                      itemBuilder: (ctx) => [
-                        const PopupMenuItem(value: 'profile', child: Text('View profile')),
-                        const PopupMenuItem(value: 'reset', child: Text('Reset password')),
-                        if (!isOwner)
-                          const PopupMenuItem(value: 'block', child: Text('Block')),
-                        const PopupMenuItem(value: 'copy', child: Text('Copy credentials')),
-                        if (!isOwner)
-                          const PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Delete', style: TextStyle(color: Colors.red)),
-                          ),
-                      ],
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

@@ -2,12 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/api/hexa_api.dart';
-import '../../../../core/auth/session_notifier.dart';
 import '../../../../core/design_system/hexa_responsive.dart';
-import '../../../../core/errors/user_facing_errors.dart';
-import '../../../../core/providers/business_aggregates_invalidation.dart';
-import '../../../../core/providers/stock_providers.dart';
 import '../../../../core/utils/unit_utils.dart';
 import '../../../catalog/presentation/widgets/item_stock_metric_strip.dart';
 import '../quick_stock_action_sheet.dart';
@@ -52,24 +47,9 @@ Future<void> showStockRowActions({
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w700,
-            color: StockRowMetrics.isSystemOutOfSync(item)
-                ? const Color(0xFFEA580C)
-                : const Color(0xFF2563EB),
+            color: const Color(0xFF2563EB),
           ),
         ),
-        if (StockRowMetrics.isSystemOutOfSync(item)) ...[
-          const SizedBox(height: 2),
-          Text(
-            StockRowMetrics.expectedSystemFormulaLine(item).isNotEmpty
-                ? '${StockRowMetrics.expectedSystemFormulaLine(item)} · tap Sync below'
-                : 'Should be ${formatStockQtyForUnit(unit, StockRowMetrics.expectedSystemQty(item))} $unit',
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
-            ),
-          ),
-        ],
         const SizedBox(height: 8),
         ItemStockMetricStrip(stock: item),
         const SizedBox(height: 6),
@@ -99,39 +79,6 @@ Future<void> showStockRowActions({
             );
           },
         ),
-        if (StockRowMetrics.needsStockSync(item))
-          _StockActionTile(
-            icon: Icons.sync_rounded,
-            label: 'Sync system stock from purchases',
-            onTap: () async {
-              Navigator.pop(context);
-              final session = ref.read(sessionProvider);
-              if (session == null) return;
-              try {
-                await ref.read(hexaApiProvider).recomputeItemStock(
-                      businessId: session.primaryBusiness.id,
-                      itemId: id,
-                    );
-                invalidateWarehouseSurfaces(ref, itemId: id);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('System stock synced from deliveries'),
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(userFacingError(e)),
-                      backgroundColor: Colors.red.shade700,
-                    ),
-                  );
-                }
-              }
-            },
-          ),
         _StockActionTile(
           icon: Icons.add_shopping_cart_outlined,
           label: 'Add purchase quantity',

@@ -25,29 +25,13 @@ void applyStockPagePeriod(WidgetRef ref, HomePeriod p) {
   ref.read(stockSelectedItemIdProvider.notifier).state = null;
 }
 
-/// Client-side filters for operational stock list (unit, missing code, reorder).
+/// Client-side filters for stock list rows not covered by `/stock/list` query params.
 List<Map<String, dynamic>> filterStockListClient(
   List<Map<String, dynamic>> items,
   StockOperationalFilters op,
 ) {
-  return items.where((it) {
-    if (op.missingBarcodeOnly && it['missing_barcode'] != true) return false;
-    if (op.missingItemCodeOnly && it['missing_item_code'] != true) return false;
-    if (op.reorderOnly) {
-      final ro = _num(it['reorder_level']);
-      final cur = _num(it['current_stock']);
-      if (ro <= 0 || cur > ro) return false;
-    }
-    if (op.unit.isNotEmpty) {
-      final u = (it['unit']?.toString() ?? '').toLowerCase();
-      if (u != op.unit.toLowerCase()) return false;
-    }
-    if (op.purchasedInPeriodOnly) {
-      final purchased = _num(it['period_purchased_qty']);
-      if (purchased <= 0) return false;
-    }
-    return true;
-  }).toList();
+  if (!op.evictionOnly) return items;
+  return items.where((it) => it['needs_eviction'] == true).toList();
 }
 
 double _num(dynamic v) {

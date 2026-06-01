@@ -22,7 +22,7 @@ class _ShellRealtimeListenerState extends ConsumerState<ShellRealtimeListener> {
   bool _throttleWarehouse() {
     final now = DateTime.now();
     if (_lastWarehouseInvalidate != null &&
-        now.difference(_lastWarehouseInvalidate!).inSeconds < 12) {
+        now.difference(_lastWarehouseInvalidate!).inSeconds < 45) {
       return true;
     }
     _lastWarehouseInvalidate = now;
