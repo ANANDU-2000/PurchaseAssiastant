@@ -190,22 +190,26 @@ class HexaApi {
           if (_isAuthEndpoint(path)) {
             return handler.next(err);
           }
-          // Count + suspend before session-expired short-circuit so parallel 401s
-          // still trip the burst guard (fixes non-reactive Provider storm on web).
-          if (_onBusiness401?.call() == true) {
-            await _onTerminalAuthFailure?.call('401_burst');
-            return handler.next(err);
-          }
           if (_authSessionExpired?.call() == true) {
             return handler.next(err);
           }
           if (req.extra['authRetried'] == true) {
-            await _onTerminalAuthFailure?.call('auth_retry_failed');
+            if (_onBusiness401?.call() == true) {
+              await _onTerminalAuthFailure?.call('401_burst');
+            } else {
+              await _onTerminalAuthFailure?.call('auth_retry_failed');
+            }
             return handler.next(err);
           }
+          // Refresh first — expired access tokens are normal after redeploy;
+          // do not suspend the API until refresh actually fails.
           final ok = await _onUnauthorizedRefresh?.call() ?? false;
           if (!ok) {
-            await _onTerminalAuthFailure?.call('refresh_failed');
+            if (_onBusiness401?.call() == true) {
+              await _onTerminalAuthFailure?.call('401_burst');
+            } else {
+              await _onTerminalAuthFailure?.call('refresh_failed');
+            }
             return handler.next(err);
           }
           final auth = _dio.options.headers['Authorization'];

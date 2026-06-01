@@ -20,6 +20,7 @@ import '../router/post_auth_route.dart' show sessionIsStaff;
 import '../services/staff_activity_logger.dart';
 import 'auth_failure_policy.dart';
 import 'google_sign_in_helper.dart';
+import 'jwt_access_token.dart';
 import 'secure_token_store.dart';
 import 'session_cache.dart';
 
@@ -445,6 +446,20 @@ class SessionNotifier extends Notifier<Session?> {
     }
     api.setAuthToken(t.access);
 
+    Future<({String? access, String? refresh})> ensureFreshAccess() async {
+      if (!isAccessTokenExpiredOrNearExpiry(t.access)) {
+        return t;
+      }
+      try {
+        final pair = await api.refreshTokens(refreshToken: t.refresh!);
+        await store.write(access: pair.access, refresh: pair.refresh);
+        api.setAuthToken(pair.access);
+        return (access: pair.access, refresh: pair.refresh);
+      } on DioException {
+        return t;
+      }
+    }
+
     Future<void> finishOk(List<BusinessBrief> businesses) async {
       if (businesses.isEmpty) {
         state = null;
@@ -470,6 +485,7 @@ class SessionNotifier extends Notifier<Session?> {
     }
 
     try {
+      t = await ensureFreshAccess();
       final businesses = await api.meBusinesses();
       await finishOk(businesses);
     } on DioException catch (e) {
