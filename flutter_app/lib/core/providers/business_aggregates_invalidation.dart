@@ -197,6 +197,14 @@ void invalidatePurchaseWorkspace(
   invalidateBusinessAggregates(ref);
 }
 
+void _invalidateStockAuditFeeds(dynamic ref) {
+  ref.invalidate(stockChangesFeedProvider);
+  ref.invalidate(stockAuditPeriodProvider);
+  ref.invalidate(homeRecentActivityFeedProvider);
+  final n = DateTime.now();
+  ref.invalidate(stockAuditDayProvider(DateTime(n.year, n.month, n.day)));
+}
+
 /// User-initiated stock/catalog writes — light warehouse bust + financial KPIs.
 void invalidateWarehouseSurfaces(dynamic ref, {String? itemId}) {
   invalidateWarehouseSurfacesLight(ref, itemId: itemId);
@@ -225,6 +233,7 @@ void invalidateWarehouseSurfacesLight(dynamic ref, {String? itemId}) {
   ref.invalidate(stockAlertCountsProvider);
   ref.invalidate(stockLowTopHomeProvider);
   ref.invalidate(stockVariancesTodayProvider);
+  _invalidateStockAuditFeeds(ref);
   ref.invalidate(homeInventorySummaryProvider);
   ref.invalidate(lowStockOperationsSummaryProvider);
   ref.invalidate(lowStockOperationsPageProvider);

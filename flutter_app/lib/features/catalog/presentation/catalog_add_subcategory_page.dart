@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/catalog_providers.dart';
+import '../catalog_taxonomy_utils.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/form_feedback.dart';
@@ -92,7 +93,7 @@ class _CatalogAddSubcategoryPageState
             categoryId: widget.categoryId,
             name: n,
           );
-      ref.invalidate(categoryTypesListProvider(widget.categoryId));
+      invalidateCatalogTaxonomy(ref, categoryId: widget.categoryId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Subcategory created')),

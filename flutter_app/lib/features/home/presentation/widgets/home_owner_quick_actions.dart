@@ -15,6 +15,7 @@ class HomeOwnerQuickActions extends StatelessWidget {
     required this.onUsers,
     required this.onBarcode,
     required this.onReorder,
+    required this.onDailyLog,
     this.lowStockCount = 0,
   });
 
@@ -26,6 +27,7 @@ class HomeOwnerQuickActions extends StatelessWidget {
   final VoidCallback onUsers;
   final VoidCallback onBarcode;
   final VoidCallback onReorder;
+  final VoidCallback onDailyLog;
   final int lowStockCount;
 
   @override
@@ -39,6 +41,7 @@ class HomeOwnerQuickActions extends StatelessWidget {
       _Spec('Users', Icons.group_rounded, const Color(0xFF5D4037), onUsers),
       _Spec('Barcode', Icons.qr_code_2_rounded, const Color(0xFF455A64), onBarcode),
       _Spec('Reorder', Icons.autorenew_rounded, const Color(0xFF7C3AED), onReorder),
+      _Spec('Daily log', Icons.history_rounded, const Color(0xFF0D9488), onDailyLog),
     ];
 
     final cols = MediaQuery.sizeOf(context).width < 360 ? 3 : 4;

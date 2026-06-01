@@ -13,6 +13,7 @@ import 'features/reports/reports_prefs.dart';
 import 'core/reporting/trade_report_aggregate.dart';
 import 'core/notifications/local_notifications_service.dart';
 import 'core/platform/launcher_quick_actions.dart';
+import 'core/platform/app_foreground_listener.dart';
 import 'core/platform/remove_boot_overlay.dart';
 import 'core/providers/api_degraded_provider.dart';
 import 'core/providers/home_breakdown_tab_providers.dart';
@@ -389,9 +390,11 @@ class HexaApp extends ConsumerWidget {
             decoration: BoxDecoration(gradient: HexaColors.appShellGradient),
             child: _HexaErrorBoundary(
               onGoHome: () => ref.read(appRouterProvider).go('/home'),
-              child: _LauncherShortcutsBootstrap(
-                child: _NotificationTapHandler(
-                  child: PostLoginNotificationPrompt(child: shell),
+              child: AppForegroundListener(
+                child: _LauncherShortcutsBootstrap(
+                  child: _NotificationTapHandler(
+                    child: PostLoginNotificationPrompt(child: shell),
+                  ),
                 ),
               ),
             ),

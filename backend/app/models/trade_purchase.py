@@ -87,6 +87,10 @@ class TradePurchase(Base):
     lines = relationship("TradePurchaseLine", back_populates="purchase", cascade="all, delete-orphan")
     supplier_row = relationship(Supplier, foreign_keys=[supplier_id], lazy="selectin")
     broker_row = relationship(Broker, foreign_keys=[broker_id], lazy="selectin")
+    creator_user = relationship("User", foreign_keys=[user_id], lazy="noload")
+    staff_verifier_user = relationship(
+        "User", foreign_keys=[staff_verified_by], lazy="noload"
+    )
 
 
 class TradePurchaseLine(Base):

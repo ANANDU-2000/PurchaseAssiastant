@@ -1,11 +1,12 @@
 import html
 
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from starlette.responses import HTMLResponse
 
 from app.database import async_session_factory
 from app.models import CatalogItem, ItemCategory
+from app.models.stock_physical_count import StockPhysicalCount
 from app.services.stock_inventory import (
     movement_delivered_qty_map,
     stock_status,
@@ -14,11 +15,38 @@ from app.services.stock_inventory import (
 router = APIRouter(prefix="/public/items", tags=["public-items"])
 
 
+async def _latest_physical_qty(
+    db,
+    business_id,
+    item_id,
+) -> tuple[float | None, str | None]:
+    r = await db.execute(
+        select(StockPhysicalCount)
+        .where(
+            StockPhysicalCount.business_id == business_id,
+            StockPhysicalCount.item_id == item_id,
+        )
+        .order_by(desc(StockPhysicalCount.counted_at))
+        .limit(1)
+    )
+    row = r.scalar_one_or_none()
+    if row is None:
+        return None, None
+    when = (
+        row.counted_at.isoformat()
+        if row.counted_at
+        else None
+    )
+    return float(row.counted_qty or 0), when
+
+
 async def _safe_item_payload(
     item: CatalogItem,
     category_name: str | None,
     *,
     delivered_qty: float | None = None,
+    physical_qty: float | None = None,
+    physical_counted_at: str | None = None,
 ) -> dict:
     current = float(item.current_stock or 0)
     reorder = float(item.reorder_level or 0)
@@ -39,10 +67,20 @@ async def _safe_item_payload(
         "last_stock_updated_at": item.last_stock_updated_at.isoformat()
         if item.last_stock_updated_at
         else None,
+        "physical_stock_qty": physical_qty,
+        "physical_stock_counted_at": physical_counted_at,
+        "last_purchase_date": item.last_purchase_at.isoformat()
+        if item.last_purchase_at
+        else None,
+        "last_purchase_rate": float(item.last_purchase_price)
+        if item.last_purchase_price is not None
+        else None,
     }
 
 
-async def _load_public_item(token: str) -> tuple[CatalogItem, str | None, float]:
+async def _load_public_item(
+    token: str,
+) -> tuple[CatalogItem, str | None, float, float | None, str | None]:
     clean = token.strip()
     if not clean or len(clean) > 64:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
@@ -78,19 +116,32 @@ async def _load_public_item(token: str) -> tuple[CatalogItem, str | None, float]
             db, item.business_id, [item.id]
         )
         delivered = float(delivered_map.get(item.id, 0))
-        return item, category_name, delivered
+        phys_qty, phys_at = await _latest_physical_qty(db, item.business_id, item.id)
+        return item, category_name, delivered, phys_qty, phys_at
 
 
 @router.get("/{token}.json")
 async def public_item_json(token: str) -> dict:
-    item, category_name, delivered = await _load_public_item(token)
-    return _safe_item_payload(item, category_name, delivered_qty=delivered)
+    item, category_name, delivered, phys_qty, phys_at = await _load_public_item(token)
+    return _safe_item_payload(
+        item,
+        category_name,
+        delivered_qty=delivered,
+        physical_qty=phys_qty,
+        physical_counted_at=phys_at,
+    )
 
 
 @router.get("/{token}", response_class=HTMLResponse)
 async def public_item_page(token: str) -> HTMLResponse:
-    item, category_name, delivered = await _load_public_item(token)
-    payload = _safe_item_payload(item, category_name, delivered_qty=delivered)
+    item, category_name, delivered, phys_qty, phys_at = await _load_public_item(token)
+    payload = _safe_item_payload(
+        item,
+        category_name,
+        delivered_qty=delivered,
+        physical_qty=phys_qty,
+        physical_counted_at=phys_at,
+    )
     status_label = str(payload["status"]).replace("_", " ").title()
     stock_qty = payload["current_stock"]
     body = f"""

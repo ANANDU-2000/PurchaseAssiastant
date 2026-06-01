@@ -7,7 +7,7 @@ import '../../../core/providers/operations_providers.dart';
 import '../../../core/providers/stock_providers.dart';
 import '../../../core/reporting/trade_report_aggregate.dart';
 import '../../../core/theme/hexa_colors.dart';
-import '../../../core/utils/unit_utils.dart';
+import 'reports_qty_unit_strip.dart';
 
 String _inr(num n) => NumberFormat.currency(
       locale: 'en_IN',
@@ -15,7 +15,7 @@ String _inr(num n) => NumberFormat.currency(
       decimalDigits: 0,
     ).format(n);
 
-/// KPI grid for Reports Overview — cards first, charts below.
+/// KPI grid for Reports Overview — hero amount, unit strip, compact secondary cards.
 class ReportsOverviewKpiGrid extends ConsumerWidget {
   const ReportsOverviewKpiGrid({
     super.key,
@@ -29,6 +29,12 @@ class ReportsOverviewKpiGrid extends ConsumerWidget {
   final VoidCallback? onTapStock;
   final VoidCallback? onTapPurchases;
   final VoidCallback? onTapItems;
+
+  static const _amountColor = Color(0xFF3B6D11);
+  static const _countColor = Color(0xFF2563EB);
+  static const _warnColor = Color(0xFFDC2626);
+  static const _mutedColor = Color(0xFF64748B);
+  static const _accentColor = Color(0xFF0D9488);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -55,48 +61,72 @@ class ReportsOverviewKpiGrid extends ConsumerWidget {
       topSup = agg.suppliers.first.name;
     }
 
-    final qtyParts = <String>[];
     final t = agg.totals;
-    if (t.bags > 0.001) {
-      qtyParts.add('${formatStockQtyForUnit('bag', t.bags)} bag');
-    }
-    if (t.boxes > 0.001) {
-      qtyParts.add('${formatStockQtyForUnit('box', t.boxes)} box');
-    }
-    if (t.tins > 0.001) {
-      qtyParts.add('${formatStockQtyForUnit('tin', t.tins)} tin');
-    }
-    if (t.kg > 0.001) {
-      qtyParts.add('${formatStockQtyForUnit('kg', t.kg)} kg');
-    }
-    final qtyLine = qtyParts.isEmpty ? '—' : qtyParts.join(' · ');
-
-    final cards = <_KpiCardData>[
-      _KpiCardData('Purchase value', _inr(t.inr), onTap: onTapPurchases),
-      _KpiCardData('Purchase qty', qtyLine, onTap: onTapPurchases),
-      _KpiCardData('Items', '${agg.itemsAll.length}', onTap: onTapItems),
-      _KpiCardData('Suppliers', '${agg.suppliers.length}', onTap: onTapPurchases),
-      _KpiCardData('Low stock', '$lowCount', onTap: onTapStock),
-      _KpiCardData('Dead stock', '$dead', onTap: onTapStock),
-      _KpiCardData('Fast moving', '$fast', onTap: onTapStock),
-      _KpiCardData('Top supplier', topSup, onTap: onTapPurchases),
-      _KpiCardData('Top category', topCat, onTap: onTapItems),
+    final secondary = <_KpiCardData>[
+      _KpiCardData('Items', '${agg.itemsAll.length}', _countColor, onTap: onTapItems),
+      _KpiCardData(
+        'Suppliers',
+        '${agg.suppliers.length}',
+        _accentColor,
+        onTap: onTapPurchases,
+      ),
+      _KpiCardData('Low stock', '$lowCount', _warnColor, onTap: onTapStock),
+      _KpiCardData('Dead stock', '$dead', _warnColor, onTap: onTapStock),
+      _KpiCardData('Fast moving', '$fast', _mutedColor, onTap: onTapStock),
+      _KpiCardData('Top supplier', topSup, _accentColor, onTap: onTapPurchases),
+      _KpiCardData('Top category', topCat, _mutedColor, onTap: onTapItems),
     ];
 
     return LayoutBuilder(
       builder: (context, c) {
         final cols = c.maxWidth >= 720 ? 4 : 2;
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: cols,
-            mainAxisExtent: 72,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-          ),
-          itemCount: cards.length,
-          itemBuilder: (_, i) => _KpiTile(data: cards[i]),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: _HeroKpiTile(
+                    label: 'Total amount',
+                    value: _inr(t.inr),
+                    color: _amountColor,
+                    onTap: onTapPurchases,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _KpiTile(
+                    data: _KpiCardData(
+                      'Bills',
+                      '${t.deals}',
+                      _countColor,
+                      onTap: onTapPurchases,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ReportsQtyUnitStrip(
+              bags: t.bags,
+              boxes: t.boxes,
+              tins: t.tins,
+              kg: t.kg,
+            ),
+            const SizedBox(height: 8),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: cols,
+                mainAxisExtent: 64,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: secondary.length,
+              itemBuilder: (_, i) => _KpiTile(data: secondary[i]),
+            ),
+          ],
         );
       },
     );
@@ -104,10 +134,66 @@ class ReportsOverviewKpiGrid extends ConsumerWidget {
 }
 
 class _KpiCardData {
-  const _KpiCardData(this.label, this.value, {this.onTap});
+  const _KpiCardData(this.label, this.value, this.valueColor, {this.onTap});
   final String label;
   final String value;
+  final Color valueColor;
   final VoidCallback? onTap;
+}
+
+class _HeroKpiTile extends StatelessWidget {
+  const _HeroKpiTile({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: HexaColors.brandCard,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: color,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _KpiTile extends StatelessWidget {
@@ -143,9 +229,10 @@ class _KpiTile extends StatelessWidget {
                 data.value,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w900,
+                  color: data.valueColor,
                 ),
               ),
             ],

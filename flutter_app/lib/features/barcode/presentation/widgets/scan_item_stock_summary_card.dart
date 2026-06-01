@@ -4,9 +4,8 @@ import 'package:intl/intl.dart';
 import '../../../../core/json_coerce.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/utils/unit_utils.dart';
-import '../../../../shared/widgets/stock_summary_widget.dart';
 
-/// Post-scan summary: current stock + last purchase (from barcode lookup).
+/// Post-scan summary: system + physical stock, last purchase, last system edit.
 class ScanItemStockSummaryCard extends StatelessWidget {
   const ScanItemStockSummaryCard({
     super.key,
@@ -17,6 +16,15 @@ class ScanItemStockSummaryCard extends StatelessWidget {
   final Map<String, dynamic> item;
   final bool showTitle;
 
+  static String daysAgoLabel(DateTime? at) {
+    if (at == null) return '';
+    final d = DateTime.now().difference(at.toLocal());
+    if (d.inDays == 0) return 'today';
+    if (d.inDays == 1) return '1 day ago';
+    if (d.inDays < 14) return '${d.inDays} days ago';
+    return DateFormat('d MMM yy').format(at.toLocal());
+  }
+
   @override
   Widget build(BuildContext context) {
     final name = item['name']?.toString() ?? 'Item';
@@ -26,38 +34,22 @@ class ScanItemStockSummaryCard extends StatelessWidget {
         item['stock_unit']?.toString() ??
         item['default_unit']?.toString() ??
         '';
-    final stock = coerceToDouble(item['current_stock']);
 
-    final lpDateRaw = item['last_purchase_date'];
-    DateTime? lpDate;
-    if (lpDateRaw is String && lpDateRaw.isNotEmpty) {
-      lpDate = DateTime.tryParse(lpDateRaw);
-    } else if (lpDateRaw is DateTime) {
-      lpDate = lpDateRaw;
-    }
+    final system = coerceToDouble(item['current_stock']);
+    final physical = coerceToDoubleNullable(
+      item['physical_stock_qty'] ?? item['physical_count_qty'],
+    );
+
+    final lpDate = _parseDate(item['last_purchase_date']);
     final lpQty = coerceToDoubleNullable(item['last_purchase_qty']);
-    final lpUnit =
-        item['last_purchase_unit']?.toString().trim() ?? unit;
+    final lpUnit = item['last_purchase_unit']?.toString().trim() ?? unit;
     final supplier = item['supplier_name']?.toString().trim() ?? '';
+    final lpRate = coerceToDoubleNullable(item['last_purchase_rate']);
 
-    String lastPurchaseLine;
-    if (lpQty != null && lpQty > 0) {
-      final parts = <String>[
-        formatQtyForDisplay(lpQty),
-        if (lpUnit.isNotEmpty) lpUnit.toUpperCase(),
-      ];
-      if (lpDate != null) {
-        parts.add(DateFormat('d MMM yy').format(lpDate.toLocal()));
-      }
-      if (supplier.isNotEmpty) {
-        parts.add(
-          supplier.length > 22 ? '${supplier.substring(0, 22)}…' : supplier,
-        );
-      }
-      lastPurchaseLine = parts.join(' · ');
-    } else {
-      lastPurchaseLine = 'No purchase yet';
-    }
+    final physAt = _parseDate(
+      item['physical_stock_counted_at'] ?? item['physical_counted_at'],
+    );
+    final physBy = item['physical_stock_counted_by']?.toString().trim() ?? '';
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -67,7 +59,7 @@ class ScanItemStockSummaryCard extends StatelessWidget {
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (showTitle) ...[
             Text(
@@ -85,49 +77,148 @@ class ScanItemStockSummaryCard extends StatelessWidget {
           ],
           Row(
             children: [
-              const Text(
-                'Current stock: ',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              Expanded(
+                child: _StockTile(
+                  label: 'System stock',
+                  qty: system,
+                  unit: unit,
+                  accent: const Color(0xFF0E4F46),
+                  subtitle: _lastUpdatedLine(item),
+                ),
               ),
-              StockSummaryWidget(
-                qty: stock,
-                unit: unit,
-                variant: StockSummaryVariant.scan,
-                compact: true,
+              const SizedBox(width: 8),
+              Expanded(
+                child: _StockTile(
+                  label: 'Physical count',
+                  qty: physical,
+                  unit: unit,
+                  accent: const Color(0xFF2563EB),
+                  subtitle: physical != null
+                      ? [
+                          if (physAt != null) daysAgoLabel(physAt),
+                          if (physBy.isNotEmpty) physBy,
+                        ].where((s) => s.isNotEmpty).join(' · ')
+                      : 'Not counted yet',
+                  emptyHint: '—',
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Text(
-            'Last purchase: $lastPurchaseLine',
+            _lastPurchaseLine(lpQty, lpUnit, lpDate, supplier, lpRate),
             style: const TextStyle(fontSize: 12, color: HexaColors.textBody),
           ),
-          if (_lastUpdatedLine(item).isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              _lastUpdatedLine(item),
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF2563EB),
-              ),
-            ),
-          ],
         ],
       ),
     );
   }
 
+  static DateTime? _parseDate(dynamic raw) {
+    if (raw is String && raw.isNotEmpty) return DateTime.tryParse(raw);
+    if (raw is DateTime) return raw;
+    return null;
+  }
+
+  static String _lastPurchaseLine(
+    double? lpQty,
+    String lpUnit,
+    DateTime? lpDate,
+    String supplier,
+    double? lpRate,
+  ) {
+    if (lpQty == null || lpQty <= 0) {
+      return 'Last purchase: none yet';
+    }
+    final parts = <String>[
+      formatQtyForDisplay(lpQty),
+      if (lpUnit.isNotEmpty) lpUnit.toUpperCase(),
+    ];
+    if (lpDate != null) {
+      parts.add('${DateFormat('d MMM yy').format(lpDate.toLocal())} (${daysAgoLabel(lpDate)})');
+    }
+    if (supplier.isNotEmpty) {
+      parts.add(
+        supplier.length > 28 ? '${supplier.substring(0, 28)}…' : supplier,
+      );
+    }
+    if (lpRate != null && lpRate > 0) {
+      parts.add('₹${lpRate.toStringAsFixed(lpRate == lpRate.roundToDouble() ? 0 : 2)}');
+    }
+    return 'Last purchase: ${parts.join(' · ')}';
+  }
+
   static String _lastUpdatedLine(Map<String, dynamic> item) {
     final by = item['last_stock_updated_by']?.toString().trim() ?? '';
-    final atRaw = item['last_stock_updated_at']?.toString();
-    if (by.isEmpty && (atRaw == null || atRaw.isEmpty)) return '';
-    final at = atRaw != null ? DateTime.tryParse(atRaw)?.toLocal() : null;
-    final when = at != null ? DateFormat('d MMM, h:mm a').format(at) : '';
-    if (by.isNotEmpty && when.isNotEmpty) {
-      return 'System last set by $by · $when';
-    }
-    if (by.isNotEmpty) return 'System last set by $by';
-    return 'System updated $when';
+    final at = _parseDate(item['last_stock_updated_at']);
+    if (by.isEmpty && at == null) return 'Ledger';
+    final when = at != null ? daysAgoLabel(at) : '';
+    if (by.isNotEmpty && when.isNotEmpty) return '$when · $by';
+    if (by.isNotEmpty) return by;
+    return when;
+  }
+}
+
+class _StockTile extends StatelessWidget {
+  const _StockTile({
+    required this.label,
+    required this.qty,
+    required this.unit,
+    required this.accent,
+    required this.subtitle,
+    this.emptyHint = '—',
+  });
+
+  final String label;
+  final double? qty;
+  final String unit;
+  final Color accent;
+  final String subtitle;
+  final String emptyHint;
+
+  @override
+  Widget build(BuildContext context) {
+    final unitUp = unit.isNotEmpty ? unit.toUpperCase() : '';
+    final value = qty != null
+        ? '${formatStockQtyNumber(qty!)}${unitUp.isNotEmpty ? ' $unitUp' : ''}'
+        : emptyHint;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: accent.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: accent,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: accent,
+              height: 1.1,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+          ),
+        ],
+      ),
+    );
   }
 }

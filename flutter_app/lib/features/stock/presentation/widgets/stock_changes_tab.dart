@@ -4,9 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/design_system/hexa_operational_tokens.dart';
-import '../../../../core/json_coerce.dart';
 import '../../../../core/providers/home_dashboard_provider.dart';
 import '../../../../core/providers/stock_providers.dart';
+import '../../../../core/utils/stock_audit_rows.dart';
 import '../../../../core/widgets/hexa_error_card.dart';
 import '../../../../shared/widgets/hexa_empty_state.dart';
 import '../quick_stock_action_sheet.dart';
@@ -62,25 +62,26 @@ class StockChangesTab extends ConsumerWidget {
               final name = r['item_name']?.toString() ??
                   r['catalog_item_name']?.toString() ??
                   'Item';
-              final delta = coerceToDouble(r['qty_delta'] ?? r['delta']);
-              final reason = r['reason']?.toString() ??
-                  r['adjustment_type']?.toString() ??
-                  'Update';
-              final at = DateTime.tryParse(
-                    r['created_at']?.toString() ??
-                        r['audited_at']?.toString() ??
-                        '',
-                  ) ??
-                  DateTime.now();
-              final by = r['user_name']?.toString() ??
-                  r['updated_by']?.toString() ??
+              final isBill = r['adjustment_type']?.toString() == 'purchase' &&
+                  stockAuditQtyDelta(r).abs() < 0.001;
+              final delta = stockAuditQtyDelta(r);
+              final reason = isBill
+                  ? (r['reason']?.toString() ?? 'Purchase bill')
+                  : (r['reason']?.toString() ??
+                      r['adjustment_type']?.toString() ??
+                      'Update');
+              final at = parseStockAuditTimestamp(r) ?? DateTime.now();
+              final by = r['updated_by_name']?.toString() ??
+                  r['user_name']?.toString() ??
                   '';
               final itemId = r['item_id']?.toString() ??
                   r['catalog_item_id']?.toString();
-              final sign = delta >= 0 ? '+' : '';
-              final color = delta >= 0
-                  ? const Color(0xFF2E7D32)
-                  : const Color(0xFFC62828);
+              final sign = isBill ? '' : (delta >= 0 ? '+' : '');
+              final color = isBill
+                  ? const Color(0xFFE65100)
+                  : delta >= 0
+                      ? const Color(0xFF2E7D32)
+                      : const Color(0xFFC62828);
 
               return Material(
                 color: Colors.white,
@@ -110,7 +111,9 @@ class StockChangesTab extends ConsumerWidget {
                     style: const TextStyle(fontSize: 12),
                   ),
                   trailing: Text(
-                    '$sign${delta == delta.roundToDouble() ? delta.round() : delta.toStringAsFixed(1)}',
+                    isBill
+                        ? 'Bill'
+                        : '$sign${delta == delta.roundToDouble() ? delta.round() : delta.toStringAsFixed(1)}',
                     style: TextStyle(
                       fontWeight: FontWeight.w900,
                       fontSize: 15,

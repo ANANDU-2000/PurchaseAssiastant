@@ -68,6 +68,17 @@ void main() {
     });
   });
 
+  group('sortedLowStockItemsByName', () {
+    test('sorts by name then id', () {
+      final sorted = sortedLowStockItemsByName([
+        {'id': '2', 'name': 'Zebra'},
+        {'id': '1', 'name': 'Apple'},
+        {'id': '3', 'name': 'apple'},
+      ]);
+      expect(sorted.map((e) => e['name']).toList(), ['Apple', 'apple', 'Zebra']);
+    });
+  });
+
   group('filterLowStockGrouped search scope', () {
     test('category scope filters by category name', () {
       final grouped = {

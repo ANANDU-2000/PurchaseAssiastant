@@ -12,6 +12,7 @@ import '../../../core/search/search_highlight.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/trade_intel_cards.dart';
+import 'widgets/quick_catalog_taxonomy_sheet.dart';
 
 class CatalogCategoryDetailPage extends ConsumerStatefulWidget {
   const CatalogCategoryDetailPage({super.key, required this.categoryId});
@@ -60,10 +61,12 @@ class _CatalogCategoryDetailPageState
   }
 
   Future<void> _addSubcategory(BuildContext context) async {
-    final ok = await context.push<bool>(
-      '/catalog/category/${widget.categoryId}/new-subcategory',
+    final r = await showQuickCatalogTaxonomySheet(
+      context,
+      mode: QuickCatalogTaxonomyMode.subcategoryOnly,
+      preselectedCategoryId: widget.categoryId,
     );
-    if (ok == true) {
+    if (r != null) {
       ref.invalidate(categoryTypesListProvider(widget.categoryId));
     }
   }

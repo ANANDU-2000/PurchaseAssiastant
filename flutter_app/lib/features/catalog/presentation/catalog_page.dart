@@ -14,6 +14,7 @@ import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/list_skeleton.dart';
 import '../../../core/widgets/friendly_load_error.dart';
+import 'widgets/quick_catalog_taxonomy_sheet.dart';
 
 /// Category list (layer 1). Subcategories and items live on deeper routes.
 class CatalogPage extends ConsumerStatefulWidget {
@@ -132,6 +133,11 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
         title: const Text('Catalog'),
         actions: [
           IconButton(
+            tooltip: 'Quick categories',
+            icon: const Icon(Icons.category_outlined),
+            onPressed: () => context.push('/catalog/taxonomy'),
+          ),
+          IconButton(
             tooltip: 'Stock list',
             icon: const Icon(Icons.inventory_2_outlined),
             onPressed: () => context.go('/stock'),
@@ -144,10 +150,9 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/catalog/new-category').then((_) {
-          ref.invalidate(itemCategoriesListProvider);
-          ref.invalidate(catalogItemsListProvider);
-        }),
+        onPressed: () async {
+          await showQuickCatalogTaxonomySheet(context);
+        },
         icon: const Icon(Icons.add_rounded),
         label: const Text('Add category'),
       ),

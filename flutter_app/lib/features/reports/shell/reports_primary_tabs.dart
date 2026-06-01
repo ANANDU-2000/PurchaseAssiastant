@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../reports_bi_tab.dart';
 
-/// Single row of four primary Reports tabs.
+/// Scrollable tab chips — avoids SegmentedButton label wrap/overlap on narrow screens.
 class ReportsPrimaryTabs extends StatelessWidget {
   const ReportsPrimaryTabs({
     super.key,
@@ -16,33 +16,43 @@ class ReportsPrimaryTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-      child: SegmentedButton<ReportsBiTab>(
-        segments: [
-          for (final t in ReportsBiTabX.primaryTabs)
-            ButtonSegment(
-              value: t,
-              label: Text(
-                t.shortLabel,
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+    return SizedBox(
+      height: 40,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        children: [
+          for (final t in ReportsBiTabX.primaryTabs) ...[
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: ChoiceChip(
+                label: Text(
+                  t.shortLabel,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: selected == t
+                        ? HexaColors.brandPrimary
+                        : const Color(0xFF64748B),
+                  ),
+                ),
+                selected: selected == t,
+                showCheckmark: true,
+                checkmarkColor: HexaColors.brandPrimary,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                onSelected: (_) => onSelected(t),
+                selectedColor: HexaColors.brandPrimary.withValues(alpha: 0.14),
+                backgroundColor: HexaColors.brandCard,
+                side: BorderSide(
+                  color: selected == t
+                      ? HexaColors.brandPrimary.withValues(alpha: 0.35)
+                      : HexaColors.brandPrimary.withValues(alpha: 0.1),
+                ),
               ),
             ),
+          ],
         ],
-        selected: {selected},
-        onSelectionChanged: (s) {
-          if (s.isNotEmpty) onSelected(s.first);
-        },
-        style: ButtonStyle(
-          visualDensity: VisualDensity.compact,
-          tapTargetSize: MaterialTapTargetSize.padded,
-          backgroundColor: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.selected)) {
-              return HexaColors.brandPrimary.withValues(alpha: 0.12);
-            }
-            return HexaColors.brandCard;
-          }),
-        ),
       ),
     );
   }

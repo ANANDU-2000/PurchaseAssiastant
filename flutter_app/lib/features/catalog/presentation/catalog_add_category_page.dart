@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/catalog_providers.dart';
+import '../catalog_taxonomy_utils.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/form_feedback.dart';
@@ -79,7 +80,7 @@ class _CatalogAddCategoryPageState extends ConsumerState<CatalogAddCategoryPage>
             businessId: session.primaryBusiness.id,
             name: n,
           );
-      ref.invalidate(itemCategoriesListProvider);
+      invalidateCatalogTaxonomy(ref);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Category created')),

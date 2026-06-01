@@ -7,6 +7,7 @@ import '../models/business_profile.dart';
 import '../models/trade_purchase_models.dart';
 import '../utils/trade_purchase_commission.dart';
 import 'pdf_actions.dart';
+import 'pdf_text_safe.dart';
 
 final _money = NumberFormat('#,##,##0', 'en_IN');
 final _df = DateFormat('dd MMM yyyy');
@@ -17,7 +18,7 @@ const _statementTeal = PdfColor.fromInt(0xFF17A8A7);
 
 String _rs(num n) => 'Rs. ${_money.format(n)}';
 
-String _safe(String? s) => (s == null || s.trim().isEmpty) ? '—' : s.trim();
+String _safe(String? s) => safePdfCell(s);
 
 String _filenameSlug(String raw, {String fallback = 'broker'}) {
   final cleaned = raw
@@ -97,7 +98,7 @@ pw.Document _buildBrokerStatementDocument({
         _pcell('Unit', bold: true),
         _pcell('Qty', bold: true, right: true),
         _pcell('Kg', bold: true, right: true),
-        _pcell('Comm. ₹', bold: true, right: true),
+        _pcell('Comm. Rs.', bold: true, right: true),
       ],
     ),
   ];
@@ -130,7 +131,7 @@ pw.Document _buildBrokerStatementDocument({
               '${l.qty % 1 == 0 ? l.qty.toInt() : l.qty.toStringAsFixed(1)} ${_safe(l.unit)}',
               right: true,
             ),
-            _pcell(kgLine > 1e-6 ? kgLine.toStringAsFixed(0) : '—',
+            _pcell(kgLine > 1e-6 ? kgLine.toStringAsFixed(0) : pdfEmpty,
                 right: true),
             _pcell(
               i == 0 ? _rs(tradePurchaseCommissionInr(p)) : '',
@@ -177,14 +178,18 @@ pw.Document _buildBrokerStatementDocument({
             pw.Text('Phone: ${_safe(brokerPhone)}',
                 style: const pw.TextStyle(fontSize: 9)),
           pw.Text(
-            'Period: ${_df.format(fromDate)} – ${_df.format(toDate)}',
+            safePdfText(
+              'Period: ${pdfPeriodRange(_df.format(fromDate), _df.format(toDate))}',
+            ),
             style: const pw.TextStyle(fontSize: 9),
           ),
           pw.Divider(thickness: 0.5, color: PdfColors.grey400),
         ],
       ),
       footer: (ctx) => pw.Text(
-        'Page ${ctx.pageNumber} of ${ctx.pagesCount} · Generated ${_df.format(DateTime.now())}',
+        safePdfText(
+          'Page ${ctx.pageNumber} of ${ctx.pagesCount} | Generated ${_df.format(DateTime.now())}',
+        ),
         style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
       ),
       build: (ctx) => [
@@ -204,13 +209,15 @@ pw.Document _buildBrokerStatementDocument({
         ),
         pw.SizedBox(height: 12),
         pw.Text(
-          '${purchases.length} bill(s) · Commission total ${_rs(commissionSum)}',
+          safePdfText(
+            '${purchases.length} bill(s) | Commission total ${_rs(commissionSum)}',
+          ),
           style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
         ),
         if (totalsParts.isNotEmpty) ...[
           pw.SizedBox(height: 4),
           pw.Text(
-            'Totals: ${totalsParts.join(' · ')}',
+            safePdfText('Totals: ${totalsParts.join(pdfInlineSep)}'),
             style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey800),
           ),
         ],
@@ -286,7 +293,7 @@ pw.Widget _pcell(
     pw.Padding(
       padding: const pw.EdgeInsets.all(4),
       child: pw.Text(
-        t,
+        safePdfText(t),
         textAlign: right ? pw.TextAlign.right : pw.TextAlign.left,
         style: pw.TextStyle(
           fontSize: nameBold

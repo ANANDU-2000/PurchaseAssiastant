@@ -238,7 +238,39 @@ def _trade_purchase_load_opts() -> tuple:
         selectinload(TradePurchase.lines).selectinload(TradePurchaseLine.catalog_item),
         selectinload(TradePurchase.supplier_row),
         selectinload(TradePurchase.broker_row),
+        selectinload(TradePurchase.creator_user),
+        selectinload(TradePurchase.staff_verifier_user),
     )
+
+
+def _user_display_name(user) -> str | None:
+    if user is None:
+        return None
+    for attr in ("name", "username", "email"):
+        raw = getattr(user, attr, None)
+        if raw and str(raw).strip():
+            return str(raw).strip()
+    return None
+
+
+def _verified_by_from_delivery_notes(notes: str | None) -> str | None:
+    if not notes or not notes.strip():
+        return None
+    m = re.search(r"Verified by ([^|\n]+)", notes, re.IGNORECASE)
+    if m:
+        name = m.group(1).strip()
+        return name or None
+    return None
+
+
+def _resolve_staff_verified_by_name(tp: TradePurchase) -> str | None:
+    stored = (getattr(tp, "staff_verified_by_name", None) or "").strip()
+    if stored:
+        return stored
+    from_user = _user_display_name(getattr(tp, "staff_verifier_user", None))
+    if from_user:
+        return from_user
+    return _verified_by_from_delivery_notes(getattr(tp, "delivery_notes", None))
 
 
 def _due_date_from(purchase_date: date, payment_days: int | None) -> date | None:
@@ -1470,6 +1502,10 @@ async def commit_trade_purchase_delivery(
     tp.stock_committed_at = now
     tp.delivered_qty_committed = dp.qty(committed_qty) if committed_qty > 0 else None
     tp.updated_at = now
+    committer = _user_display_name(user)
+    if committer and not (tp.staff_verified_by_name or "").strip():
+        tp.staff_verified_by = user.id
+        tp.staff_verified_by_name = committer
     await log_staff_activity(
         db,
         business_id=business_id,
@@ -2250,7 +2286,8 @@ def trade_purchase_to_out(
         dispatched_at=getattr(tp, "dispatched_at", None),
         arrived_at=getattr(tp, "arrived_at", None),
         staff_verified_at=getattr(tp, "staff_verified_at", None),
-        staff_verified_by_name=getattr(tp, "staff_verified_by_name", None),
+        staff_verified_by_name=_resolve_staff_verified_by_name(tp),
+        created_by_name=_user_display_name(getattr(tp, "creator_user", None)),
         stock_committed_at=getattr(tp, "stock_committed_at", None),
         staff_verified_qty=dp.qty(tp.staff_verified_qty)
         if getattr(tp, "staff_verified_qty", None) is not None

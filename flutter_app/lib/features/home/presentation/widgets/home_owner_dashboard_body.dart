@@ -160,6 +160,7 @@ class HomeOwnerDashboardBody extends ConsumerWidget {
           onUsers: () => context.push('/settings/users'),
           onBarcode: () => context.push('/barcode/bulk-print'),
           onReorder: () => context.push('/stock/reorder'),
+          onDailyLog: () => context.push('/home/activity'),
         ),
         SizedBox(height: gap),
         const HomeWarehouseActivityFeed(maxRows: 3),

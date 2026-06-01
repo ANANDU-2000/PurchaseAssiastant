@@ -20,7 +20,7 @@ import 'pdf_text_safe.dart';
 
 final _money = NumberFormat('#,##,##0.00', 'en_IN');
 String _inrPdf(num n) => 'Rs. ${_money.format(n)}';
-final _dateTimePdf = DateFormat('dd MMM yyyy · hh:mm a');
+final _dateTimePdf = DateFormat('dd MMM yyyy, hh:mm a');
 
 String _supplierSlug(String? name) {
   final raw = (name ?? '').trim().toUpperCase();
@@ -69,7 +69,7 @@ const _muted = PdfColor.fromInt(0xFF475569);
 const _border = PdfColor.fromInt(0xFFD1D5DB);
 
 String _partyName(String? s) =>
-    (s == null || s.trim().isEmpty) ? '—' : safePdfText(s.trim());
+    safePdfCell(s);
 
 String _pdfReceiptPurchase(TradePurchaseLine l) {
   final r = tradePurchaseLineDisplayPurchaseRate(l);
@@ -78,7 +78,7 @@ String _pdfReceiptPurchase(TradePurchaseLine l) {
 
 String _pdfReceiptSelling(TradePurchaseLine l) {
   final r = tradePurchaseLineDisplaySellingRate(l);
-  if (r == null) return '—';
+  if (r == null) return pdfEmpty;
   return '${_inrPdf(r)}/${unit_lbl.sellingRateSuffix(l)}';
 }
 
@@ -146,7 +146,9 @@ Future<pw.Document> buildPurchaseReceiptDoc(
             style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
           ),
           pw.Text(
-            '  ${formatStockQtyForUnit(l.unit, l.qty.toDouble())} ${l.unit.trim()}  ·  P ${_pdfReceiptPurchase(l)}  ·  S ${_pdfReceiptSelling(l)}  ·  ${_inrPdf(l.lineTotal ?? lineMoney(tradePurchaseLineToCalcLine(l)))}',
+            safePdfText(
+              '  ${formatStockQtyForUnit(l.unit, l.qty.toDouble())} ${l.unit.trim()}  |  P ${_pdfReceiptPurchase(l)}  |  S ${_pdfReceiptSelling(l)}  |  ${_inrPdf(l.lineTotal ?? lineMoney(tradePurchaseLineToCalcLine(l)))}',
+            ),
             style: const pw.TextStyle(fontSize: 9, color: _muted),
           ),
           pw.SizedBox(height: 6),
@@ -164,7 +166,9 @@ Future<pw.Document> buildPurchaseReceiptDoc(
           ),
         pw.SizedBox(height: 6),
         pw.Text(
-          'Paid ${_inrPdf(p.paidAmount)}  ·  Balance ${_inrPdf(p.remaining)}',
+          safePdfText(
+            'Paid ${_inrPdf(p.paidAmount)}  |  Balance ${_inrPdf(p.remaining)}',
+          ),
           style: const pw.TextStyle(fontSize: 9, color: _muted),
         ),
         pw.SizedBox(height: 10),

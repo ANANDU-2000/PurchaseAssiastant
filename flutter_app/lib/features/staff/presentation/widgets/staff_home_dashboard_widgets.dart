@@ -860,6 +860,12 @@ class StaffHomeToolsGrid extends ConsumerWidget {
         () => context.push('/staff/items'),
       ),
       _ToolSpec(
+        'Categories',
+        Icons.category_outlined,
+        const Color(0xFF6A1B9A),
+        () => context.push('/catalog/taxonomy'),
+      ),
+      _ToolSpec(
         'Stock',
         Icons.inventory_2_outlined,
         const Color(0xFF1565C0),
@@ -884,6 +890,12 @@ class StaffHomeToolsGrid extends ConsumerWidget {
         lowCount > 0 ? HexaColors.warning : const Color(0xFF455A64),
         () => context.push('/staff/low-stock'),
         badge: lowCount,
+      ),
+      _ToolSpec(
+        'Daily log',
+        Icons.history_rounded,
+        const Color(0xFF0D9488),
+        () => context.push('/staff/activity'),
       ),
     ];
 

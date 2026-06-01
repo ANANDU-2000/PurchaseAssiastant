@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/reporting/trade_report_aggregate.dart';
 import '../presentation/reports_overview_chart_section.dart';
+import '../shell/reports_layout.dart';
 import '../widgets/reports_overview_kpi_grid.dart';
 
 /// Overview tab: KPI grid first, charts below.
@@ -36,8 +37,11 @@ class ReportsOverviewTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     void goTab(String tab) => context.replace('/reports?tab=$tab');
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+    final chartH = MediaQuery.sizeOf(context).height.clamp(400.0, 900.0) * 0.38;
+    final viewport = chartH.clamp(kReportsChartMinHeight, 420.0);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -48,21 +52,18 @@ class ReportsOverviewTab extends ConsumerWidget {
             onTapItems: () => goTab('items'),
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            height: 160,
-            child: ReportsOverviewChartSection(
-              agg: agg,
-              viewportHeight: 160,
-              isLoadingInitial: showSkeleton,
-              loadFailed: hasFetchError && merged.isEmpty,
-              loadError: purchasesError,
-              isEmpty: showEmpty,
-              canRetry: true,
-              hideTopStatRow: true,
-              onRetry: onRetry,
-              onMatchHome: onMatchHome,
-              onPickRange: onPickRange,
-            ),
+          ReportsOverviewChartSection(
+            agg: agg,
+            viewportHeight: viewport,
+            isLoadingInitial: showSkeleton,
+            loadFailed: hasFetchError && merged.isEmpty,
+            loadError: purchasesError,
+            isEmpty: showEmpty,
+            canRetry: true,
+            hideTopStatRow: true,
+            onRetry: onRetry,
+            onMatchHome: onMatchHome,
+            onPickRange: onPickRange,
           ),
         ],
       ),

@@ -193,6 +193,21 @@ List<String> lowStockSearchSuggestions(
   return list;
 }
 
+/// Stable A→Z order for rows inside a category / sub-tab.
+List<Map<String, dynamic>> sortedLowStockItemsByName(
+  Iterable<Map<String, dynamic>> items,
+) {
+  final list = items.toList()
+    ..sort((a, b) {
+      final an = (a['name']?.toString() ?? '').toLowerCase();
+      final bn = (b['name']?.toString() ?? '').toLowerCase();
+      final byName = an.compareTo(bn);
+      if (byName != 0) return byName;
+      return (a['id']?.toString() ?? '').compareTo(b['id']?.toString() ?? '');
+    });
+  return list;
+}
+
 /// Flatten filtered grouped map to item rows (PDF / export).
 List<Map<String, dynamic>> flattenLowStockGrouped(
   Map<String, Map<String, List<Map<String, dynamic>>>> grouped,
@@ -339,61 +354,130 @@ class _LowStockCategoryTreeState extends State<LowStockCategoryTree> {
                 }),
               ),
               if (expanded) ...[
-                _SubcategoryTabBar(
-                  subs: subMap.keys
-                      .where(
-                        (k) =>
-                            k.trim().isNotEmpty &&
-                            k != '—' &&
-                            k != 'Uncategorized',
-                      )
-                      .toList()
-                    ..sort(),
-                  selected: _subTabByCat[cat],
-                  onSelected: (sub) => setState(() {
-                    if (sub == null) {
-                      _subTabByCat.remove(cat);
-                    } else {
-                      _subTabByCat[cat] = sub;
-                    }
-                  }),
+                Builder(
+                  builder: (context) {
+                    final namedSubs = subMap.keys
+                        .where(
+                          (k) =>
+                              k.trim().isNotEmpty &&
+                              k != '—' &&
+                              k != 'Uncategorized',
+                        )
+                        .toList()
+                      ..sort();
+                    final countsBySub = {
+                      for (final k in namedSubs) k: subMap[k]!.length,
+                    };
+                    return _SubcategoryTabBar(
+                      subs: namedSubs,
+                      countsBySub: countsBySub,
+                      selected: _subTabByCat[cat],
+                      onSelected: (sub) => setState(() {
+                        if (sub == null) {
+                          _subTabByCat.remove(cat);
+                        } else {
+                          _subTabByCat[cat] = sub;
+                        }
+                      }),
+                    );
+                  },
                 ),
-                for (final subEntry in subMap.entries.toList()
-                  ..sort((a, b) => a.key.compareTo(b.key)))
-                  if (_subTabByCat[cat] == null ||
-                      _subTabByCat[cat] == subEntry.key) ...[
-                    if (subEntry.key.trim().isNotEmpty &&
-                        subEntry.key != '—' &&
-                        subEntry.key != 'Uncategorized' &&
-                        _subTabByCat[cat] == null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 2),
+                Builder(
+                  builder: (context) {
+                    var serial = 0;
+                    final subEntries = subMap.entries.toList()
+                      ..sort((a, b) => a.key.compareTo(b.key));
+                    final selectedSub = _subTabByCat[cat];
+                    final showAllSubs = selectedSub == null;
+                    final rows = <Widget>[];
+
+                    for (final subEntry in subEntries) {
+                      if (!showAllSubs && selectedSub != subEntry.key) {
+                        continue;
+                      }
+                      final items =
+                          sortedLowStockItemsByName(subEntry.value);
+                      if (items.isEmpty) continue;
+
+                      final subLabel = subEntry.key.trim();
+                      final hasNamedSub = subLabel.isNotEmpty &&
+                          subLabel != '—' &&
+                          subLabel != 'Uncategorized';
+
+                      if (showAllSubs && hasNamedSub) {
+                        rows.add(
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+                            child: Text(
+                              '$subLabel · ${items.length}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 11,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+
+                      for (final item in items) {
+                        serial++;
+                        rows.add(
+                          LowStockCompactItemRow(
+                            serialNumber: serial,
+                            item: item,
+                            staffMode: widget.staffMode,
+                            hideSubcategory: hasNamedSub,
+                            ownerInformed: widget.informedOwnerIds
+                                .contains(item['id']?.toString()),
+                            onOrderNow: widget.onOrderNow,
+                            onNotifyOwner: widget.onNotifyOwner,
+                            onEditReorder: widget.onEditReorder,
+                            onStockUpdate: widget.onStockUpdate,
+                            onSystemStockUpdate: widget.onSystemStockUpdate,
+                            onReceive: widget.onReceive,
+                          ),
+                        );
+                      }
+                    }
+
+                    if (rows.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.fromLTRB(12, 4, 12, 12),
                         child: Text(
-                          subEntry.key,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 11,
+                          'No items in this subcategory.',
+                          style: TextStyle(
+                            fontSize: 12,
                             color: Color(0xFF64748B),
                           ),
                         ),
-                      ),
-                    for (final item in subEntry.value)
-                      LowStockCompactItemRow(
-                        item: item,
-                        staffMode: widget.staffMode,
-                        hideSubcategory: subEntry.key.trim().isNotEmpty &&
-                            subEntry.key != '—' &&
-                            subEntry.key != 'Uncategorized',
-                        ownerInformed: widget.informedOwnerIds
-                            .contains(item['id']?.toString()),
-                        onOrderNow: widget.onOrderNow,
-                        onNotifyOwner: widget.onNotifyOwner,
-                        onEditReorder: widget.onEditReorder,
-                        onStockUpdate: widget.onStockUpdate,
-                        onSystemStockUpdate: widget.onSystemStockUpdate,
-                        onReceive: widget.onReceive,
-                      ),
-                  ],
+                      );
+                    }
+
+                    if (serial > 0) {
+                      rows.insert(
+                        0,
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
+                          child: Text(
+                            showAllSubs
+                                ? '$serial items · numbered in order'
+                                : '$serial in $selectedSub · #1–$serial',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: rows,
+                    );
+                  },
+                ),
               ],
             ],
           ),
@@ -406,17 +490,20 @@ class _LowStockCategoryTreeState extends State<LowStockCategoryTree> {
 class _SubcategoryTabBar extends StatelessWidget {
   const _SubcategoryTabBar({
     required this.subs,
+    required this.countsBySub,
     required this.selected,
     required this.onSelected,
   });
 
   final List<String> subs;
+  final Map<String, int> countsBySub;
   final String? selected;
   final void Function(String? sub) onSelected;
 
   @override
   Widget build(BuildContext context) {
-    if (subs.length <= 1) return const SizedBox.shrink();
+    if (subs.isEmpty) return const SizedBox.shrink();
+    final total = countsBySub.values.fold<int>(0, (a, b) => a + b);
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
       child: SingleChildScrollView(
@@ -425,20 +512,24 @@ class _SubcategoryTabBar extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.only(right: 6),
-              child: ChoiceChip(
-                label: const Text('All', style: TextStyle(fontSize: 11)),
+              child: FilterChip(
+                label: Text(
+                  'All ($total)',
+                  style: const TextStyle(fontSize: 11),
+                ),
                 selected: selected == null,
                 onSelected: (_) => onSelected(null),
                 visualDensity: VisualDensity.compact,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                showCheckmark: true,
               ),
             ),
             for (final sub in subs)
               Padding(
                 padding: const EdgeInsets.only(right: 6),
-                child: ChoiceChip(
+                child: FilterChip(
                   label: Text(
-                    sub,
+                    '${sub.length > 14 ? '${sub.substring(0, 14)}…' : sub} (${countsBySub[sub] ?? 0})',
                     style: const TextStyle(fontSize: 11),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -447,6 +538,7 @@ class _SubcategoryTabBar extends StatelessWidget {
                   onSelected: (_) => onSelected(sub),
                   visualDensity: VisualDensity.compact,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  showCheckmark: true,
                 ),
               ),
           ],

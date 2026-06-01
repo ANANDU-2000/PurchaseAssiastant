@@ -15,10 +15,8 @@ import '../../../core/providers/stock_list_exceptions.dart';
 import '../../../core/services/stock_list_pdf.dart';
 import '../../../core/services/pdf_actions.dart';
 import '../../../core/json_coerce.dart';
-import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/business_write_event.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
-import '../../../core/providers/realtime_events_provider.dart';
 import '../../../core/providers/stock_providers.dart';
 import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/router/post_auth_route.dart';
@@ -607,15 +605,11 @@ class _StockPageState extends ConsumerState<StockPage>
   Widget build(BuildContext context) {
     ref.listen(businessWriteEventProvider, (prev, next) {
       if (prev == null || prev.revision == next.revision) return;
-      // Background refresh; keep visible rows until new page merges in.
+      // Background refresh; keep scroll + merged rows until new data arrives.
       ref.invalidate(stockListProvider);
+      ref.invalidate(stockChangesFeedProvider);
     });
-
-    ref.listen(realtimeInvalidationProvider, (prev, next) {
-      final signal = next.valueOrNull;
-      if (signal == null || !signal.warehouse) return;
-      invalidateWarehouseSurfacesLight(ref);
-    });
+    // Warehouse realtime fan-out lives in [ShellRealtimeListener] — avoid double invalidation here.
 
     ref.listen(stockListQueryProvider, (prev, next) {
       if (prev == null) return;

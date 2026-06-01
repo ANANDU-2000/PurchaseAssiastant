@@ -12,6 +12,7 @@ import '../../../core/auth/auth_failure_policy.dart';
 import '../../../core/auth/provider_api_guard.dart';
 import '../../../core/auth/session_notifier.dart'
     show hexaApiProvider, sessionProvider;
+import '../../../core/platform/app_foreground_provider.dart';
 import '../../../core/providers/api_degraded_provider.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/models/trade_purchase_models.dart';
@@ -163,7 +164,8 @@ class _HomePageState extends ConsumerState<HomePage>
     _rtPollHome?.cancel();
     _rtPollHome = Timer.periodic(const Duration(seconds: 60), (_) {
       if (!mounted) return;
-      if (ref.read(sessionProvider) == null ||
+      if (!ref.read(appForegroundProvider) ||
+          ref.read(sessionProvider) == null ||
           ref.read(authSessionExpiredProvider) ||
           ref.read(auth401CircuitOpenProvider)) {
         _setHomePollingActive(false);
@@ -327,19 +329,22 @@ class _HomePageState extends ConsumerState<HomePage>
   @override
   Widget build(BuildContext context) {
     ref.listen<int>(shellCurrentBranchProvider, (prev, next) {
-      final onHome = next == ShellBranch.home;
-      _setHomePollingActive(onHome);
-      // Returning to Home: keep cached dashboard; [HomeDashboardDataNotifier]
-      // background-refreshes when visible. Do not bust RAM/Hive or invalidate
-      // here — that caused full reload loops on every tab switch.
-      if (onHome &&
-          prev != null &&
-          prev != ShellBranch.home &&
-          !providerSkipApi(ref)) {
-        if (shouldRefreshOnShellTabReturn(_homeLastRefreshedAt)) {
-          _scheduleRefresh(alertsOnly: true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final onHome = next == ShellBranch.home;
+        _setHomePollingActive(onHome);
+        if (onHome &&
+            prev != null &&
+            prev != ShellBranch.home &&
+            !providerSkipApi(ref)) {
+          // Always refresh lightweight home surfaces (fixes empty activity after Stock tab).
+          ref.invalidate(homeRecentActivityFeedProvider);
+          ref.invalidate(homeInventorySummaryProvider);
+          if (shouldRefreshOnShellTabReturn(_homeLastRefreshedAt)) {
+            _scheduleRefresh();
+          }
         }
-      }
+      });
     });
 
     if (!_homeShellTabVisible(ref, context)) {
@@ -354,12 +359,16 @@ class _HomePageState extends ConsumerState<HomePage>
     ref.listen<PurchasePostSavePayload?>(purchasePostSaveProvider,
         (prev, next) {
       if (next == null || _handlingPurchasePostSave) return;
-      _handlingPurchasePostSave = true;
-      unawaited(_doHandlePurchasePostSave(next));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _handlingPurchasePostSave = true;
+        unawaited(_doHandlePurchasePostSave(next));
+      });
     });
     ref.listen(stockAlertCountsProvider, (prev, next) {
       if (!ref.read(localNotificationsOptInProvider)) return;
       next.whenData((counts) {
+        if (!mounted) return;
         final count = counts.low + counts.critical;
         if (count <= _lastNotifiedLowCount) {
           _lastNotifiedLowCount = count;

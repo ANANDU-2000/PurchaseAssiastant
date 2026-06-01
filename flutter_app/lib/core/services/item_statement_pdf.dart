@@ -5,6 +5,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../models/business_profile.dart';
 import '../models/trade_purchase_models.dart';
 import 'pdf_actions.dart';
+import 'pdf_text_safe.dart';
 
 final _money = NumberFormat('#,##,##0', 'en_IN');
 final _df = DateFormat('dd MMM yyyy');
@@ -15,7 +16,7 @@ const _statementTeal = PdfColor.fromInt(0xFF17A8A7);
 
 String _rs(num n) => 'Rs. ${_money.format(n)}';
 
-String _safe(String? s) => (s == null || s.trim().isEmpty) ? '—' : s.trim();
+String _safe(String? s) => safePdfCell(s);
 
 String _filenameSlug(String raw, {String fallback = 'item'}) {
   final cleaned = raw
@@ -69,14 +70,18 @@ Future<PdfActionResult> shareItemStatementPdf({
           pw.Text('Item: ${_safe(itemName)}',
               style: const pw.TextStyle(fontSize: 10)),
           pw.Text(
-            'Period: ${_df.format(fromDate)} – ${_df.format(toDate)}',
+            safePdfText(
+              'Period: ${pdfPeriodRange(_df.format(fromDate), _df.format(toDate))}',
+            ),
             style: const pw.TextStyle(fontSize: 9),
           ),
           pw.Divider(thickness: 0.5, color: PdfColors.grey400),
         ],
       ),
       footer: (ctx) => pw.Text(
-        'Page ${ctx.pageNumber} of ${ctx.pagesCount} · Generated ${_df.format(DateTime.now())}',
+        safePdfText(
+          'Page ${ctx.pageNumber} of ${ctx.pagesCount} | Generated ${_df.format(DateTime.now())}',
+        ),
         style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
       ),
       build: (ctx) => [
@@ -121,7 +126,9 @@ Future<PdfActionResult> shareItemStatementPdf({
         ),
         pw.SizedBox(height: 12),
         pw.Text(
-          '${purchases.length} bill(s) · Total ${_rs(total)} · Outstanding ${_rs(outstanding)}',
+          safePdfText(
+            '${purchases.length} bill(s) | Total ${_rs(total)} | Outstanding ${_rs(outstanding)}',
+          ),
           style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
         ),
         pw.SizedBox(height: 6),
@@ -147,7 +154,7 @@ pw.Widget _icell(String t, {bool bold = false, bool right = false}) =>
     pw.Padding(
       padding: const pw.EdgeInsets.all(3),
       child: pw.Text(
-        t,
+        safePdfText(t),
         textAlign: right ? pw.TextAlign.right : pw.TextAlign.left,
         style: pw.TextStyle(
           fontSize: 7.5,

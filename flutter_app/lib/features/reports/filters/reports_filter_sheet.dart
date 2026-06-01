@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/reports_filtered_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../filters/reports_filter_search_section.dart';
 import '../filters/reports_filter_state.dart';
+import '../reports_bi_tab.dart';
+import '../../../core/providers/reports_shell_providers.dart';
 
 /// Open filter drawer (mobile end-drawer or desktop panel).
 Future<void> showReportsFilterPanel({
@@ -81,13 +84,30 @@ class _ReportsFilterPanelBodyState extends ConsumerState<ReportsFilterPanelBody>
     widget.onClose();
   }
 
+  List<({String id, String label})> _mapRows(
+    List<Map<String, dynamic>> rows,
+    String idKey,
+    String labelKey,
+    String altLabelKey,
+  ) {
+    return rows
+        .map(
+          (c) => (
+            id: (c[idKey] ?? c['id'] ?? c[labelKey]).toString(),
+            label: (c[labelKey] ?? c[altLabelKey] ?? '—').toString(),
+          ),
+        )
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cats = ref.watch(analyticsCategoriesTableProvider).valueOrNull ?? [];
     final types = ref.watch(analyticsTypesTableProvider).valueOrNull ?? [];
     final suppliers =
         ref.watch(analyticsSuppliersTableProvider).valueOrNull ?? [];
     final filtered = ref.watch(reportsFilteredDataProvider);
+    final tab = ref.watch(reportsShellTabProvider);
+    final itemsFocus = tab == ReportsBiTab.items || tab == ReportsBiTab.stock;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -116,6 +136,7 @@ class _ReportsFilterPanelBodyState extends ConsumerState<ReportsFilterPanelBody>
             children: [
               _section(
                 title: 'Units',
+                initiallyExpanded: true,
                 child: Wrap(
                   spacing: 6,
                   runSpacing: 6,
@@ -146,64 +167,35 @@ class _ReportsFilterPanelBodyState extends ConsumerState<ReportsFilterPanelBody>
                   ],
                 ),
               ),
-              _section(
-                title: 'Category',
-                child: _idChips(
-                  items: cats
-                      .map(
-                        (c) => (
-                          id: (c['category_id'] ?? c['id'] ?? c['category_name'])
-                              .toString(),
-                          label: (c['category_name'] ?? c['category'] ?? '—')
-                              .toString(),
-                        ),
-                      )
-                      .toList(),
-                  selected: _draft.categoryIds,
-                  onChanged: (ids) =>
-                      setState(() => _draft = _draft.copyWith(categoryIds: ids)),
-                ),
-              ),
-              _section(
+              ReportsFilterSearchSection(
                 title: 'Subcategory',
-                child: _idChips(
-                  items: types
-                      .map(
-                        (c) => (
-                          id: (c['type_id'] ?? c['id'] ?? c['type_name'])
-                              .toString(),
-                          label: (c['type_name'] ?? c['subcategory'] ?? '—')
-                              .toString(),
-                        ),
-                      )
-                      .toList(),
-                  selected: _draft.subcategoryIds,
-                  onChanged: (ids) => setState(
-                    () => _draft = _draft.copyWith(subcategoryIds: ids),
-                  ),
+                hint: 'Search subcategory…',
+                initiallyExpanded: itemsFocus,
+                items: _mapRows(types, 'type_id', 'type_name', 'subcategory'),
+                selected: _draft.subcategoryIds,
+                onChanged: (ids) => setState(
+                  () => _draft = _draft.copyWith(subcategoryIds: ids),
                 ),
               ),
-              _section(
+              const Divider(height: 1),
+              ReportsFilterSearchSection(
                 title: 'Supplier',
-                child: _idChips(
-                  items: suppliers
-                      .map(
-                        (s) => (
-                          id: (s['supplier_id'] ?? s['id'] ?? s['supplier_name'])
-                              .toString(),
-                          label: (s['supplier_name'] ?? s['name'] ?? '—')
-                              .toString(),
-                        ),
-                      )
-                      .toList(),
-                  selected: _draft.supplierIds,
-                  onChanged: (ids) =>
-                      setState(() => _draft = _draft.copyWith(supplierIds: ids)),
+                hint: 'Search supplier…',
+                initiallyExpanded: tab == ReportsBiTab.purchases,
+                items: _mapRows(
+                  suppliers,
+                  'supplier_id',
+                  'supplier_name',
+                  'name',
                 ),
+                selected: _draft.supplierIds,
+                onChanged: (ids) =>
+                    setState(() => _draft = _draft.copyWith(supplierIds: ids)),
               ),
               _section(
                 title: 'Broker',
-                child: _idChips(
+                initiallyExpanded: false,
+                child: _simpleChips(
                   items: filtered.brokers
                       .map((b) => (id: b.key, label: b.name))
                       .toList(),
@@ -214,6 +206,7 @@ class _ReportsFilterPanelBodyState extends ConsumerState<ReportsFilterPanelBody>
               ),
               _section(
                 title: 'Usage',
+                initiallyExpanded: false,
                 child: Wrap(
                   spacing: 6,
                   children: [
@@ -233,6 +226,7 @@ class _ReportsFilterPanelBodyState extends ConsumerState<ReportsFilterPanelBody>
               ),
               _section(
                 title: 'Sort',
+                initiallyExpanded: true,
                 child: Wrap(
                   spacing: 6,
                   runSpacing: 6,
@@ -279,13 +273,17 @@ class _ReportsFilterPanelBodyState extends ConsumerState<ReportsFilterPanelBody>
     );
   }
 
-  Widget _section({required String title, required Widget child}) {
+  Widget _section({
+    required String title,
+    required Widget child,
+    bool initiallyExpanded = false,
+  }) {
     return ExpansionTile(
       title: Text(
         title,
         style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
       ),
-      initiallyExpanded: title == 'Units' || title == 'Sort',
+      initiallyExpanded: initiallyExpanded,
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
@@ -295,7 +293,7 @@ class _ReportsFilterPanelBodyState extends ConsumerState<ReportsFilterPanelBody>
     );
   }
 
-  Widget _idChips({
+  Widget _simpleChips({
     required List<({String id, String label})> items,
     required Set<String> selected,
     required ValueChanged<Set<String>> onChanged,
@@ -310,7 +308,7 @@ class _ReportsFilterPanelBodyState extends ConsumerState<ReportsFilterPanelBody>
       spacing: 6,
       runSpacing: 6,
       children: [
-        for (final item in items.take(24))
+        for (final item in items.take(16))
           FilterChip(
             label: Text(item.label, overflow: TextOverflow.ellipsis),
             selected: selected.contains(item.id),

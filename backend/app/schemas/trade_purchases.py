@@ -337,6 +337,7 @@ class TradePurchaseOut(DecimalModel):
     arrived_at: datetime | None = None
     staff_verified_at: datetime | None = None
     staff_verified_by_name: str | None = None
+    created_by_name: str | None = None
     stock_committed_at: datetime | None = None
     staff_verified_qty: Decimal | None = None
     delivered_qty_committed: Decimal | None = None

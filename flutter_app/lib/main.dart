@@ -45,7 +45,9 @@ bool _hexaAsyncErrorLikelyBenign(Object error) {
       s.contains('nothing to pop') ||
       s.contains('HiveError') ||
       s.contains('Box not found') ||
-      s.contains('StateError');
+      s.contains('StateError') ||
+      s.contains('Cannot use "ref"') ||
+      s.contains('Bad state: Cannot use');
 }
 
 void _installHexaPlatformAsyncErrorHook() {

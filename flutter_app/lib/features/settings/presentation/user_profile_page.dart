@@ -286,6 +286,15 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
 
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
+      appBar: AppBar(
+        title: const Text('User profile'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => context.popOrGo('/settings/users'),
+        ),
+        backgroundColor: HexaColors.brandBackground,
+        elevation: 0,
+      ),
       body: profileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => HexaErrorCard.fromError(
@@ -298,57 +307,50 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
             return const Center(child: Text('User not found.'));
           }
 
-          return NestedScrollView(
-            headerSliverBuilder: (context, innerBoxIsScrolled) => [
-              SliverOverlapAbsorber(
-                handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
-                sliver: SliverAppBar(
-                  pinned: true,
-                  expandedHeight: 148,
-                  leading: IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    onPressed: () => context.popOrGo('/settings/users'),
-                  ),
-                  title: innerBoxIsScrolled
-                      ? UserProfileCollapsedTitle(user: user)
-                      : const Text('User profile'),
-                  flexibleSpace: FlexibleSpaceBar(
-                    collapseMode: CollapseMode.pin,
-                    background: UserProfileHeaderContent(
-                      user: user,
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              UserProfileHeaderContent(
+                user: user,
+                userId: widget.userId,
+                canAdmin: canAdmin,
+                onEdit: () => _openEditSheet(user),
+                onMoreSelected: (a) => _handleMoreAction(a, user),
+              ),
+              Material(
+                color: Theme.of(context).colorScheme.surface,
+                elevation: 1,
+                child: TabBar(
+                  controller: _tabs,
+                  isScrollable: true,
+                  tabAlignment: TabAlignment.start,
+                  labelStyle: HexaDsType.body(13, weight: FontWeight.w700),
+                  unselectedLabelStyle:
+                      HexaDsType.body(13, weight: FontWeight.w600),
+                  labelColor: HexaColors.brandPrimary,
+                  unselectedLabelColor: HexaColors.textSecondary,
+                  indicatorSize: TabBarIndicatorSize.label,
+                  tabs: const [
+                    Tab(text: 'Overview'),
+                    Tab(text: 'Activity'),
+                    Tab(text: 'Permissions'),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabs,
+                  children: [
+                    _OverviewTab(user: user),
+                    UserActivityTab(userId: widget.userId),
+                    _PermissionsTab(
                       userId: widget.userId,
-                      canAdmin: canAdmin,
-                      onEdit: () => _openEditSheet(user),
-                      onMoreSelected: (a) => _handleMoreAction(a, user),
+                      readOnly: !canAdmin,
                     ),
-                  ),
-                  bottom: TabBar(
-                    controller: _tabs,
-                    labelStyle: HexaDsType.body(13, weight: FontWeight.w700),
-                    unselectedLabelStyle: HexaDsType.body(13, weight: FontWeight.w600),
-                    labelColor: HexaColors.brandPrimary,
-                    unselectedLabelColor: HexaColors.textSecondary,
-                    indicatorSize: TabBarIndicatorSize.label,
-                    tabs: const [
-                      Tab(text: 'Overview'),
-                      Tab(text: 'Activity'),
-                      Tab(text: 'Permissions'),
-                    ],
-                  ),
+                  ],
                 ),
               ),
             ],
-            body: TabBarView(
-              controller: _tabs,
-              children: [
-                _OverviewScroll(user: user),
-                UserActivityTab(userId: widget.userId),
-                _PermissionsScroll(
-                  userId: widget.userId,
-                  readOnly: !canAdmin,
-                ),
-              ],
-            ),
           );
         },
       ),
@@ -356,51 +358,39 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
   }
 }
 
-class _OverviewScroll extends StatelessWidget {
-  const _OverviewScroll({required this.user});
+class _OverviewTab extends StatelessWidget {
+  const _OverviewTab({required this.user});
   final Map<String, dynamic> user;
 
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
+    return ListView(
       key: const PageStorageKey('user_overview'),
-      slivers: [
-        SliverOverlapInjector(
-          handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                UserOverviewKpiGrid(user: user),
-                const SizedBox(height: 12),
-                if (user['notes'] != null && user['notes'].toString().isNotEmpty)
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Notes', style: HexaDsType.labelCaps(context)),
-                          const SizedBox(height: 4),
-                          Text(user['notes'].toString()),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+      children: [
+        UserOverviewKpiGrid(user: user),
+        const SizedBox(height: 12),
+        if (user['notes'] != null && user['notes'].toString().isNotEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Notes', style: HexaDsType.labelCaps(context)),
+                  const SizedBox(height: 4),
+                  Text(user['notes'].toString()),
+                ],
+              ),
             ),
           ),
-        ),
       ],
     );
   }
 }
 
-class _PermissionsScroll extends ConsumerStatefulWidget {
-  const _PermissionsScroll({
+class _PermissionsTab extends ConsumerStatefulWidget {
+  const _PermissionsTab({
     required this.userId,
     required this.readOnly,
   });
@@ -409,10 +399,10 @@ class _PermissionsScroll extends ConsumerStatefulWidget {
   final bool readOnly;
 
   @override
-  ConsumerState<_PermissionsScroll> createState() => _PermissionsScrollState();
+  ConsumerState<_PermissionsTab> createState() => _PermissionsTabState();
 }
 
-class _PermissionsScrollState extends ConsumerState<_PermissionsScroll> {
+class _PermissionsTabState extends ConsumerState<_PermissionsTab> {
   Map<String, bool>? _draft;
 
   @override
@@ -432,63 +422,50 @@ class _PermissionsScrollState extends ConsumerState<_PermissionsScroll> {
         _draft ??= perms.map((k, v) => MapEntry(k, v == true));
         final draft = _draft!;
 
-        return CustomScrollView(
-          slivers: [
-            SliverOverlapInjector(
-              handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (widget.readOnly)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(
-                          'View only — only owners and admins can edit permissions.',
-                          style: HexaDsType.bodySm(context),
-                        ),
-                      ),
-                    UserGroupedPermissions(
-                      draft: draft,
-                      readOnly: widget.readOnly,
-                      onChanged: (key, value) =>
-                          setState(() => draft[key] = value),
-                    ),
-                    if (!widget.readOnly) ...[
-                      const SizedBox(height: 12),
-                      FilledButton(
-                        onPressed: () async {
-                          final session = ref.read(sessionProvider);
-                          if (session == null) return;
-                          try {
-                            await ref.read(hexaApiProvider).patchUserPermissions(
-                                  businessId: session.primaryBusiness.id,
-                                  userId: widget.userId,
-                                  permissions: draft,
-                                );
-                            ref.invalidate(userPermissionsProvider(widget.userId));
-                            invalidateUserManagementCaches(ref);
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Permissions saved')),
-                            );
-                          } catch (e) {
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(userFacingError(e))),
-                            );
-                          }
-                        },
-                        child: const Text('Save permissions'),
-                      ),
-                    ],
-                  ],
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+          children: [
+            if (widget.readOnly)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'View only — only owners and admins can edit permissions.',
+                  style: HexaDsType.bodySm(context),
                 ),
               ),
+            UserGroupedPermissions(
+              draft: draft,
+              readOnly: widget.readOnly,
+              onChanged: (key, value) => setState(() => draft[key] = value),
             ),
+            if (!widget.readOnly) ...[
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: () async {
+                  final session = ref.read(sessionProvider);
+                  if (session == null) return;
+                  try {
+                    await ref.read(hexaApiProvider).patchUserPermissions(
+                          businessId: session.primaryBusiness.id,
+                          userId: widget.userId,
+                          permissions: draft,
+                        );
+                    ref.invalidate(userPermissionsProvider(widget.userId));
+                    invalidateUserManagementCaches(ref);
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Permissions saved')),
+                    );
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(userFacingError(e))),
+                    );
+                  }
+                },
+                child: const Text('Save permissions'),
+              ),
+            ],
           ],
         );
       },

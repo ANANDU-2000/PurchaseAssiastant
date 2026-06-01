@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/auth_failure_policy.dart';
 import '../auth/provider_api_guard.dart';
 import '../auth/session_notifier.dart';
+import '../platform/app_foreground_provider.dart';
 import 'business_aggregates_invalidation.dart';
 import 'low_stock_providers.dart';
 import 'stock_providers.dart';
@@ -80,7 +81,7 @@ final realtimeInvalidationProvider =
     } on DioException catch (e) {
       final sc = e.response?.statusCode;
       if (sc == 401 || sc == 403) {
-        ref.read(authApiGateProvider.notifier).record401();
+        ref.read(authApiGateProvider.notifier).suspendFor401();
       }
       return RealtimeInvalidationSignal(tick: tick);
     }
@@ -116,8 +117,9 @@ final realtimeInvalidationProvider =
   final timer = Stream.periodic(const Duration(seconds: 60));
   await for (final _ in timer) {
     if (ref.read(sessionProvider) == null ||
-        ref.read(authSessionExpiredProvider)) {
-      break;
+        ref.read(authSessionExpiredProvider) ||
+        !ref.read(appForegroundProvider)) {
+      continue;
     }
     tick++;
     yield await poll(initial: false);

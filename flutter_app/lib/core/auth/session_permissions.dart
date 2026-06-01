@@ -65,3 +65,10 @@ bool sessionCanBarcodePrint(Session session) =>
 
 /// Scan/view allowed; assign barcode, create item, update stock blocked.
 bool sessionIsStockReadOnly(Session session) => !sessionCanStockEdit(session);
+
+/// Owner, admin, super_admin, manager — may edit system ledger without staff alert flow.
+bool sessionIsPrivilegedStockRole(Session session) {
+  if (session.isSuperAdmin) return true;
+  final r = session.primaryBusiness.role.toLowerCase();
+  return r == 'owner' || r == 'admin' || r == 'super_admin' || r == 'manager';
+}

@@ -16,6 +16,7 @@ import '../../features/reports/reports_bi_tab.dart';
 import '../../features/catalog/presentation/item_analytics_redirect_page.dart';
 import '../../features/reports/drill/reports_item_report_page.dart';
 import '../../features/reports/drill/reports_purchase_report_page.dart';
+import '../../features/catalog/presentation/catalog_taxonomy_hub_page.dart';
 import '../../features/catalog/presentation/catalog_add_category_page.dart';
 import '../../features/catalog/presentation/catalog_add_item_page.dart';
 import '../../features/catalog/presentation/catalog_add_subcategory_page.dart';
@@ -113,6 +114,10 @@ bool _isStaffAllowedRoute(String loc) {
   if (loc == '/notifications') return true;
   if (loc.startsWith('/barcode/')) return true;
   if (loc == '/catalog/missing-codes' ||
+      loc == '/catalog/taxonomy' ||
+      loc == '/catalog/new-category' ||
+      (loc.startsWith('/catalog/category/') &&
+          (loc.endsWith('/new-subcategory') || loc.contains('/type/'))) ||
       loc == '/stock/missing-barcodes' ||
       loc == '/catalog/quick-add' ||
       loc == '/catalog/quick-add-from-scan' ||
@@ -409,6 +414,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           );
         },
+      ),
+      GoRoute(
+        path: '/catalog/taxonomy',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const CatalogTaxonomyHubPage(),
+        ),
       ),
       GoRoute(
         path: '/catalog/new-category',

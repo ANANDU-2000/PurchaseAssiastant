@@ -1,0 +1,88 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../auth/auth_failure_policy.dart';
+import '../auth/session_notifier.dart';
+import 'app_foreground_provider.dart';
+import 'app_visibility_stub.dart'
+    if (dart.library.html) 'app_visibility_web.dart' as app_visibility;
+
+/// Pauses API while backgrounded; refreshes tokens once when returning (web + mobile).
+class AppForegroundListener extends ConsumerStatefulWidget {
+  const AppForegroundListener({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  ConsumerState<AppForegroundListener> createState() =>
+      _AppForegroundListenerState();
+}
+
+class _AppForegroundListenerState extends ConsumerState<AppForegroundListener>
+    with WidgetsBindingObserver {
+  Timer? _resumeDebounce;
+  bool _foreground = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    app_visibility.bindWebTabVisibility(_onWebVisibility);
+  }
+
+  @override
+  void dispose() {
+    _resumeDebounce?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    app_visibility.unbindWebTabVisibility();
+    super.dispose();
+  }
+
+  void _onWebVisibility(bool visible) {
+    _setForeground(visible, source: 'web');
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final fg = state == AppLifecycleState.resumed;
+    _setForeground(fg, source: 'lifecycle');
+  }
+
+  void _setForeground(bool fg, {required String source}) {
+    if (_foreground == fg) return;
+    _foreground = fg;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(appForegroundProvider.notifier).state = fg;
+      if (!fg) {
+        _resumeDebounce?.cancel();
+        return;
+      }
+      ref.read(appLastForegroundAtProvider.notifier).state = DateTime.now();
+      _resumeDebounce?.cancel();
+      _resumeDebounce = Timer(const Duration(milliseconds: 400), () {
+        if (!mounted) return;
+        unawaited(_onReturnedToForeground());
+      });
+    });
+  }
+
+  Future<void> _onReturnedToForeground() async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      await ref.read(sessionProvider.notifier).refreshOnResume();
+    } catch (_) {
+      // Keep session; Dio interceptor will refresh on next call.
+    }
+    if (!mounted) return;
+    try {
+      ref.read(authApiGateProvider.notifier).clearSuspend();
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}

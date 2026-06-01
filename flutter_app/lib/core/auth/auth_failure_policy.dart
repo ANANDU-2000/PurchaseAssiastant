@@ -29,9 +29,13 @@ class AuthApiGateState {
   bool get blockApi => suspended || circuitOpen;
 }
 
+/// True while Dio interceptor is refreshing tokens (do not open 401 circuit).
+final authRefreshInFlightProvider = StateProvider<bool>((ref) => false);
+
 class AuthApiGateNotifier extends Notifier<AuthApiGateState> {
-  static const _threshold = 2;
-  static const _window = Duration(seconds: 12);
+  /// Require several 401s before forced logout — avoids tab-switch storms on web.
+  static const _threshold = 4;
+  static const _window = Duration(seconds: 15);
 
   int _count = 0;
   DateTime? _since;
@@ -49,7 +53,11 @@ class AuthApiGateNotifier extends Notifier<AuthApiGateState> {
   }
 
   /// Returns true when the circuit opens (force logout).
-  bool record401() {
+  bool record401({bool refreshInFlight = false}) {
+    if (refreshInFlight) {
+      suspendFor401();
+      return false;
+    }
     suspendFor401();
     if (state.circuitOpen) return true;
 

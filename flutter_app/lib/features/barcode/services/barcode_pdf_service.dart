@@ -569,8 +569,10 @@ class BarcodePdfService {
                   ),
                   pw.Text(
                     totalLabelCount != null
-                        ? 'SL $pageFirstSl–$pageLastSl of $totalLabelCount'
-                        : 'SL $pageFirstSl–$pageLastSl',
+                        ? pdfLabelText(
+                            'SL $pageFirstSl-$pageLastSl of $totalLabelCount',
+                          )
+                        : pdfLabelText('SL $pageFirstSl-$pageLastSl'),
                     style: pw.TextStyle(
                       fontSize: 7,
                       fontWeight: pw.FontWeight.bold,
@@ -1213,7 +1215,7 @@ class BarcodePdfService {
     if (parts.isEmpty) {
       return omitEmptyPlaceholder ? null : 'No purchase yet';
     }
-    return pdfLabelText(parts.join(' · '));
+    return pdfLabelText(parts.join(pdfInlineSep));
   }
 
   static String? _bagsLine(BarcodeLabelData data) {

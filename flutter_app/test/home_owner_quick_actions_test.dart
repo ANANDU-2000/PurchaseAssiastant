@@ -18,6 +18,7 @@ void main() {
             onUsers: () {},
             onBarcode: () {},
             onReorder: () {},
+            onDailyLog: () {},
             lowStockCount: 3,
           ),
         ),

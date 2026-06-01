@@ -6,13 +6,14 @@ import uuid
 from collections import OrderedDict
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from difflib import SequenceMatcher
 from time import monotonic
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import String, and_, case, cast, func, literal, select
+from sqlalchemy import String, and_, case, cast, desc, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.async_budget import run_read_budget_bounded
@@ -21,6 +22,7 @@ from app.db_resilience import execute_with_retry
 from app.deps import get_current_user, require_membership, require_role
 from app.models import CatalogItem, CategoryType, ItemCategory, Membership, TradePurchase, TradePurchaseLine, User
 from app.models.stock_adjustment import StockAdjustmentLog
+from app.models.stock_physical_count import StockPhysicalCount
 from app.models.contacts import Supplier
 from app.read_cache_generation import trade_read_cache_generation
 from app.services import trade_mapping as trade_map
@@ -1260,6 +1262,29 @@ async def reports_activity_feed(
     }
 
 
+async def _latest_physical_qty(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    item_id: uuid.UUID,
+) -> tuple[float | None, str | None]:
+    row = (
+        await db.execute(
+            select(StockPhysicalCount.qty, StockPhysicalCount.counted_at)
+            .where(
+                StockPhysicalCount.business_id == business_id,
+                StockPhysicalCount.item_id == item_id,
+            )
+            .order_by(desc(StockPhysicalCount.counted_at))
+            .limit(1)
+        )
+    ).one_or_none()
+    if row is None:
+        return None, None
+    qty, counted_at = row
+    at_iso = counted_at.isoformat() if counted_at is not None else None
+    return float(qty or 0), at_iso
+
+
 @router.get("/item/{catalog_item_id}")
 async def reports_item_bundle(
     business_id: uuid.UUID,
@@ -1271,10 +1296,20 @@ async def reports_item_bundle(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> dict[str, Any]:
-    """Item report KPIs + paginated purchase lines for catalog item."""
+    """Item report: catalog snapshot + period KPIs + paginated purchase lines."""
     del _m
+    last_supplier = Supplier.__table__.alias("last_supplier")
     item_r = await db.execute(
-        select(CatalogItem.id, CatalogItem.name, CatalogItem.current_stock).where(
+        select(
+            CatalogItem,
+            ItemCategory.name.label("category_name"),
+            CategoryType.name.label("subcategory_name"),
+            last_supplier.c.name.label("last_supplier_name"),
+        )
+        .outerjoin(ItemCategory, ItemCategory.id == CatalogItem.category_id)
+        .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
+        .outerjoin(last_supplier, last_supplier.c.id == CatalogItem.last_supplier_id)
+        .where(
             CatalogItem.business_id == business_id,
             CatalogItem.id == catalog_item_id,
             CatalogItem.deleted_at.is_(None),
@@ -1283,13 +1318,52 @@ async def reports_item_bundle(
     item_row = item_r.one_or_none()
     if item_row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="item_not_found")
-    _cid, item_name, current_stock = item_row
+    item, category_name, subcategory_name, last_supplier_name = item_row
+    phys_qty, phys_at = await _latest_physical_qty(db, business_id, catalog_item_id)
+
+    def _fdec(v: Decimal | None) -> float | None:
+        if v is None:
+            return None
+        return float(v)
+
+    def _iso_dt(v: datetime | None) -> str | None:
+        return v.isoformat() if v is not None else None
+
+    item_snapshot = {
+        "id": str(item.id),
+        "name": item.name,
+        "category": category_name or "",
+        "subcategory": subcategory_name or "",
+        "item_code": item.item_code or "",
+        "barcode": item.barcode or "",
+        "hsn_code": item.hsn_code or "",
+        "stock_unit": item.stock_unit or item.default_unit or "",
+        "rack_location": item.rack_location or "",
+        "current_stock": float(item.current_stock or 0),
+        "reorder_level": float(item.reorder_level or 0),
+        "physical_stock_qty": phys_qty,
+        "physical_stock_counted_at": phys_at,
+        "default_landing_cost": _fdec(item.default_landing_cost),
+        "default_selling_cost": _fdec(item.default_selling_cost),
+        "last_purchase_price": _fdec(item.last_purchase_price),
+        "last_purchase_at": _iso_dt(item.last_purchase_at),
+        "last_supplier_name": last_supplier_name or "",
+        "last_stock_updated_at": _iso_dt(item.last_stock_updated_at),
+        "last_stock_updated_by": item.last_stock_updated_by or "",
+        "default_kg_per_bag": _fdec(item.default_kg_per_bag),
+    }
+
     amt = _trade_line_amount_expr()
     bf = _trade_purchase_date_filter(business_id, date_from, date_to)
+    line_filter = and_(
+        bf,
+        TradePurchaseLine.catalog_item_id == catalog_item_id,
+    )
     summary_q = (
         select(
             func.coalesce(func.sum(amt), 0).label("total_purchase"),
             func.coalesce(func.sum(TradePurchaseLine.qty), 0).label("total_qty"),
+            func.coalesce(func.sum(TradePurchaseLine.total_weight), 0).label("total_weight_kg"),
             func.count(func.distinct(TradePurchase.id)).label("purchase_count"),
             func.count(func.distinct(TradePurchase.supplier_id)).label("supplier_count"),
             func.coalesce(func.min(TradePurchaseLine.landing_cost), 0).label("rate_min"),
@@ -1298,10 +1372,7 @@ async def reports_item_bundle(
         )
         .select_from(TradePurchaseLine)
         .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
-        .where(
-            bf,
-            TradePurchaseLine.catalog_item_id == catalog_item_id,
-        )
+        .where(line_filter)
     )
     sm = (await db.execute(summary_q)).mappings().one()
     lines_q = (
@@ -1313,13 +1384,14 @@ async def reports_item_bundle(
             TradePurchaseLine.unit,
             TradePurchaseLine.landing_cost,
             func.coalesce(amt, 0).label("line_amount"),
+            Supplier.name.label("supplier_name"),
+            User.name.label("entered_by_name"),
         )
         .select_from(TradePurchaseLine)
         .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
-        .where(
-            bf,
-            TradePurchaseLine.catalog_item_id == catalog_item_id,
-        )
+        .outerjoin(Supplier, Supplier.id == TradePurchase.supplier_id)
+        .outerjoin(User, User.id == TradePurchase.user_id)
+        .where(line_filter)
         .order_by(TradePurchase.purchase_date.desc())
         .offset(offset)
         .limit(limit)
@@ -1327,22 +1399,28 @@ async def reports_item_bundle(
     lines = [
         {
             "purchase_id": str(pid),
-            "human_id": hid,
+            "human_id": hid or "",
             "purchase_date": pdate.isoformat(),
             "qty": float(qty or 0),
             "unit": str(unit or ""),
             "rate": float(rate or 0),
             "line_amount": float(lamt or 0),
+            "supplier_name": str(sup_name or ""),
+            "entered_by_name": str(entered_by or ""),
         }
-        for pid, hid, pdate, qty, unit, rate, lamt in (await db.execute(lines_q)).all()
+        for pid, hid, pdate, qty, unit, rate, lamt, sup_name, entered_by in (
+            await db.execute(lines_q)
+        ).all()
     ]
     return {
         "catalog_item_id": str(catalog_item_id),
-        "item_name": item_name,
-        "current_stock": float(current_stock or 0),
+        "item_name": item.name,
+        "current_stock": float(item.current_stock or 0),
+        "item": item_snapshot,
         "summary": {
             "total_purchase": float(sm["total_purchase"] or 0),
             "total_qty": float(sm["total_qty"] or 0),
+            "total_weight_kg": float(sm["total_weight_kg"] or 0),
             "purchase_count": int(sm["purchase_count"] or 0),
             "supplier_count": int(sm["supplier_count"] or 0),
             "rate_min": float(sm["rate_min"] or 0),

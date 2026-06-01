@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/shell/shell_branch_provider.dart';
+import '../api/hexa_api.dart';
 import '../auth/session_notifier.dart' show activeSessionProvider, hexaApiProvider;
 import '../json_coerce.dart';
+import '../utils/stock_audit_rows.dart';
 import '../utils/purchase_units_subtitle.dart';
 import 'stock_providers.dart'
     show lowStockByCategoryProvider, stockStatusCountsProvider;
@@ -25,16 +27,11 @@ List<Map<String, dynamic>> _filterAuditsToHomePeriod(
   Ref ref,
   List<Map<String, dynamic>> rows,
 ) {
-  final range = homePeriodRange(
+  return filterStockAuditRowsByHomePeriod(
+    rows,
     ref.read(homePeriodProvider),
     custom: ref.read(homeCustomDateRangeProvider),
   );
-  return rows.where((a) {
-    final atRaw = a['created_at']?.toString() ?? a['at']?.toString();
-    final at = atRaw != null ? DateTime.tryParse(atRaw)?.toLocal() : null;
-    if (at == null) return false;
-    return !at.isBefore(range.start) && at.isBefore(range.end);
-  }).toList();
 }
 
 String _apiDate(DateTime d) {
@@ -84,10 +81,7 @@ class HomeInventorySummary {
 
 final homeInventorySummaryProvider =
     FutureProvider.autoDispose<HomeInventorySummary>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 3));
-  if (!shellBranchIsVisible(ref, ShellBranch.home)) {
-    return HomeInventorySummary.empty;
-  }
+  _providerKeepAlive(ref, const Duration(minutes: 5));
   final session = ref.watch(activeSessionProvider);
   if (session == null) return HomeInventorySummary.empty;
   try {
@@ -107,9 +101,6 @@ final homeInventorySummaryProvider =
 final homeTodayDashboardDataProvider =
     FutureProvider.autoDispose<HomeDashboardData>((ref) async {
   _providerKeepAlive(ref, const Duration(minutes: 2));
-  if (!shellBranchIsVisible(ref, ShellBranch.home)) {
-    return HomeDashboardData.empty;
-  }
   final session = ref.watch(activeSessionProvider);
   if (session == null) return HomeDashboardData.empty;
   final now = DateTime.now();
@@ -199,7 +190,6 @@ void invalidateHomeStockStatusCounts(Ref ref) {
 final stockLowTopHomeProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   _providerKeepAlive(ref, const Duration(minutes: 2));
-  if (!shellBranchIsVisible(ref, ShellBranch.home)) return [];
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
   final m = await ref.read(hexaApiProvider).listStockLow(
@@ -225,24 +215,45 @@ final stockAuditRecentHomeProvider =
       );
 });
 
-/// Stock adjustments for a single calendar day (legacy / stock detail).
+/// Stock adjustments for a single **local** calendar day (stock **Today** tab).
 final stockAuditDayProvider = FutureProvider.autoDispose
     .family<List<Map<String, dynamic>>, DateTime>((ref, day) async {
+  _providerKeepAlive(ref, const Duration(minutes: 2));
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
   final d = DateTime(day.year, day.month, day.day);
-  return ref.read(hexaApiProvider).listStockAuditRecent(
-        businessId: session.primaryBusiness.id,
-        limit: 50,
-        on: _apiDate(d),
-      );
+  final bid = session.primaryBusiness.id;
+  final api = ref.read(hexaApiProvider);
+  final dayStr = _apiDate(d);
+  final results = await Future.wait([
+    api.listStockAuditRecent(
+      businessId: bid,
+      limit: HexaApi.stockAuditRecentMaxLimit,
+    ),
+    api.listTradePurchases(
+      businessId: bid,
+      limit: 40,
+      offset: 0,
+      status: 'all',
+      purchaseFrom: dayStr,
+      purchaseTo: dayStr,
+    ),
+  ]);
+  final auditRows = (results[0] as List)
+      .map((e) => Map<String, dynamic>.from(e as Map))
+      .toList();
+  final audits = filterStockAuditRowsOnLocalDay(auditRows, d);
+  final purchases = mapPurchasesToStockAuditRows(
+    (results[1] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+  );
+  final billsToday = filterStockAuditRowsOnLocalDay(purchases, d);
+  return sortStockAuditRowsNewestFirst([...audits, ...billsToday]);
 });
 
 /// Stock adjustments for the global [homePeriodProvider] window (client-filtered).
 final stockAuditPeriodProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   _providerKeepAlive(ref, const Duration(minutes: 2));
-  if (!shellBranchIsVisible(ref, ShellBranch.home)) return [];
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
   ref.watch(homePeriodProvider);
@@ -257,9 +268,6 @@ final stockAuditPeriodProvider =
 /// Period-scoped overview for category pills (reuses dashboard cache when possible).
 final homeOwnerPeriodDashboardProvider =
     Provider.autoDispose<HomeDashboardData>((ref) {
-  if (!shellBranchIsVisible(ref, ShellBranch.home)) {
-    return HomeDashboardData.empty;
-  }
   ref.watch(homePeriodProvider);
   ref.watch(homeCustomDateRangeProvider);
   return ref.watch(homeDashboardDataProvider).snapshot.data;
@@ -282,7 +290,6 @@ final stockVariancesTodayProvider =
 final activeStaffSessionsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   _providerKeepAlive(ref, const Duration(minutes: 2));
-  if (!shellBranchIsVisible(ref, ShellBranch.home)) return [];
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
   return ref.read(hexaApiProvider).listActiveSessions(
@@ -327,6 +334,7 @@ class HomeActivityItem {
     this.amountInr,
     this.routeId,
     this.actor,
+    this.createdBy,
     this.qtyChange,
     this.humanId,
     this.unitsLine,
@@ -340,7 +348,10 @@ class HomeActivityItem {
   final DateTime at;
   final double? amountInr;
   final String? routeId;
+  /// Who saved / scanned (staff or owner).
   final String? actor;
+  /// Purchase bill creator (owner/admin/staff).
+  final String? createdBy;
   final String? qtyChange;
   final String? humanId;
   final String? unitsLine;
@@ -452,12 +463,27 @@ String? _purchaseUnitsLine(Map<String, dynamic> p) {
   return fromMap.isNotEmpty ? fromMap : null;
 }
 
+String? _purchaseCreatedBy(Map<String, dynamic> p) {
+  for (final key in ['created_by_name', 'user_name', 'staff_name']) {
+    final v = p[key]?.toString().trim();
+    if (v != null && v.isNotEmpty) return v;
+  }
+  return null;
+}
+
 String? _purchaseVerifiedBy(Map<String, dynamic> p) {
   final v = p['staff_verified_by_name']?.toString().trim();
   if (v != null && v.isNotEmpty) return v;
-  final c = p['created_by_name']?.toString().trim();
-  if (c != null && c.isNotEmpty) return c;
-  return p['staff_name']?.toString().trim();
+  final notes = p['delivery_notes']?.toString() ?? '';
+  final fromNotes = RegExp(
+    r'Verified by ([^|\n]+)',
+    caseSensitive: false,
+  ).firstMatch(notes);
+  if (fromNotes != null) {
+    final name = fromNotes.group(1)?.trim();
+    if (name != null && name.isNotEmpty) return name;
+  }
+  return null;
 }
 
 Future<List<HomeActivityItem>> _fetchHomeWarehouseActivity(
@@ -465,8 +491,7 @@ Future<List<HomeActivityItem>> _fetchHomeWarehouseActivity(
   int purchaseLimit = 15,
   int maxItems = 15,
 }) async {
-  _providerKeepAlive(ref, const Duration(minutes: 3));
-  if (!shellBranchIsVisible(ref, ShellBranch.home)) return [];
+  _providerKeepAlive(ref, const Duration(minutes: 5));
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
   ref.watch(homePeriodProvider);
@@ -535,9 +560,8 @@ Future<List<HomeActivityItem>> _fetchHomeWarehouseActivity(
             p['human_id']?.toString() ??
             p['invoice_number']?.toString() ??
             'Purchase',
-        actor: p['created_by_name']?.toString() ??
-            p['staff_name']?.toString() ??
-            p['user_name']?.toString(),
+        actor: _purchaseCreatedBy(p),
+        createdBy: _purchaseCreatedBy(p),
         qtyChange: p['human_id']?.toString() ??
             p['invoice_number']?.toString() ??
             p['bill_no']?.toString() ??
@@ -576,16 +600,17 @@ Future<List<HomeActivityItem>> _fetchHomeWarehouseActivity(
             : _activityTitleFromAdjustment(adjType, itemName),
         subtitle: itemName,
         humanId: received?.humanId,
-        verifiedBy: a['updated_by']?.toString() ??
-            a['updated_by_name']?.toString() ??
+        verifiedBy: a['updated_by_name']?.toString() ??
+            a['updated_by']?.toString() ??
             a['user_name']?.toString(),
         at: local,
         routeId: received?.purchaseId?.isNotEmpty == true
             ? received!.purchaseId
             : a['item_id']?.toString(),
-        actor: a['updated_by']?.toString() ??
-            a['updated_by_name']?.toString() ??
+        actor: a['updated_by_name']?.toString() ??
+            a['updated_by']?.toString() ??
             a['user_name']?.toString(),
+        createdBy: a['updated_by_name']?.toString(),
         qtyChange: delta?.toString(),
       ),
     );
@@ -630,6 +655,8 @@ Future<List<HomeActivityItem>> _fetchHomeWarehouseActivity(
 
 final homeRecentActivityFeedProvider =
     FutureProvider.autoDispose<List<HomeActivityItem>>((ref) async {
+  ref.watch(homePeriodProvider);
+  ref.watch(homeCustomDateRangeProvider);
   return _fetchHomeWarehouseActivity(ref, purchaseLimit: 15, maxItems: 15);
 });
 

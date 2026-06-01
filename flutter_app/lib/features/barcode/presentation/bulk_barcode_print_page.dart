@@ -146,9 +146,6 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
 
   static const int _kMaxLabelsPerPdf = 100;
 
-  int _pdfBatchCount(int selectedCount) =>
-      (selectedCount + _kMaxLabelsPerPdf - 1) ~/ _kMaxLabelsPerPdf;
-
   List<List<String>> _chunkItemIds(List<String> ids) {
     final out = <List<String>>[];
     for (var i = 0; i < ids.length; i += _kMaxLabelsPerPdf) {
@@ -172,6 +169,8 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
     ) action,
     required Future<void> Function() retry,
     bool multiBatch = false,
+    /// Generate every batch first, then deliver once (one-click download on web).
+    bool deliverOnceAtEnd = false,
     bool previewMode = false,
   }) async {
     if (_selected.isEmpty || _busy) return;
@@ -220,21 +219,29 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
 
       final idBatches = multiBatch ? _chunkItemIds(allIds) : [allIds];
       var batchesDone = 0;
+      final accumulatedPdfs = <Uint8List>[];
+      final accumulatedIds = <String>[];
 
       for (var bi = 0; bi < idBatches.length; bi++) {
         if (_pdfCancelled) break;
         final targetIds = idBatches[bi];
         if (idBatches.length > 1 && mounted) {
           setState(() {
-            _pdfStatus =
-                'Batch ${bi + 1} of ${idBatches.length} (${targetIds.length} items)…';
+            _pdfStatus = deliverOnceAtEnd
+                ? 'Generating batch ${bi + 1} of ${idBatches.length}…'
+                : 'Batch ${bi + 1} of ${idBatches.length} (${targetIds.length} items)…';
           });
         }
         final ok = await _runOnePdfBatch(
           targetIds: targetIds,
-          action: action,
+          action: deliverOnceAtEnd
+              ? (pdfs, ids) async {
+                  accumulatedPdfs.addAll(pdfs);
+                  accumulatedIds.addAll(ids);
+                }
+              : action,
           previewMode: previewMode,
-          quietReadySnack: idBatches.length > 1,
+          quietReadySnack: idBatches.length > 1 || deliverOnceAtEnd,
         );
         if (!ok || _pdfCancelled) break;
         if (!previewMode) {
@@ -242,39 +249,21 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
         }
         batchesDone++;
         if (multiBatch &&
+            !deliverOnceAtEnd &&
             bi < idBatches.length - 1 &&
             mounted &&
             !_pdfCancelled) {
-          if (kIsWeb) {
-            final cont = await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: Text('Batch ${bi + 1} of ${idBatches.length} ready'),
-                content: Text(
-                  '${targetIds.length} labels in this batch. '
-                  'Continue to batch ${bi + 2}?',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Stop'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Next batch'),
-                  ),
-                ],
-              ),
-            );
-            if (cont != true) break;
-          } else {
-            await Future<void>.delayed(const Duration(milliseconds: 400));
-          }
+          await Future<void>.delayed(const Duration(milliseconds: 400));
         }
       }
 
       if (!mounted || _pdfCancelled || batchesDone == 0) return;
-      if (multiBatch && idBatches.length > 1) {
+
+      if (deliverOnceAtEnd && accumulatedPdfs.isNotEmpty) {
+        await action(accumulatedPdfs, accumulatedIds);
+      }
+
+      if (multiBatch && idBatches.length > 1 && !deliverOnceAtEnd) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -530,6 +519,7 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
     List<Uint8List> pdfs, {
     required int labelCount,
     bool forPrint = false,
+    bool autoDownloadAll = false,
   }) async {
     if (!mounted || pdfs.isEmpty) return;
     final n = pdfs.length;
@@ -537,6 +527,38 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
       n,
       (i) => _bulkBarcodeFilename(part: i + 1, partCount: n),
     );
+    if (kIsWeb && autoDownloadAll) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            forPrint
+                ? 'Downloading $n PDF${n == 1 ? '' : 's'} for printing… Allow multiple downloads if your browser asks.'
+                : 'Downloading $n PDF${n == 1 ? '' : 's'} ($labelCount labels)… Allow multiple downloads if asked.',
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+      var okCount = 0;
+      for (var i = 0; i < n; i++) {
+        if (!mounted) return;
+        if (await _sharePdfSafe(pdfs[i], names[i])) okCount++;
+        if (i < n - 1) {
+          await Future<void>.delayed(const Duration(milliseconds: 900));
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            okCount == n
+                ? 'Downloaded $okCount PDF${okCount == 1 ? '' : 's'} ($labelCount labels).'
+                : 'Downloaded $okCount of $n PDFs — retry if any were blocked.',
+          ),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      return;
+    }
     if (kIsWeb) {
       if (!forPrint && n == 1) {
         await _openPdfPage(
@@ -666,21 +688,28 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
   Future<void> _downloadPdf() => _runPdfFlow(
         retry: _downloadPdf,
         multiBatch: true,
+        deliverOnceAtEnd: true,
         action: (pdfs, batchIds) async {
           if (!mounted) return;
-          await _deliverPdfParts(pdfs, labelCount: batchIds.length);
+          await _deliverPdfParts(
+            pdfs,
+            labelCount: batchIds.length,
+            autoDownloadAll: true,
+          );
         },
       );
 
   Future<void> _print() => _runPdfFlow(
         retry: _print,
         multiBatch: true,
+        deliverOnceAtEnd: true,
         action: (pdfs, batchIds) async {
           if (!mounted) return;
           await _deliverPdfParts(
             pdfs,
             labelCount: batchIds.length,
             forPrint: true,
+            autoDownloadAll: kIsWeb,
           );
         },
       );
@@ -917,8 +946,8 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
         onPrint: _print,
         pdfButtonLabel: selected.length > _kMaxLabelsPerPdf
             ? (kIsWeb
-                ? 'Download (${_pdfBatchCount(selected.length)} batches)'
-                : 'PDF (${_pdfBatchCount(selected.length)} batches)')
+                ? 'Download all (${selected.length} labels)'
+                : 'PDF all (${selected.length} labels)')
             : (kIsWeb ? 'Download' : 'PDF'),
       ),
       body: LayoutBuilder(

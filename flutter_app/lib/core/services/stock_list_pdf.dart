@@ -29,7 +29,7 @@ Future<Uint8List> buildStockListPdf({
             style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
           ),
           pw.Text(
-            'Stock statement · $gen',
+            safePdfText('Stock statement | $gen'),
             style: const pw.TextStyle(fontSize: 10),
           ),
           if (filterSummary != null && filterSummary.trim().isNotEmpty)
@@ -75,7 +75,7 @@ Future<Uint8List> buildStockListPdf({
 }
 
 String _fmtQty(double n) {
-  if (!n.isFinite) return '—';
+  if (!n.isFinite) return pdfEmpty;
   final r = n.roundToDouble();
   if ((n - r).abs() < 0.001) return r.round().toString();
   return n.toStringAsFixed(1);

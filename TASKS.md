@@ -7,6 +7,73 @@
 - [x] **Alembic head:** `050_stock_ledger_replay_current_stock` (verified `alembic_version` + `/health/ready`)
 - [x] **API liveness:** `GET https://my-purchases-api.onrender.com/health/ready` → 200, `db: ok`, `stock_sync_ready: true`
 
+## Quick categories & subcategories (2026-06-01)
+
+- [x] Hub `/catalog/taxonomy` — staff + owner; chips + list + quick bottom sheet
+- [x] Sheet: category + optional subcategory, or subcategory under existing category (API: `item_categories`, `category_types`)
+- [x] Entry: Settings, staff Home **Categories** tool, Catalog app bar + FAB sheet
+- [ ] Deploy Flutter web so staff can use without full catalog access
+
+## Stock Changes / Movement / Today tabs (2026-06-01)
+
+- [x] Parse API `updated_at` + `new_qty`/`old_qty` (was filtering on missing `created_at`/`qty_delta` → empty tabs)
+- [x] Shared `stock_audit_rows.dart`; Movement tab uses `stockChangesFeedProvider`; Today uses local-day filter (not UTC `on=` only)
+- [x] Invalidate audit feeds on warehouse writes; default stock period = Month
+- [x] Merge period purchase bills into Changes/Movement/Today when adjustment log sparse
+- [x] Stop shell-branch empty cache poison on Home inventory + activity; refresh activity on tab return
+- [x] Dedupe Stock page realtime invalidation (shell listener only); preserve list scroll on background refresh
+
+## Reports Stock tab UX (2026-06-01)
+
+- [x] Compact list rows (~72dp): name + badge, qty + category, one meta line (last move · 7d · 30d)
+- [x] Removed duplicate KPI chip row; single filter strip + sort icon
+
+## Session / background stability (2026-06-01)
+
+- [x] Web tab `visibilitychange` + mobile lifecycle: pause API when hidden (`appForegroundProvider`)
+- [x] On return: single-flight JWT refresh before polls; 401 circuit needs 4 hits / 15s (not 2)
+- [x] Realtime poll: no forced logout on single 401; skip while tab hidden
+- [x] `ref.listen` on Home/shell deferred to post-frame (fixes "ref after dispose" on web)
+
+## PDF / print ASCII-safe text (2026-06-01)
+
+- [x] Central `safePdfText` / `safePdfCell`: replace → · – — ₹ and emoji (no tofu boxes)
+- [x] Trade statement, reports summary, purchase PO, barcode labels, supplier/item/broker statements, stock list PDF
+
+## Reports Overview UX (2026-06-01)
+
+- [x] Fix tab/chart overlap: scrollable tab chips; overview charts scroll (no 160px clip); pie/donut center text constrained
+- [x] KPI: **Total amount** hero + colored **Bags / Boxes / Tins / Kg** strip; bold colored secondary metrics
+- [x] Filters: remove Category section; subcategory + supplier **search** + show more/less; auto-expand subcategory on Items/Stock tab
+
+## Reports item drill-down (2026-06-01)
+
+- [x] Backend `GET /reports/item/{id}`: catalog snapshot (category, subcategory, code, barcode, system/physical stock, last supplier/stock audit)
+- [x] Period KPIs + paginated purchase lines (supplier, entered-by, tap → purchase detail)
+- [x] Flutter `ReportsItemReportPage` uses API SSOT (fixes empty purchase history vs KPI mismatch)
+
+## Warehouse activity names (2026-06-01)
+
+- [x] Purchases API: `created_by_name`, resolve `staff_verified_by_name` (user join + delivery notes + commit actor)
+- [x] Activity UI: Entered by + Verified by columns; tap row → detail sheet with staff names
+
+## Bulk PDF + scan stock (2026-06-01)
+
+- [x] Bulk label download: one tap generates all batches, auto-downloads every PDF on web (no “Next batch” dialogs)
+- [x] Post-scan card: system + physical stock, last purchase (qty · supplier · days ago)
+- [x] Staff scan: physical default; system edit warns + backend owner notify; public QR read-only uses same layout
+- [x] Home/staff shortcuts: **Daily log** (`/home/activity`, `/staff/activity`); owner **Barcode** → bulk print
+
+## Low stock list UX (2026-06-01)
+
+- [x] Serial numbers (#1, #2, …) within open category / sub-tab; A→Z item order
+- [x] Sub-tab chips show counts (`CHILLI (12)`); single-row actions (+ Stock / Inform / menu)
+
+## User profile layout (2026-06-01)
+
+- [x] **Overlap fix:** drop `NestedScrollView` + 148px `SliverAppBar`; stack `AppBar` → header card → scrollable `TabBar` → `TabBarView` (Overview / Activity / Permissions)
+- [x] Header: column layout (avatar, pills, meta, Edit/More row); activity section chips on own surface + divider
+
 ## Navigation / reload UX (2026-06-01)
 
 - [x] Staff shell: stop `invalidate` on every tab switch (Home/Stock/Tasks)

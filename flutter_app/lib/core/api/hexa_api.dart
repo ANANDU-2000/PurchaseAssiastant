@@ -1591,6 +1591,27 @@ class HexaApi {
     return _parseJsonMapList(res.data);
   }
 
+  /// Catalog item snapshot + period purchase KPIs + paginated lines (reports drill-down).
+  Future<Map<String, dynamic>> reportsItemBundle({
+    required String businessId,
+    required String catalogItemId,
+    required String from,
+    required String to,
+    int limit = 80,
+    int offset = 0,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/reports/item/$catalogItemId',
+      queryParameters: {
+        'from': from,
+        'to': to,
+        'limit': limit,
+        'offset': offset,
+      },
+    );
+    return res.data ?? {};
+  }
+
   Future<List<Map<String, dynamic>>> tradeReportSuppliers({
     required String businessId,
     required String from,

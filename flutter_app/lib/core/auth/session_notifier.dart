@@ -89,6 +89,10 @@ final hexaApiProvider = Provider<HexaApi>((ref) {
           () => disposed,
           () async {
             if (disposed) return false;
+            try {
+              ref.read(authRefreshInFlightProvider.notifier).state = true;
+            } catch (_) {}
+            try {
             final store = ref.read(tokenStoreProvider);
             final t = await store.read();
             if (t.refresh == null) {
@@ -181,6 +185,13 @@ final hexaApiProvider = Provider<HexaApi>((ref) {
               }
               return false;
             }
+            } finally {
+              if (!disposed) {
+                try {
+                  ref.read(authRefreshInFlightProvider.notifier).state = false;
+                } catch (_) {}
+              }
+            }
           },
         ),
     onTerminalAuthFailure: (reason) => _singleFlightTerminalAuthFailure(() async {
@@ -196,7 +207,9 @@ final hexaApiProvider = Provider<HexaApi>((ref) {
     onBusiness401: () {
       if (disposed) return true;
       try {
-        final tripped = ref.read(authApiGateProvider.notifier).record401();
+        final tripped = ref.read(authApiGateProvider.notifier).record401(
+              refreshInFlight: ref.read(authRefreshInFlightProvider),
+            );
         if (tripped) {
           ref.read(authSessionExpiredProvider.notifier).markExpired();
           authRefresh.value++;
@@ -293,6 +306,38 @@ class SessionNotifier extends Notifier<Session?> {
       businesses: cur.businesses,
       isSuperAdmin: cur.isSuperAdmin,
     );
+  }
+
+  /// After tab focus / app resume: refresh JWT before parallel home/stock polls.
+  Future<void> refreshOnResume() async {
+    if (_disposed || state == null) return;
+    final store = ref.read(tokenStoreProvider);
+    final api = ref.read(hexaApiProvider);
+    final t = await store.read();
+    if (t.refresh == null || t.refresh!.isEmpty) return;
+    try {
+      ref.read(authRefreshInFlightProvider.notifier).state = true;
+      final pair = await api.refreshTokens(refreshToken: t.refresh!);
+      if (_disposed) return;
+      await store.write(access: pair.access, refresh: pair.refresh);
+      api.setAuthToken(pair.access);
+      await applyRefreshedTokens(pair.access, pair.refresh);
+      _clearAuthFailureFlags();
+      authRefresh.value++;
+    } on DioException catch (e) {
+      final sc = e.response?.statusCode;
+      if (sc == 401 || sc == 403) {
+        await logout();
+      }
+    } catch (_) {
+      // Transient — keep session; next API call will retry refresh.
+    } finally {
+      if (!_disposed) {
+        try {
+          ref.read(authRefreshInFlightProvider.notifier).state = false;
+        } catch (_) {}
+      }
+    }
   }
 
   Future<bool> _readIsSuperAdmin(HexaApi api) async {

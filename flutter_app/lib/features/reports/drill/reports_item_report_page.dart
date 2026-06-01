@@ -1,24 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
-import '../../../core/navigation/resolve_catalog_item_id.dart';
-import '../../../core/providers/reports_provider.dart';
-import '../../../core/reporting/trade_report_aggregate.dart';
+import '../../../core/providers/reports_item_bundle_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart';
-import '../presentation/reports_item_detail_page.dart';
-import '../reporting/reports_item_metrics.dart';
-import '../widgets/reports_kpi_row.dart';
 import 'reports_breadcrumb_bar.dart';
+import '../presentation/reports_item_detail_page.dart';
+import 'widgets/reports_item_report_body.dart';
 
-String _inr0(num n) =>
-    NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
-        .format(n);
-
-/// Dedicated in-flow item report (not catalog redirect).
-class ReportsItemReportPage extends ConsumerStatefulWidget {
+/// Reports drill-down: item properties + period purchases (backend SSOT).
+class ReportsItemReportPage extends ConsumerWidget {
   const ReportsItemReportPage({
     super.key,
     required this.catalogItemId,
@@ -29,65 +21,8 @@ class ReportsItemReportPage extends ConsumerStatefulWidget {
   final String? itemName;
 
   @override
-  ConsumerState<ReportsItemReportPage> createState() =>
-      _ReportsItemReportPageState();
-}
-
-class _ReportsItemReportPageState extends ConsumerState<ReportsItemReportPage> {
-  String? _resolvedName;
-  String? _itemKey;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _resolve());
-  }
-
-  Future<void> _resolve() async {
-    final name = widget.itemName?.trim();
-    if (name != null && name.isNotEmpty) {
-      setState(() {
-        _resolvedName = name;
-        _itemKey = normCatalogItemName(name);
-      });
-      return;
-    }
-    final id = await resolveCatalogItemId(ref, itemId: widget.catalogItemId);
-    if (!mounted) return;
-    setState(() {
-      _resolvedName = widget.itemName ?? widget.catalogItemId;
-      _itemKey = id ?? widget.catalogItemId;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final merged = ref.watch(reportsPurchasesMergedProvider);
-    final key = _itemKey ?? widget.catalogItemId;
-    final displayName = _resolvedName ?? widget.itemName ?? 'Item';
-
-    TradeReportItemRow? sumRow;
-    final agg = buildTradeReportAgg(merged);
-    for (final r in agg.itemsAll) {
-      if (r.key == key || normCatalogItemName(r.name) == normCatalogItemName(displayName)) {
-        sumRow = r;
-        break;
-      }
-    }
-
-    if (sumRow == null && merged.isNotEmpty) {
-      for (final p in merged) {
-        for (final line in p.lines) {
-          if (line.catalogItemId == widget.catalogItemId) {
-            _resolvedName ??= line.itemName;
-            break;
-          }
-        }
-      }
-    }
-
-    final qtyLine = sumRow == null ? '' : reportQtySummaryBoldLine(sumRow);
-    final txns = reportItemTransactions(merged, key);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bundleAsync = ref.watch(reportsItemBundleProvider(catalogItemId));
 
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
@@ -102,79 +37,96 @@ class _ReportsItemReportPageState extends ConsumerState<ReportsItemReportPage> {
             }
           },
         ),
-        title: Text(displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: bundleAsync.maybeWhen(
+          data: (b) => Text(
+            (b['item_name'] as String?)?.trim().isNotEmpty == true
+                ? b['item_name'] as String
+                : (itemName ?? 'Item'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          orElse: () => Text(
+            itemName ?? 'Item',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
         backgroundColor: HexaColors.brandBackground,
         foregroundColor: HexaColors.brandPrimary,
       ),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: 32),
-        children: [
-          ReportsBreadcrumbBar(
-            segments: [
-              ('Reports', '/reports?tab=items'),
-              (displayName, null),
-            ],
-          ),
-          if (sumRow != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: ReportsKpiRow(
-                totals: TradeReportTotals(
-                  inr: sumRow.amountInr,
-                  bags: sumRow.bags,
-                  boxes: sumRow.boxes,
-                  tins: sumRow.tins,
-                  kg: sumRow.kg,
-                  deals: sumRow.dealIds.length,
-                ),
-                itemCount: 1,
-                supplierCount: 0,
+      body: bundleAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => FriendlyLoadError(
+          message: 'Could not load item report',
+          onRetry: () => ref.invalidate(reportsItemBundleProvider(catalogItemId)),
+        ),
+        data: (bundle) {
+          final displayName =
+              (bundle['item_name'] as String?)?.trim().isNotEmpty == true
+                  ? bundle['item_name'] as String
+                  : (itemName ?? 'Item');
+          final item = Map<String, dynamic>.from(
+            bundle['item'] as Map? ?? const {},
+          );
+          final summary = Map<String, dynamic>.from(
+            bundle['summary'] as Map? ?? const {},
+          );
+          final lines = (bundle['lines'] as List?)
+                  ?.whereType<Map>()
+                  .map((e) => Map<String, dynamic>.from(e))
+                  .toList() ??
+              const <Map<String, dynamic>>[];
+
+          return ListView(
+            padding: const EdgeInsets.only(bottom: 32),
+            children: [
+              ReportsBreadcrumbBar(
+                segments: [
+                  ('Reports', '/reports?tab=items'),
+                  (displayName, null),
+                ],
               ),
-            ),
-          if (qtyLine.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Text(
-                qtyLine,
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-            child: Text(
-              _inr0((sumRow?.amountInr ?? 0).round()),
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
-            ),
-          ),
-          if (txns.isEmpty && sumRow == null)
-            FriendlyLoadError(
-              message: 'No purchase history for this item in the selected period.',
-              onRetry: () {},
-            )
-          else
-            ...[
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+              ReportsItemSnapshotCard(item: item),
+              ReportsItemPeriodStrip(summary: summary, item: item),
+              ReportsItemActionBar(catalogItemId: catalogItemId),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
                 child: Text(
-                  'Purchase history',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
+                  'Purchase history (${lines.length})',
+                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
                 ),
               ),
-              for (final t in txns)
-                ListTile(
-                  dense: true,
-                  title: Text(t.supplierName),
-                  subtitle: Text(DateFormat('d MMM yyyy').format(t.date)),
-                  trailing: Text(reportKgWeightedRateLabel(t.buyRate)),
+              if (lines.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Text(
+                    'No purchases for this item in the selected period. '
+                    'Change the date range on Reports.',
+                  ),
+                )
+              else
+                Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 12),
+                  clipBehavior: Clip.antiAlias,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      for (var i = 0; i < lines.length; i++) ...[
+                        if (i > 0)
+                          Divider(
+                            height: 1,
+                            color: HexaColors.brandPrimary.withValues(alpha: 0.06),
+                          ),
+                        ReportsItemPurchaseLineTile(line: lines[i]),
+                      ],
+                    ],
+                  ),
                 ),
             ],
-          TextButton(
-            onPressed: () => context.push('/catalog/item/${widget.catalogItemId}?tab=purchases'),
-            child: const Text('Open in catalog'),
-          ),
-        ],
+          );
+        },
       ),
     );
   }

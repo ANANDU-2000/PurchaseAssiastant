@@ -7,7 +7,7 @@ import '../../../core/utils/unit_utils.dart';
 import '../stock/reports_stock_models.dart';
 import '../stock/reports_stock_status.dart';
 
-/// Compact ERP business card for Reports → Stock intel list.
+/// Dense row for Reports → Stock (~72dp) — name, qty, status, movement on 2–3 lines.
 class ReportsStockIntelCard extends StatelessWidget {
   const ReportsStockIntelCard({super.key, required this.item});
 
@@ -23,81 +23,101 @@ class ReportsStockIntelCard extends StatelessWidget {
         ? formatStockQtyNumber(item.currentStock)
         : '${formatStockQtyNumber(item.currentStock)} $unitUpper';
 
+    final meta = <String>[
+      'Last ${item.movementLabel}',
+      '7d ${_usageLine(item.used7d, item.unit)}',
+      '30d ${_usageLine(item.used30d, item.unit)}',
+    ].join(' · ');
+
     return Material(
       color: HexaColors.brandCard,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(8),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: item.id.isEmpty
             ? null
             : () => context.push('/stock/intelligence/${item.id}'),
-        child: IntrinsicHeight(
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            borderRadius: BorderRadius.circular(8),
+          ),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Container(width: 4, color: status.borderAccent),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        item.name,
-                        style: HexaDsType.h3(context).copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          _StatusBadge(status: status),
+                        ],
                       ),
-                      if (item.category.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          'Category: ${item.category}',
-                          style: HexaDsType.bodySm(context),
-                        ),
-                      ],
-                      const SizedBox(height: 10),
-                      Text(
-                        stockLabel,
-                        style: HexaDsType.metricPrimary().copyWith(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          height: 1.05,
-                        ),
+                      const SizedBox(height: 4),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            stockLabel,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0F172A),
+                              height: 1.1,
+                            ),
+                          ),
+                          if (item.category.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                item.category,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: HexaDsType.bodySm(context),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 3),
                       Text(
-                        'Last movement:',
-                        style: HexaDsType.labelCaps(context),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        item.movementLabel,
-                        style: HexaDsType.bodyPrimary(context).copyWith(
+                        meta,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11,
                           fontWeight: FontWeight.w500,
+                          color: Color(0xFF64748B),
+                          height: 1.25,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Used:',
-                        style: HexaDsType.labelCaps(context),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '7d → ${_usageLine(item.used7d, item.unit)}',
-                        style: HexaDsType.bodyPrimary(context).copyWith(
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        '30d → ${_usageLine(item.used30d, item.unit)}',
-                        style: HexaDsType.bodyPrimary(context).copyWith(
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      _StatusBadge(status: status),
                     ],
                   ),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(right: 4),
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  size: 22,
+                  color: Color(0xFF94A3B8),
                 ),
               ),
             ],
@@ -122,17 +142,17 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: status.badgeBackground,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         status.label,
-        style: HexaDsType.labelCaps(context).copyWith(
-          color: status.badgeForeground,
+        style: TextStyle(
           fontSize: 10,
-          letterSpacing: 0.2,
+          fontWeight: FontWeight.w800,
+          color: status.badgeForeground,
         ),
       ),
     );

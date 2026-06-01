@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/auth/provider_api_guard.dart';
 import '../../core/providers/business_aggregates_invalidation.dart';
+import '../../core/providers/home_owner_dashboard_providers.dart'
+    show homeInventorySummaryProvider, homeRecentActivityFeedProvider;
 import '../../core/providers/realtime_events_provider.dart';
 
 /// Single shell-level realtime fan-out (not tied to Home tab mount).
@@ -34,7 +37,17 @@ class _ShellRealtimeListenerState extends ConsumerState<ShellRealtimeListener> {
     ref.listen(realtimeInvalidationProvider, (prev, next) {
       final signal = next.valueOrNull;
       if (signal == null || signal.tick == _lastTick) return;
-      _lastTick = signal.tick;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || providerSkipApi(ref)) return;
+        if (signal.tick == _lastTick) return;
+        _lastTick = signal.tick;
+        _applyRealtimeSignal(signal);
+      });
+    });
+    return widget.child;
+  }
+
+  void _applyRealtimeSignal(RealtimeInvalidationSignal signal) {
       if (signal.notifications) {
         invalidateNotificationSurfaces(ref);
       }
@@ -49,9 +62,11 @@ class _ShellRealtimeListenerState extends ConsumerState<ShellRealtimeListener> {
               invalidateWarehouseSurfacesLight(ref, itemId: id);
             }
           }
+          // Home activity/inventory are not tied to shell branch visibility anymore,
+          // but skip full dashboard bust on passive realtime ticks.
+          ref.invalidate(homeRecentActivityFeedProvider);
+          ref.invalidate(homeInventorySummaryProvider);
         }
       }
-    });
-    return widget.child;
   }
 }

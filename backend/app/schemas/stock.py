@@ -439,6 +439,11 @@ class BarcodeLookupOut(BaseModel):
     last_purchase_unit: str | None = None
     last_purchase_rate: Decimal | None = None
     supplier_name: str | None = None
+    physical_stock_qty: Decimal | None = None
+    physical_stock_counted_at: datetime | None = None
+    physical_stock_counted_by: str | None = None
+    last_stock_updated_at: datetime | None = None
+    last_stock_updated_by: str | None = None
 
 
 class BarcodeLabelOut(BaseModel):

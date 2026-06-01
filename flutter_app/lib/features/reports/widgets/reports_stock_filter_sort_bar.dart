@@ -6,7 +6,7 @@ import '../../../core/theme/hexa_colors.dart';
 import '../stock/reports_stock_providers.dart';
 import '../stock/reports_stock_status.dart';
 
-/// Filter chips [All][Active][Slow][Dead][Fast] + sort control.
+/// Filter chips + compact sort — single strip (no duplicate KPI row above).
 class ReportsStockFilterSortBar extends ConsumerWidget {
   const ReportsStockFilterSortBar({super.key});
 
@@ -24,54 +24,61 @@ class ReportsStockFilterSortBar extends ConsumerWidget {
     final selected = ref.watch(reportsStockChipFilterProvider);
     final sort = ref.watch(reportsStockSortProvider);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              for (final chip in _filters) ...[
-                _FilterChip(
-                  label: chip.label,
-                  count: summary.countFor(chip),
-                  selected: selected == chip,
-                  onTap: () => ref
-                      .read(reportsStockChipFilterProvider.notifier)
-                      .state = chip,
-                ),
-                const SizedBox(width: 8),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+            child: Text(
+              'Movement class (rolling · not tied to period above)',
+              style: HexaDsType.labelCaps(context).copyWith(fontSize: 10),
+            ),
+          ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                for (final chip in _filters) ...[
+                  _FilterChip(
+                    label: chip.label,
+                    count: summary.countFor(chip),
+                    selected: selected == chip,
+                    onTap: () => ref
+                        .read(reportsStockChipFilterProvider.notifier)
+                        .state = chip,
+                  ),
+                  const SizedBox(width: 6),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Sort: ${sort.label}',
-                  style: HexaDsType.bodySm(context),
-                  maxLines: 2,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Sort: ${sort.label}',
+                    style: HexaDsType.bodySm(context),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-              TextButton.icon(
-                onPressed: () => _openSortSheet(context, ref),
-                icon: const Icon(Icons.sort_rounded, size: 18),
-                label: const Text('Change'),
-                style: TextButton.styleFrom(
-                  foregroundColor: HexaColors.brandPrimary,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  minimumSize: const Size(48, 48),
+                IconButton(
+                  tooltip: 'Change sort',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _openSortSheet(context, ref),
+                  icon: const Icon(Icons.sort_rounded, size: 20),
+                  color: HexaColors.brandPrimary,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -92,6 +99,7 @@ class ReportsStockFilterSortBar extends ConsumerWidget {
               ),
               for (final option in ReportsStockSort.values)
                 ListTile(
+                  dense: true,
                   title: Text(option.label),
                   trailing: current == option
                       ? Icon(Icons.check_rounded,
@@ -125,36 +133,20 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: selected
-          ? HexaColors.brandPrimary.withValues(alpha: 0.12)
-          : HexaColors.brandCard,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 40),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: selected
-                  ? HexaColors.brandPrimary
-                  : const Color(0xFFE2E8F0),
-            ),
-          ),
-          child: Text(
-            '$label ($count)',
-            style: HexaDsType.bodyPrimary(context).copyWith(
-              fontWeight: FontWeight.w700,
-              color: selected
-                  ? HexaColors.brandPrimary
-                  : HexaDsColors.textBody,
-            ),
-          ),
+    return FilterChip(
+      label: Text(
+        '$label ($count)',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: selected ? HexaColors.brandPrimary : HexaDsColors.textBody,
         ),
       ),
+      selected: selected,
+      onSelected: (_) => onTap(),
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      showCheckmark: true,
     );
   }
 }

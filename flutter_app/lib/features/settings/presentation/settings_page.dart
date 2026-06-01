@@ -233,11 +233,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 onTap: () => context.go('/contacts'),
               ),
               _NavTile(
-                icon: Icons.inventory_2_outlined,
-                title: 'Item catalog',
-                subtitle: 'Categories and items for faster entry lines',
-                onTap: () => context.push('/catalog'),
+                icon: Icons.category_outlined,
+                title: 'Categories & subcategories',
+                subtitle: 'Quick add Rice, Oil, and sub-types for items',
+                onTap: () => context.push('/catalog/taxonomy'),
               ),
+              if (!isStaff)
+                _NavTile(
+                  icon: Icons.inventory_2_outlined,
+                  title: 'Item catalog',
+                  subtitle: 'Full category tree and item editor',
+                  onTap: () => context.push('/catalog'),
+                ),
               _NavTile(
                 icon: Icons.tune_rounded,
                 title: 'Set reorder levels',

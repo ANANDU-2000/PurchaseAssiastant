@@ -7,12 +7,13 @@ import 'low_stock_category_tree.dart';
 import 'low_stock_item_detail_sheet.dart';
 import 'stock_row_metrics.dart';
 
-/// Mobile-first low-stock row (~90px): name · stock · status · 2 actions.
+/// Mobile-first low-stock row: serial # · name · stock · actions in one line.
 class LowStockCompactItemRow extends ConsumerWidget {
   const LowStockCompactItemRow({
     super.key,
     required this.item,
     required this.staffMode,
+    this.serialNumber,
     this.hideSubcategory = false,
     this.ownerInformed = false,
     this.onOrderNow,
@@ -25,6 +26,8 @@ class LowStockCompactItemRow extends ConsumerWidget {
 
   final Map<String, dynamic> item;
   final bool staffMode;
+  /// 1-based index within the open category / sub-tab list.
+  final int? serialNumber;
   final bool hideSubcategory;
   final bool ownerInformed;
   final void Function(Map<String, dynamic> item)? onOrderNow;
@@ -51,12 +54,12 @@ class LowStockCompactItemRow extends ConsumerWidget {
     final pendingDelivery = lowStockItemPendingDelivery(item);
 
     final statusLabel = out
-        ? 'OUT OF STOCK'
+        ? 'OUT'
         : pendingDelivery
-            ? 'PENDING DELIVERY'
+            ? 'PENDING'
             : low
-                ? 'LOW STOCK'
-                : 'NEEDS ATTENTION';
+                ? 'LOW'
+                : 'ATTN';
     final statusColor = out
         ? _critical
         : pendingDelivery
@@ -85,41 +88,81 @@ class LowStockCompactItemRow extends ConsumerWidget {
       color: Colors.white,
       child: InkWell(
         onTap: openDetails,
-        onLongPress: openDetails,
         child: Container(
-          constraints: const BoxConstraints(minHeight: 88, maxHeight: 100),
           decoration: const BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: _border, width: 1),
-            ),
+            border: Border(bottom: BorderSide(color: _border)),
           ),
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          padding: const EdgeInsets.fromLTRB(8, 8, 4, 8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              if (serialNumber != null)
+                SizedBox(
+                  width: 32,
+                  child: Text(
+                    '$serialNumber',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ),
               Container(
                 width: 3,
-                height: 52,
+                height: 44,
                 decoration: BoxDecoration(
                   color: statusColor,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
                       name,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         height: 1.2,
                       ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text(
+                          formatStockQtyDisplay(unit, system),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF334155),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            statusLabel,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: statusColor,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     if (!hideSubcategory && sub.isNotEmpty)
                       Text(
@@ -127,63 +170,39 @@ class LowStockCompactItemRow extends ConsumerWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 12,
+                          fontSize: 11,
                           color: Color(0xFF94A3B8),
                         ),
                       ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Stock: ${formatStockQtyDisplay(unit, system)}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF334155),
-                      ),
-                    ),
-                    Text(
-                      statusLabel,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: statusColor,
-                      ),
-                    ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (onStockUpdate != null)
-                    _PrimaryAction(
-                      label: '+ Stock',
-                      filled: true,
-                      onTap: () => onStockUpdate!(item),
-                    ),
-                  const SizedBox(height: 6),
-                  if (!staffMode && onOrderNow != null)
-                    _PrimaryAction(
-                      label: 'Order',
-                      filled: false,
-                      onTap: () => onOrderNow!(item),
-                    )
-                  else if (staffMode && onNotifyOwner != null)
-                    _PrimaryAction(
-                      label: ownerInformed ? 'Informed' : 'Inform',
-                      filled: false,
-                      enabled: !ownerInformed,
-                      onTap: () => onNotifyOwner!(item),
-                    ),
-                ],
-              ),
+              if (onStockUpdate != null)
+                _CompactAction(
+                  label: '+ Stock',
+                  filled: true,
+                  onTap: () => onStockUpdate!(item),
+                ),
+              if (!staffMode && onOrderNow != null)
+                _CompactAction(
+                  label: 'Order',
+                  filled: false,
+                  onTap: () => onOrderNow!(item),
+                )
+              else if (staffMode && onNotifyOwner != null)
+                _CompactAction(
+                  label: ownerInformed ? 'Sent' : 'Inform',
+                  filled: false,
+                  enabled: !ownerInformed,
+                  onTap: () => onNotifyOwner!(item),
+                ),
               IconButton(
                 icon: const Icon(Icons.more_vert, size: 20),
                 color: const Color(0xFF64748B),
                 onPressed: openDetails,
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
               ),
             ],
           ),
@@ -193,8 +212,8 @@ class LowStockCompactItemRow extends ConsumerWidget {
   }
 }
 
-class _PrimaryAction extends StatelessWidget {
-  const _PrimaryAction({
+class _CompactAction extends StatelessWidget {
+  const _CompactAction({
     required this.label,
     required this.filled,
     required this.onTap,
@@ -208,39 +227,45 @@ class _PrimaryAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = enabled ? LowStockCompactItemRow._primaryBtn : const Color(0xFF94A3B8);
+    final fg = enabled
+        ? LowStockCompactItemRow._primaryBtn
+        : const Color(0xFF94A3B8);
+    final child = Text(
+      label,
+      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+    );
     if (filled) {
-      return SizedBox(
-        width: 76,
-        height: 36,
-        child: FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: enabled ? fg : const Color(0xFFE2E8E6),
-            padding: EdgeInsets.zero,
-            minimumSize: const Size(76, 36),
-          ),
-          onPressed: enabled ? onTap : null,
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+      return Padding(
+        padding: const EdgeInsets.only(left: 4),
+        child: SizedBox(
+          height: 34,
+          child: FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: enabled ? fg : const Color(0xFFE2E8E6),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 34),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed: enabled ? onTap : null,
+            child: child,
           ),
         ),
       );
     }
-    return SizedBox(
-      width: 76,
-      height: 36,
-      child: OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: fg,
-          side: BorderSide(color: fg.withValues(alpha: 0.5)),
-          padding: EdgeInsets.zero,
-          minimumSize: const Size(76, 36),
-        ),
-        onPressed: enabled ? onTap : null,
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: SizedBox(
+        height: 34,
+        child: OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: fg,
+            side: BorderSide(color: fg.withValues(alpha: 0.45)),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            minimumSize: const Size(0, 34),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          onPressed: enabled ? onTap : null,
+          child: child,
         ),
       ),
     );

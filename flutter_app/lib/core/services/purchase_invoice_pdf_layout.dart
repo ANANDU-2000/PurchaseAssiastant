@@ -16,7 +16,7 @@ import '../utils/unit_utils.dart';
 final _num2 = NumberFormat('#,##,##0.00', 'en_IN');
 final _num0 = NumberFormat('#,##,##0.##', 'en_IN');
 final _dateFmt = DateFormat('dd MMM yyyy');
-final _dateTimeFmt = DateFormat('dd MMM yyyy · hh:mm a');
+final _dateTimeFmt = DateFormat('dd MMM yyyy, hh:mm a');
 
 const _border = PdfColor.fromInt(0xFFCBD5E1);
 const _muted = PdfColor.fromInt(0xFF64748B);
@@ -24,7 +24,7 @@ const _muted = PdfColor.fromInt(0xFF64748B);
 String _rsPdf(num n) => 'Rs. ${_num2.format(n)}';
 String _empty(String? s) {
   final t = s?.trim();
-  if (t == null || t.isEmpty) return '—';
+  if (t == null || t.isEmpty) return pdfEmpty;
   return safePdfText(t);
 }
 
@@ -301,7 +301,7 @@ String _pdfPurchaseRateStr(TradePurchaseLine l) {
 
 String _pdfSellingRateStr(TradePurchaseLine l) {
   final r = tradePurchaseLineDisplaySellingRate(l);
-  if (r == null) return '—';
+  if (r == null) return pdfEmpty;
   return '${_rsPdf(r)}/${ledgerSellingRateDisplayDim(l)}';
 }
 
@@ -534,7 +534,7 @@ String? _purchasePdfTotalsWeightFooterLine(TradePurchase p) {
     parts.add('${_num0.format(kg)} kg');
   }
   if (parts.isEmpty) return null;
-  return 'Total: ${parts.join(' · ')}';
+  return safePdfText('Total: ${parts.join(pdfInlineSep)}');
 }
 
 pw.Widget _footerBlock(BusinessProfile biz, TradePurchase p) {

@@ -308,7 +308,7 @@ class _CategoryPieCard extends StatelessWidget {
     return _ChartCard(
       title: 'Category breakdown',
       child: SizedBox(
-        height: size,
+        height: math.max(size, 140),
         child: Row(
           children: [
             Expanded(
@@ -319,35 +319,40 @@ class _CategoryPieCard extends StatelessWidget {
                   PieChart(
                     PieChartData(
                       sectionsSpace: 1.5,
-                      centerSpaceRadius: size * 0.18,
+                      centerSpaceRadius: size * 0.28,
                       sections: sections,
                       pieTouchData: PieTouchData(enabled: false),
                     ),
                   ),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _inr0(total),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
+                  SizedBox(
+                    width: size * 0.42,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            _inr0(total),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
                         ),
-                      ),
-                      Text(
-                        '${usable.length} categories',
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: Color(0xFF64748B),
+                        Text(
+                          '${usable.length} cat.',
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 9,
+                            color: Color(0xFF64748B),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -407,36 +412,59 @@ class _SupplierDonutCard extends StatelessWidget {
 
     return _ChartCard(
       title: 'Supplier share',
-      child: Center(
-        child: SpendRingChart(
-          diameter: diameter,
-          strokeWidth: math.max(8.0, diameter * 0.05),
-          values: values,
-          colors: colors,
-          centerChild: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _inr0(total > 0 ? total : fallbackTotal),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SpendRingChart(
+            diameter: diameter * 0.85,
+            strokeWidth: math.max(8.0, diameter * 0.045),
+            values: values,
+            colors: colors,
+            centerChild: SizedBox(
+              width: diameter * 0.38,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      _inr0(total > 0 ? total : fallbackTotal),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${usable.length} sup.',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 9,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 2),
-              Text(
-                '${usable.length} suppliers',
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
-              ),
-            ],
+            ),
           ),
-        ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _LegendList(
+              labels: [
+                for (final r in usable)
+                  r['supplier_name']?.toString() ??
+                      r['name']?.toString() ??
+                      '—',
+              ],
+              values: [
+                for (final r in usable)
+                  _inr0(coerceToDouble(r['total_purchase'])),
+              ],
+              colors: colors,
+            ),
+          ),
+        ],
       ),
     );
   }

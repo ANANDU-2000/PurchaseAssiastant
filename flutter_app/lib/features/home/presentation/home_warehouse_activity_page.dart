@@ -172,7 +172,7 @@ class _ActivityTableHeader extends StatelessWidget {
           Expanded(
             flex: 34,
             child: Text(
-              'Bill · Date',
+              'Bill · Entered by',
               style: HexaDsType.label(10, color: HexaDsColors.textMuted),
             ),
           ),

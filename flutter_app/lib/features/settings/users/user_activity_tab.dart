@@ -24,23 +24,28 @@ class UserActivityTab extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-          child: Row(
-            children: [
-              for (final s in UserActivitySection.values) ...[
-                _SectionChip(
-                  label: _sectionLabel(s),
-                  selected: section == s,
-                  onTap: () =>
-                      ref.read(userActivitySectionProvider.notifier).state = s,
-                ),
-                const SizedBox(width: 8),
+        Material(
+          color: Theme.of(context).colorScheme.surface,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Row(
+              children: [
+                for (final s in UserActivitySection.values) ...[
+                  _SectionChip(
+                    label: _sectionLabel(s),
+                    selected: section == s,
+                    onTap: () => ref
+                        .read(userActivitySectionProvider.notifier)
+                        .state = s,
+                  ),
+                  const SizedBox(width: 8),
+                ],
               ],
-            ],
+            ),
           ),
         ),
+        const Divider(height: 1),
         Expanded(
           child: switch (section) {
             UserActivitySection.feed => _FeedSection(userId: userId),

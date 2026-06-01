@@ -8,7 +8,6 @@ import '../stock/reports_stock_providers.dart';
 import '../stock/reports_stock_status.dart';
 import '../widgets/reports_stock_filter_sort_bar.dart';
 import '../widgets/reports_stock_intel_card.dart';
-import '../widgets/reports_stock_summary_bar.dart';
 
 /// Reports → Stock — card-based warehouse intel (ERP rebuild).
 class ReportsStockTab extends ConsumerStatefulWidget {
@@ -51,16 +50,6 @@ class _ReportsStockTabState extends ConsumerState<ReportsStockTab> {
 
         return CustomScrollView(
           slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                child: Text(
-                  'Rolling warehouse intel — not filtered by report period',
-                  style: HexaDsType.labelCaps(context),
-                ),
-              ),
-            ),
-            const SliverToBoxAdapter(child: ReportsStockSummaryBar()),
             const SliverToBoxAdapter(child: ReportsStockFilterSortBar()),
             if (items.isEmpty)
               SliverFillRemaining(
@@ -69,10 +58,10 @@ class _ReportsStockTabState extends ConsumerState<ReportsStockTab> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
                 sliver: SliverList.separated(
                   itemCount: items.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  separatorBuilder: (_, __) => const SizedBox(height: 6),
                   itemBuilder: (context, index) =>
                       ReportsStockIntelCard(item: items[index]),
                 ),

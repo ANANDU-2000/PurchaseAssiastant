@@ -114,14 +114,22 @@ class _StockTodayFeedRow extends StatelessWidget {
     final style = StockTodayFeed._typeStyle(row['adjustment_type']?.toString());
     final delta = StockTodayFeed._delta(row);
     final unit = (row['unit'] ?? '').toString().trim();
-    final deltaStr = delta >= 0
-        ? '+${StockTodayFeed.fmtQty(delta.abs())}'
-        : '-${StockTodayFeed.fmtQty(delta.abs())}';
-    final deltaColor = delta > 0
-        ? const Color(0xFF2E7D32)
-        : delta < 0
-            ? const Color(0xFFC62828)
-            : Theme.of(context).colorScheme.onSurfaceVariant;
+    final isPurchaseBill = row['adjustment_type']?.toString() == 'purchase' &&
+        delta.abs() < 0.001;
+    final deltaStr = isPurchaseBill
+        ? (row['reason']?.toString().trim().isNotEmpty == true
+            ? row['reason']!.toString()
+            : 'Bill')
+        : delta >= 0
+            ? '+${StockTodayFeed.fmtQty(delta.abs())}'
+            : '-${StockTodayFeed.fmtQty(delta.abs())}';
+    final deltaColor = isPurchaseBill
+        ? const Color(0xFFE65100)
+        : delta > 0
+            ? const Color(0xFF2E7D32)
+            : delta < 0
+                ? const Color(0xFFC62828)
+                : Theme.of(context).colorScheme.onSurfaceVariant;
     final name = row['item_name']?.toString() ?? 'Item';
     final itemId = row['item_id']?.toString();
     final who = row['updated_by_name']?.toString() ?? '—';

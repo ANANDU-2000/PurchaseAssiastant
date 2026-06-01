@@ -1429,6 +1429,8 @@ async def barcode_lookup(
     if not item:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
     label = await _barcode_label(db, business_id, item)
+    phys_map = await _latest_physical_count_map(db, business_id, [item.id])
+    phys = phys_map.get(item.id)
     return BarcodeLookupOut(
         id=item.id,
         name=item.name,
@@ -1442,6 +1444,11 @@ async def barcode_lookup(
         last_purchase_unit=label.last_purchase_unit,
         last_purchase_rate=label.last_purchase_rate,
         supplier_name=label.supplier_name,
+        physical_stock_qty=phys.counted_qty if phys else None,
+        physical_stock_counted_at=phys.counted_at if phys else None,
+        physical_stock_counted_by=phys.counted_by_name if phys else None,
+        last_stock_updated_at=getattr(item, "last_stock_updated_at", None),
+        last_stock_updated_by=getattr(item, "last_stock_updated_by", None),
     )
 
 

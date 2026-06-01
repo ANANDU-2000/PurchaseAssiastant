@@ -19,6 +19,122 @@ void openHomeActivityItem(BuildContext context, HomeActivityItem item) {
   context.push('/catalog/item/$id');
 }
 
+Future<void> showWarehouseActivityDetailSheet(
+  BuildContext context,
+  HomeActivityItem item,
+) {
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) {
+      final entered = item.createdBy ?? item.actor;
+      final verified = item.verifiedBy;
+      final supplier = item.supplierName?.trim();
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              item.humanId ?? item.title,
+              style: HexaDsType.heading(18),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              formatPurchaseHumanDate(item.at),
+              style: HexaDsType.bodySm(ctx),
+            ),
+            if (supplier != null && supplier.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _DetailLine(
+                label: 'Supplier',
+                value: supplier,
+              ),
+            ],
+            if (item.unitsLine != null && item.unitsLine!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _DetailLine(label: 'Quantity', value: item.unitsLine!),
+            ],
+            if (entered != null && entered.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _DetailLine(label: 'Entered by', value: entered),
+            ],
+            if (verified != null && verified.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _DetailLine(
+                label: 'Verified by',
+                value: verified,
+                valueColor: const Color(0xFF16A34A),
+              ),
+            ] else if (item.isPurchaseDelivery) ...[
+              const SizedBox(height: 8),
+              _DetailLine(
+                label: 'Verified by',
+                value: 'Not recorded yet',
+                valueColor: HexaColors.textSecondary,
+              ),
+            ],
+            if (item.amountInr != null && item.amountInr! > 0) ...[
+              const SizedBox(height: 8),
+              _DetailLine(
+                label: 'Bill total',
+                value: homeInr(item.amountInr!),
+              ),
+            ],
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                openHomeActivityItem(context, item);
+              },
+              child: const Text('Open full record'),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class _DetailLine extends StatelessWidget {
+  const _DetailLine({
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 100,
+          child: Text(
+            label,
+            style: HexaDsType.label(12, color: HexaDsColors.textMuted),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: valueColor ?? const Color(0xFF0F172A),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Home card preview row — compact but shows bill id when available.
 class WarehouseActivityCompactRow extends StatelessWidget {
   const WarehouseActivityCompactRow({
@@ -36,24 +152,22 @@ class WarehouseActivityCompactRow extends StatelessWidget {
     final title = billId != null && billId.isNotEmpty && item.isPurchaseDelivery
         ? billId
         : item.title;
+    final entered = item.createdBy ?? item.actor;
     final subtitleParts = <String>[
       if (item.isPurchaseDelivery && item.unitsLine != null)
         item.unitsLine!
       else if (item.subtitle.isNotEmpty)
         item.subtitle,
+      if (entered != null && entered.isNotEmpty) 'Entered by $entered',
       if (item.verifiedBy != null && item.verifiedBy!.isNotEmpty)
-        'Verified by ${item.verifiedBy}'
-      else if (item.actor != null && item.actor!.isNotEmpty)
-        item.actor!,
+        'Verified by ${item.verifiedBy}',
       formatPurchaseHumanDate(item.at),
     ];
     final subtitle = subtitleParts.where((s) => s.isNotEmpty).join(' · ');
 
     return ListTile(
       dense: true,
-      onTap: item.routeId != null && item.routeId!.isNotEmpty
-          ? () => openHomeActivityItem(context, item)
-          : null,
+      onTap: () => showWarehouseActivityDetailSheet(context, item),
       leading: Icon(icon, size: 20, color: color),
       title: Text(
         title,
@@ -88,7 +202,12 @@ class WarehouseActivityDetailRow extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: tappable ? () => openHomeActivityItem(context, item) : null,
+        onTap: tappable
+            ? () => showWarehouseActivityDetailSheet(context, item)
+            : null,
+        onLongPress: tappable
+            ? () => openHomeActivityItem(context, item)
+            : null,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
           child: isDelivery
@@ -111,7 +230,10 @@ class _DeliveryLayout extends StatelessWidget {
     final leftTitle = bill != null && bill.isNotEmpty ? bill : item.title;
     final dateLabel = DateFormat('d MMM yyyy').format(item.at);
     final units = item.unitsLine ?? item.qtyChange ?? '—';
-    final verifier = item.verifiedBy ?? item.actor ?? '—';
+    final entered = item.createdBy ?? item.actor;
+    final verifier = (item.verifiedBy ?? '').trim();
+    final verifierLabel =
+        verifier.isNotEmpty ? verifier : '—';
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -136,6 +258,19 @@ class _DeliveryLayout extends StatelessWidget {
                 dateLabel,
                 style: HexaDsType.label(11, color: HexaDsColors.textMuted),
               ),
+              if (entered != null && entered.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  'Entered: $entered',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF475569),
+                  ),
+                ),
+              ],
               if (item.supplierName != null &&
                   item.supplierName!.trim().isNotEmpty) ...[
                 const SizedBox(height: 2),
@@ -185,14 +320,16 @@ class _DeliveryLayout extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                verifier,
+                verifierLabel,
                 textAlign: TextAlign.end,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF16A34A),
+                  color: verifier.isNotEmpty
+                      ? const Color(0xFF16A34A)
+                      : const Color(0xFF94A3B8),
                   height: 1.2,
                 ),
               ),
@@ -220,11 +357,13 @@ class _GenericLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     final icon = _activityIcon(item.kind);
     final color = _activityColor(item.kind);
+    final who = item.createdBy ?? item.actor;
     final meta = <String>[
       if (item.unitsLine != null && item.unitsLine!.isNotEmpty)
         item.unitsLine!
       else if (item.qtyChange != null && item.qtyChange!.isNotEmpty)
         item.qtyChange!,
+      if (who != null && who.isNotEmpty) who,
       formatPurchaseHumanDate(item.at),
     ].join(' · ');
 
@@ -270,11 +409,6 @@ class _GenericLayout extends StatelessWidget {
             ],
           ),
         ),
-        if (item.actor != null && item.actor!.isNotEmpty)
-          Text(
-            item.actor!,
-            style: HexaDsType.label(11, color: HexaDsColors.textMuted),
-          ),
       ],
     );
   }

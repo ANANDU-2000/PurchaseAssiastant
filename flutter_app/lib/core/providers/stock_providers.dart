@@ -11,8 +11,10 @@ import '../auth/session_notifier.dart'
 import 'stock_list_exceptions.dart';
 import '../../features/shell/shell_branch_provider.dart';
 import '../json_coerce.dart';
+import '../utils/stock_audit_rows.dart';
 import 'analytics_kpi_provider.dart' show analyticsDateRangeProvider;
 import 'app_period_provider.dart';
+import 'home_breakdown_tab_providers.dart' show homeDateRangeForWatch;
 import 'home_dashboard_provider.dart';
 
 void providerKeepAlive(Ref ref, Duration ttl) {
@@ -170,7 +172,7 @@ final stockListQueryProvider =
 
 /// Stock list period chips (Today / Week / Month / Year).
 final stockPagePeriodProvider =
-    StateProvider<HomePeriod>((_) => HomePeriod.allTime);
+    StateProvider<HomePeriod>((_) => HomePeriod.month);
 
 /// Tablet/desktop split pane selection.
 final stockSelectedItemIdProvider = StateProvider<String?>((ref) => null);
@@ -299,47 +301,39 @@ final stockTotalsProvider =
   },
 );
 
-/// Stock audit events for the stock page **Changes** tab (newest first).
+/// Stock audit events for the stock page **Changes** / **Movement** tabs (newest first).
 final stockChangesFeedProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   providerKeepAlive(ref, const Duration(minutes: 2));
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
-  ref.watch(stockPagePeriodProvider);
-  final rows = await ref.read(hexaApiProvider).listStockAuditRecent(
-        businessId: session.primaryBusiness.id,
-        limit: HexaApi.stockAuditRecentMaxLimit,
-      );
-  final period = ref.read(stockPagePeriodProvider);
-  final range = homePeriodRange(period, now: DateTime.now());
-  final from = DateTime(range.start.year, range.start.month, range.start.day);
-  final end = DateTime(
-    range.end.year,
-    range.end.month,
-    range.end.day,
-    23,
-    59,
-    59,
+  final period = ref.watch(stockPagePeriodProvider);
+  final bid = session.primaryBusiness.id;
+  final api = ref.read(hexaApiProvider);
+  final q = homeDateRangeForWatch(period, null);
+  final results = await Future.wait([
+    api.listStockAuditRecent(
+      businessId: bid,
+      limit: HexaApi.stockAuditRecentMaxLimit,
+    ),
+    api.listTradePurchases(
+      businessId: bid,
+      limit: 80,
+      offset: 0,
+      status: 'all',
+      purchaseFrom: q.from,
+      purchaseTo: q.to,
+    ),
+  ]);
+  final audits = filterStockAuditRowsByHomePeriod(
+    (results[0] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+    period,
   );
-  final out = <Map<String, dynamic>>[];
-  for (final raw in rows) {
-    final m = Map<String, dynamic>.from(raw);
-    final at = DateTime.tryParse(
-          m['created_at']?.toString() ?? m['audited_at']?.toString() ?? '',
-        ) ??
-        DateTime.tryParse(m['on']?.toString() ?? '');
-    if (at == null) continue;
-    if (at.isBefore(from) || at.isAfter(end)) continue;
-    out.add(m);
-  }
-  out.sort((a, b) {
-    final ta = DateTime.tryParse(a['created_at']?.toString() ?? '') ??
-        DateTime.fromMillisecondsSinceEpoch(0);
-    final tb = DateTime.tryParse(b['created_at']?.toString() ?? '') ??
-        DateTime.fromMillisecondsSinceEpoch(0);
-    return tb.compareTo(ta);
-  });
-  return out;
+  final bills = mapPurchasesToStockAuditRows(
+    (results[1] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+  );
+  final billsInPeriod = filterStockAuditRowsByHomePeriod(bills, period);
+  return sortStockAuditRowsNewestFirst([...audits, ...billsInPeriod]);
 });
 
 /// Cache key for `/stock/list` — query + operational filters (server-side).

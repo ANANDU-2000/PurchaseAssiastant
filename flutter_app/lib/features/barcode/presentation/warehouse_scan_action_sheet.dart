@@ -53,7 +53,15 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
   @override
   void initState() {
     super.initState();
-    final cur = coerceToDouble(widget.item['current_stock']);
+    final session = ref.read(sessionProvider);
+    final privileged = session != null && sessionIsPrivilegedStockRole(session);
+    _mode = StockUpdateMode.physical;
+    final phys = coerceToDoubleNullable(
+      widget.item['physical_stock_qty'] ?? widget.item['physical_count_qty'],
+    );
+    final cur = privileged
+        ? coerceToDouble(widget.item['current_stock'])
+        : (phys ?? coerceToDouble(widget.item['current_stock']));
     _qtyCtl.text = cur == cur.roundToDouble()
         ? '${cur.round()}'
         : cur.toStringAsFixed(1);
@@ -142,7 +150,35 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
       final note = _notesCtl.text.trim();
       final reasonLabel = _reasons[_reasonType] ?? 'Stock update';
 
+      final privileged = sessionIsPrivilegedStockRole(session);
+
       if (_mode == StockUpdateMode.system) {
+        if (!privileged) {
+          final ok = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('System stock change'),
+              content: const Text(
+                'System stock is the ERP ledger. Owner/admin will be notified. '
+                'Use physical count for floor stock unless you are correcting the ledger.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Continue'),
+                ),
+              ],
+            ),
+          );
+          if (ok != true || !mounted) {
+            setState(() => _saving = false);
+            return;
+          }
+        }
         await ref.read(hexaApiProvider).patchStockItem(
               businessId: bid,
               itemId: _itemId,
@@ -225,6 +261,9 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
 
   @override
   Widget build(BuildContext context) {
+    final session = ref.watch(sessionProvider);
+    final privileged =
+        session != null && sessionIsPrivilegedStockRole(session);
     final showReason = _mode == StockUpdateMode.system
         ? (_enteredQty != null && (_enteredQty! - _systemQty).abs() > 0.01)
         : _diff.abs() > 0.01;
@@ -235,13 +274,31 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
       children: [
         ScanItemStockSummaryCard(item: widget.item),
         const SizedBox(height: 10),
+        if (!privileged && _mode == StockUpdateMode.system)
+          Container(
+            padding: const EdgeInsets.all(10),
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF7ED),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFFDBA74)),
+            ),
+            child: const Text(
+              'Staff: system stock edits notify owner/admin. Prefer physical count for daily checks.',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+            ),
+          ),
         StockUpdateModeToggle(
           mode: _mode,
           onChanged: (m) => setState(() => _mode = m),
         ),
         const SizedBox(height: 6),
         Text(
-          stockUpdateModeHint(_mode),
+          privileged
+              ? stockUpdateModeHint(_mode)
+              : (_mode == StockUpdateMode.system
+                  ? 'System ledger — owner notified on save.'
+                  : 'Physical count — does not change system stock.'),
           style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), height: 1.3),
         ),
         const SizedBox(height: 10),
