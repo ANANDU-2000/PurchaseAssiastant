@@ -25,11 +25,40 @@ void main() {
     );
   });
 
+  test('purchaseUnitsSubtitleFromLines compacts single bag plus kg', () {
+    expect(
+      purchaseUnitsSubtitleFromLines([
+        {
+          'qty': 1,
+          'unit': 'BAG',
+          'total_weight': 10,
+          'kg_per_unit': 10,
+        },
+      ]),
+      '10 KG',
+    );
+  });
+
   test('purchaseUnitsSubtitleFromLines handles misc unit labels', () {
     final line = purchaseUnitsSubtitleFromLines([
       {'qty': 10, 'unit': 'piece'},
     ]);
     expect(line, '10 PIECE');
+  });
+
+  test('dedupeActivityUnitsLine removes audit and purchase duplicates', () {
+    expect(
+      dedupeActivityUnitsLine('+10 KG · 10 KG'),
+      '10 KG',
+    );
+    expect(
+      dedupeActivityUnitsLine('+10 KG · +1 BAG · 1 BAG · 10 KG'),
+      '10 KG · 1 BAG',
+    );
+    expect(
+      dedupeActivityUnitsLine('+100 BAG · 100 BAGS · 100 BOXES'),
+      '100 BAG · 100 BOXES',
+    );
   });
 
   test('warehouseActivityDeliveryUnitsLabel hides bill ids', () {

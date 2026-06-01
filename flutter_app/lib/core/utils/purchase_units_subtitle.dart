@@ -22,10 +22,16 @@ String purchaseUnitsSubtitleFromLines(List<dynamic> lines) {
     final u = ut == 'sack' ? 'bag' : ut;
     if (u == 'bag') {
       bags += qty;
+      final tw = coerceToDoubleNullable(m['total_weight']);
+      if (tw != null && tw > 0) kg += tw;
     } else if (u == 'box') {
       boxes += qty;
+      final tw = coerceToDoubleNullable(m['total_weight']);
+      if (tw != null && tw > 0) kg += tw;
     } else if (u == 'tin') {
       tins += qty;
+      final tw = coerceToDoubleNullable(m['total_weight']);
+      if (tw != null && tw > 0) kg += tw;
     } else if (u == 'kg' || u == 'kilogram') {
       kg += qty;
     } else {
@@ -54,7 +60,16 @@ String purchaseUnitsSubtitleFromLines(List<dynamic> lines) {
     'total_kg': kg,
   });
   if (base.isNotEmpty) {
-    if (miscUnits.isEmpty) return base;
+    if (miscUnits.isEmpty) {
+      return _compactSingleLinePackWeight(
+        bags: bags,
+        boxes: boxes,
+        tins: tins,
+        kg: kg,
+        lineCount: lines.length,
+        base: base,
+      );
+    }
     final extra = miscUnits.entries
         .map(
           (e) =>
@@ -67,6 +82,21 @@ String purchaseUnitsSubtitleFromLines(List<dynamic> lines) {
   return miscUnits.entries
       .map((e) => '${homeFmtQty(e.value)} ${e.key.toUpperCase()}')
       .join(' · ');
+}
+
+/// One bag line with kg weight — show weight only (matches purchase detail card).
+String _compactSingleLinePackWeight({
+  required double bags,
+  required double boxes,
+  required double tins,
+  required double kg,
+  required int lineCount,
+  required String base,
+}) {
+  if (lineCount != 1) return base;
+  if (boxes > 0 || tins > 0) return base;
+  if (bags == 1 && kg > 0) return '${homeFmtQty(kg)} KG';
+  return base;
 }
 
 /// Compact bags · boxes · tins · kg line for report/home breakdown rows.

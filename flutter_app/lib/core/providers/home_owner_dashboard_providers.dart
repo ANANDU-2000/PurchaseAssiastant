@@ -23,6 +23,11 @@ void _providerKeepAlive(Ref ref, Duration ttl) {
   ref.onDispose(timer.cancel);
 }
 
+String? _activityUnitsOrNull(String? raw) {
+  final u = dedupeActivityUnitsLine(raw);
+  return u.isEmpty ? null : u;
+}
+
 List<Map<String, dynamic>> _filterAuditsToHomePeriod(
   Ref ref,
   List<Map<String, dynamic>> rows,
@@ -507,28 +512,56 @@ String? _purchaseVerifiedBy(Map<String, dynamic> p) {
   return null;
 }
 
+int _purchaseActivityIndex(
+  List<HomeActivityItem> items, {
+  String? purchaseId,
+  String? humanId,
+}) {
+  if (purchaseId != null && purchaseId.isNotEmpty) {
+    final byId = items.indexWhere((i) => i.routeId == purchaseId);
+    if (byId >= 0) return byId;
+  }
+  final hid = humanId?.trim();
+  if (hid == null || hid.isEmpty) return -1;
+  return items.indexWhere(
+    (i) =>
+        i.humanId == hid &&
+        (i.kind == 'purchase' || i.kind == 'delivery_verified'),
+  );
+}
+
 void _enrichPurchaseActivityFromAudit(
   List<HomeActivityItem> items,
   String purchaseId,
-  Map<String, dynamic> audit,
-) {
-  final idx = items.indexWhere((i) => i.routeId == purchaseId);
+  Map<String, dynamic> audit, {
+  String? humanId,
+}) {
+  final idx = _purchaseActivityIndex(
+    items,
+    purchaseId: purchaseId,
+    humanId: humanId,
+  );
   if (idx < 0) return;
   final existing = items[idx];
   final verified = audit['updated_by_name']?.toString().trim();
   final units = stockAuditActivityUnitsLine(audit);
+  final mergedUnits = dedupeActivityUnitsLine(
+    existing.unitsLine?.trim().isNotEmpty == true ? existing.unitsLine : units,
+  );
   items[idx] = existing.copyWith(
     verifiedBy: (existing.verifiedBy?.trim().isNotEmpty == true)
         ? existing.verifiedBy
         : (verified != null && verified.isNotEmpty ? verified : null),
-    unitsLine: (existing.unitsLine?.trim().isNotEmpty == true)
-        ? existing.unitsLine
-        : units,
+    unitsLine: mergedUnits.isNotEmpty ? mergedUnits : null,
   );
 }
 
 HomeActivityItem _mergeDeliveryActivityGroup(List<HomeActivityItem> group) {
-  if (group.length == 1) return group.single;
+  if (group.length == 1) {
+    final only = group.single;
+    final units = dedupeActivityUnitsLine(only.unitsLine);
+    return units.isEmpty ? only : only.copyWith(unitsLine: units);
+  }
   group.sort((a, b) => b.at.compareTo(a.at));
   var best = group.first;
   for (final g in group) {
@@ -547,13 +580,53 @@ HomeActivityItem _mergeDeliveryActivityGroup(List<HomeActivityItem> group) {
       best = g;
     }
   }
-  final unitParts = <String>{};
+  String? bestUnits;
+  var unitsScore = -1;
   for (final g in group) {
     final u = g.unitsLine?.trim();
-    if (u != null && u.isNotEmpty) unitParts.add(u);
+    if (u == null || u.isEmpty) continue;
+    final score = activityUnitsLineQualityScore(u);
+    if (score > unitsScore) {
+      unitsScore = score;
+      bestUnits = u;
+    }
   }
+  var verifiedBy = best.verifiedBy?.trim();
+  var createdBy = best.createdBy?.trim();
+  var supplierName = best.supplierName?.trim();
+  double? amountInr = best.amountInr;
+  for (final g in group) {
+    final v = g.verifiedBy?.trim();
+    if ((verifiedBy == null || verifiedBy.isEmpty) &&
+        v != null &&
+        v.isNotEmpty) {
+      verifiedBy = v;
+    }
+    final c = g.createdBy?.trim() ?? g.actor?.trim();
+    if ((createdBy == null || createdBy.isEmpty) &&
+        c != null &&
+        c.isNotEmpty) {
+      createdBy = c;
+    }
+    final s = g.supplierName?.trim();
+    if ((supplierName == null || supplierName.isEmpty) &&
+        s != null &&
+        s.isNotEmpty) {
+      supplierName = s;
+    }
+    final a = g.amountInr;
+    if ((amountInr == null || amountInr <= 0) && a != null && a > 0) {
+      amountInr = a;
+    }
+  }
+  final units = dedupeActivityUnitsLine(bestUnits ?? best.unitsLine);
   return best.copyWith(
-    unitsLine: unitParts.isEmpty ? best.unitsLine : unitParts.join(' · '),
+    unitsLine: units.isNotEmpty ? units : best.unitsLine,
+    verifiedBy: verifiedBy?.isNotEmpty == true ? verifiedBy : best.verifiedBy,
+    createdBy: createdBy?.isNotEmpty == true ? createdBy : best.createdBy,
+    supplierName:
+        supplierName?.isNotEmpty == true ? supplierName : best.supplierName,
+    amountInr: amountInr ?? best.amountInr,
   );
 }
 
@@ -658,7 +731,7 @@ Future<List<HomeActivityItem>> _fetchHomeWarehouseActivity(
         actor: _purchaseCreatedBy(p),
         createdBy: _purchaseCreatedBy(p),
         humanId: p['human_id']?.toString(),
-        unitsLine: purchaseActivityUnitsLine(p),
+        unitsLine: _activityUnitsOrNull(purchaseActivityUnitsLine(p)),
         verifiedBy: delivered ? _purchaseVerifiedBy(p) : null,
         supplierName: p['supplier_name']?.toString(),
         at: local,
@@ -678,12 +751,21 @@ Future<List<HomeActivityItem>> _fetchHomeWarehouseActivity(
     final adjType = a['adjustment_type']?.toString();
     final received = _parsePurchaseReceivedReason(a);
     final purchaseId = received?.purchaseId?.trim();
-    if (received != null &&
-        purchaseId != null &&
-        purchaseId.isNotEmpty &&
-        seenPurchaseIds.contains(purchaseId)) {
-      _enrichPurchaseActivityFromAudit(items, purchaseId, a);
-      continue;
+    if (received != null) {
+      final pid = purchaseId?.trim() ?? '';
+      final hid = received.humanId?.trim() ?? '';
+      final linked = (pid.isNotEmpty && seenPurchaseIds.contains(pid)) ||
+          (hid.isNotEmpty &&
+              _purchaseActivityIndex(items, humanId: hid) >= 0);
+      if (linked) {
+        _enrichPurchaseActivityFromAudit(
+          items,
+          pid,
+          a,
+          humanId: hid.isNotEmpty ? hid : null,
+        );
+        continue;
+      }
     }
     final kind = received != null
         ? 'delivery_verified'
@@ -697,7 +779,7 @@ Future<List<HomeActivityItem>> _fetchHomeWarehouseActivity(
             : _activityTitleFromAdjustment(adjType, itemName),
         subtitle: itemName,
         humanId: received?.humanId,
-        unitsLine: unitsLine,
+        unitsLine: _activityUnitsOrNull(unitsLine),
         verifiedBy: a['updated_by_name']?.toString() ??
             a['updated_by']?.toString() ??
             a['user_name']?.toString(),

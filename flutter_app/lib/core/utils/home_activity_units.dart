@@ -36,13 +36,68 @@ String? stockAuditActivityUnitsLine(Map<String, dynamic> a) {
   return '$sign$qty';
 }
 
+/// Collapse duplicate segments like `+10 KG · 10 KG` or `1 BAG · 10 KG · +1 BAG`.
+String dedupeActivityUnitsLine(String? raw) {
+  if (raw == null) return '';
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return '';
+
+  final seen = <String>{};
+  final display = <String>[];
+  for (final part in trimmed.split('·')) {
+    final p = part.trim();
+    if (p.isEmpty) continue;
+    final norm = _normalizeActivityUnitSegment(p);
+    if (norm.isEmpty || !seen.add(norm)) continue;
+    display.add(_preferActivityUnitDisplay(p));
+  }
+  return display.join(' · ');
+}
+
+String _normalizeActivityUnitSegment(String segment) {
+  var t = segment.trim();
+  if (t.startsWith('+') || t.startsWith('-')) {
+    t = t.substring(1).trim();
+  }
+  final m = RegExp(r'^([\d.,]+)\s+(.+)$').firstMatch(t);
+  if (m == null) return t.toLowerCase();
+  final qty = m.group(1)!.replaceAll(',', '');
+  var unit = m.group(2)!.trim().toLowerCase();
+  if (unit == 'bags' || unit == 'sacks') unit = 'bag';
+  if (unit == 'boxes') unit = 'box';
+  if (unit == 'tins') unit = 'tin';
+  if (unit == 'kilogram' || unit == 'kilograms') unit = 'kg';
+  return '$qty $unit';
+}
+
+String _preferActivityUnitDisplay(String segment) {
+  final t = segment.trim();
+  if (t.startsWith('+')) {
+    return t.substring(1).trim();
+  }
+  if (t.startsWith('-')) {
+    return t.substring(1).trim();
+  }
+  return t;
+}
+
+int activityUnitsLineQualityScore(String? line) {
+  final u = line?.trim();
+  if (u == null || u.isEmpty) return 0;
+  var score = u.length;
+  if (!u.contains('+') && !u.contains('-')) score += 20;
+  final parts = u.split('·').map((p) => p.trim()).where((p) => p.isNotEmpty);
+  if (parts.length == 1) score += 8;
+  return score;
+}
+
 /// Center-column label for delivery-style activity rows.
 String warehouseActivityDeliveryUnitsLabel({
   String? unitsLine,
   String? qtyChange,
 }) {
-  final line = unitsLine?.trim();
-  if (line != null && line.isNotEmpty) return line;
+  final line = dedupeActivityUnitsLine(unitsLine);
+  if (line.isNotEmpty) return line;
   final qc = qtyChange?.trim();
   if (qc == null || qc.isEmpty) return '—';
   if (RegExp(r'^PUR-', caseSensitive: false).hasMatch(qc)) return '—';
