@@ -32,6 +32,8 @@
 ## Session / background stability (2026-06-01)
 
 - [x] Web tab `visibilitychange` + mobile lifecycle: pause API when hidden (`appForegroundProvider`)
+- [x] On return: `authResumeGateProvider` blocks providers until `refreshOnResume` finishes (fixes 401 GET storm on tab resume)
+- [x] `providerSkipApi` uses `authBlockApiRequestsProvider` (suspend + in-flight refresh, not only circuit open)
 - [x] On return: single-flight JWT refresh before polls; 401 circuit needs 4 hits / 15s (not 2)
 - [x] Realtime poll: no forced logout on single 401; skip while tab hidden
 - [x] `ref.listen` on Home/shell deferred to post-frame (fixes "ref after dispose" on web)

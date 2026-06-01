@@ -7,8 +7,7 @@ import 'session_notifier.dart' show activeSessionProvider;
 /// Skip network fetches when logged out or after terminal 401 (stops request storms).
 /// Accepts provider [Ref] and widget [WidgetRef] (different types in Riverpod 2.6).
 bool providerSkipApi(dynamic ref) {
-  if (ref.read(authSessionExpiredProvider)) return true;
-  if (ref.read(authApiGateProvider).circuitOpen) return true;
+  if (ref.read(authBlockApiRequestsProvider)) return true;
   if (!ref.read(appForegroundProvider)) return true;
   if (ref.read(activeSessionProvider) == null) return true;
   return false;

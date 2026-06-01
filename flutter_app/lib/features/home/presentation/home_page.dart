@@ -285,13 +285,23 @@ class _HomePageState extends ConsumerState<HomePage>
     if (ref.read(shellCurrentBranchProvider) != ShellBranch.home) return;
     if (!_isHomeDashboardRoot(context)) return;
     if (!shouldRefreshOnShellTabReturn(_homeLastRefreshedAt)) return;
+    _scheduleResumeHomeRefresh();
+  }
+
+  void _scheduleResumeHomeRefresh({int attempt = 0}) {
     _resumeRefreshDebounce?.cancel();
-    _resumeRefreshDebounce = Timer(const Duration(milliseconds: 320), () {
+    _resumeRefreshDebounce = Timer(const Duration(milliseconds: 200), () {
       if (!mounted) {
         _resumeRefreshDebounce = null;
         return;
       }
       _resumeRefreshDebounce = null;
+      if (providerSkipApi(ref)) {
+        if (attempt < 30) {
+          _scheduleResumeHomeRefresh(attempt: attempt + 1);
+        }
+        return;
+      }
       unawaited(_refresh());
     });
   }

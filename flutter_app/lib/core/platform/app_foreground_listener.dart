@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_failure_policy.dart';
-import '../auth/session_notifier.dart';
+import '../auth/session_notifier.dart' show authRefresh, sessionProvider;
 import 'app_foreground_provider.dart';
 import 'app_visibility_stub.dart'
     if (dart.library.html) 'app_visibility_web.dart' as app_visibility;
@@ -55,14 +55,19 @@ class _AppForegroundListenerState extends ConsumerState<AppForegroundListener>
     _foreground = fg;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ref.read(appForegroundProvider.notifier).state = fg;
       if (!fg) {
         _resumeDebounce?.cancel();
+        ref.read(authResumeGateProvider.notifier).state = false;
+        ref.read(appForegroundProvider.notifier).state = false;
         return;
       }
+      // Hold API until JWT refresh completes — prevents 401 storms on web tab resume.
+      ref.read(authResumeGateProvider.notifier).state = true;
+      ref.read(authRefreshInFlightProvider.notifier).state = true;
+      ref.read(appForegroundProvider.notifier).state = true;
       ref.read(appLastForegroundAtProvider.notifier).state = DateTime.now();
       _resumeDebounce?.cancel();
-      _resumeDebounce = Timer(const Duration(milliseconds: 400), () {
+      _resumeDebounce = Timer(const Duration(milliseconds: 120), () {
         if (!mounted) return;
         unawaited(_onReturnedToForeground());
       });
@@ -71,16 +76,24 @@ class _AppForegroundListenerState extends ConsumerState<AppForegroundListener>
 
   Future<void> _onReturnedToForeground() async {
     final session = ref.read(sessionProvider);
-    if (session == null) return;
+    if (session == null) {
+      if (mounted) {
+        ref.read(authResumeGateProvider.notifier).state = false;
+        ref.read(authRefreshInFlightProvider.notifier).state = false;
+      }
+      return;
+    }
     try {
       await ref.read(sessionProvider.notifier).refreshOnResume();
     } catch (_) {
       // Keep session; Dio interceptor will refresh on next call.
     }
     if (!mounted) return;
+    ref.read(authResumeGateProvider.notifier).state = false;
     try {
       ref.read(authApiGateProvider.notifier).clearSuspend();
     } catch (_) {}
+    authRefresh.value++;
   }
 
   @override

@@ -32,6 +32,17 @@ class AuthApiGateState {
 /// True while Dio interceptor is refreshing tokens (do not open 401 circuit).
 final authRefreshInFlightProvider = StateProvider<bool>((ref) => false);
 
+/// Blocks business API until [SessionNotifier.refreshOnResume] finishes after tab/app resume.
+final authResumeGateProvider = StateProvider<bool>((ref) => false);
+
+/// Single check for providers — session expired, 401 suspend, resume refresh, or Dio refresh.
+final authBlockApiRequestsProvider = Provider<bool>((ref) {
+  if (ref.watch(authSessionExpiredProvider)) return true;
+  if (ref.watch(authResumeGateProvider)) return true;
+  if (ref.watch(authRefreshInFlightProvider)) return true;
+  return ref.watch(authApiGateProvider).blockApi;
+});
+
 class AuthApiGateNotifier extends Notifier<AuthApiGateState> {
   /// Require several 401s before forced logout — avoids tab-switch storms on web.
   static const _threshold = 4;
