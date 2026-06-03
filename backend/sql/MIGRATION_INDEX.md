@@ -70,7 +70,7 @@ Revisions **026** and **027** are absent in git (jump **025** → **028**). Do n
 | 058 | `barcode_lookup_indexes` | Barcode lookup performance indexes |
 | 059 | `staff_activity_action_types_v2` | Extend `staff_activity_log` action_type CHECK (**head**) |
 
-Inspect live chain: `cd backend && python -m alembic heads`
+Inspect live chain: `cd backend && python -m alembic heads` (production target: Render `harisree-db`, not Supabase)
 
 ---
 
