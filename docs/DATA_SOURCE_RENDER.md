@@ -14,6 +14,8 @@ Verify anytime:
 GET https://my-purchases-api.onrender.com/health/ready
 ```
 
-Expect `"db":"ok"` and `alembic_version` at head.
+Expect `"db":"ok"` and `alembic_version` at head (`059_staff_activity_action_types_v2` as of 2026-06-03).
+
+**Important:** Production migrations must run against **Render Postgres** (`harisree-db`), not the Supabase MCP project. Use Render pre-deploy `alembic upgrade head` or `RENDER_DB_EXTERNAL_URL` locally.
 
 After deploy, hard-refresh the PWA (Ctrl+Shift+R) so the browser does not use a cached `main.dart.js`.
