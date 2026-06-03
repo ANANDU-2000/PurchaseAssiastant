@@ -362,6 +362,46 @@ Future<List<Uint8List>> generateBulkPdfParts({
   }
 }
 
+enum LargeBulkPrintChoice { cancelled, continueAll, batchesOf20 }
+
+const int kLargeBulkPrintThreshold = 50;
+const int kLargeBulkPrintBatchSize = 20;
+
+/// Confirm before generating more than [kLargeBulkPrintThreshold] labels.
+Future<LargeBulkPrintChoice> confirmLargeBulkPrint(
+  BuildContext context,
+  int selectedCount,
+) async {
+  if (selectedCount <= kLargeBulkPrintThreshold) {
+    return LargeBulkPrintChoice.continueAll;
+  }
+  final choice = await showDialog<LargeBulkPrintChoice>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text('Print $selectedCount labels?'),
+      content: Text(
+        'Generating $selectedCount labels may take a while on this device. '
+        'Continue with one job, or split into batches of $kLargeBulkPrintBatchSize.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, LargeBulkPrintChoice.cancelled),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, LargeBulkPrintChoice.batchesOf20),
+          child: Text('Batches of $kLargeBulkPrintBatchSize'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, LargeBulkPrintChoice.continueAll),
+          child: const Text('Continue'),
+        ),
+      ],
+    ),
+  );
+  return choice ?? LargeBulkPrintChoice.cancelled;
+}
+
 Future<bool?> showPartialLabelFailureDialog(
   BuildContext context,
   BulkLabelBatchResult batch,

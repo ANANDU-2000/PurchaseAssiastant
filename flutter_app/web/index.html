@@ -16,6 +16,7 @@
   <meta name="apple-mobile-web-app-title" content="Harisree Warehouse">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#14523E">
+  <meta name="permissions-policy" content="camera=(self)">
 
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
   <link rel="icon" type="image/png" href="favicon.png"/>
@@ -110,6 +111,17 @@
       window.addEventListener('flutter-first-frame', hideSplash);
       window.setTimeout(hideSplash, 15000);
     })();
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker
+          .register('flutter_service_worker.js', { scope: '/' })
+          .catch(function (err) {
+            console.warn('Service worker registration failed:', err);
+          });
+      });
+    }
   </script>
   <script src="flutter_bootstrap.js" defer></script>
 </body>

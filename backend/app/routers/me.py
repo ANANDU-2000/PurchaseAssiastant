@@ -30,6 +30,14 @@ _LOGO_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 router = APIRouter(prefix="/v1/me", tags=["me"])
 
 
+_GULF_WHATSAPP_CC = {
+    "971": 9,  # UAE
+    "968": 8,  # Oman
+    "965": 8,  # Kuwait
+    "974": 8,  # Qatar
+}
+
+
 def _normalize_accounts_whatsapp(raw: str | None) -> str | None:
     if raw is None:
         return None
@@ -37,14 +45,31 @@ def _normalize_accounts_whatsapp(raw: str | None) -> str | None:
     if not t:
         return None
     digits = "".join(c for c in t if c.isdigit())
-    if digits.startswith("91") and len(digits) == 12:
-        digits = digits[2:]
-    if len(digits) != 10:
+    if not digits:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            detail="accounts_whatsapp_number must be 10 digits (India mobile)",
+            detail="accounts_whatsapp_number must be a valid mobile number",
         )
-    return digits
+
+    for cc, national_len in _GULF_WHATSAPP_CC.items():
+        if digits.startswith(cc) and len(digits) == len(cc) + national_len:
+            return digits
+
+    if len(digits) == 9 and digits.startswith("5"):
+        return f"971{digits}"
+
+    if digits.startswith("91") and len(digits) == 12:
+        digits = digits[2:]
+    if len(digits) == 10 and digits[0] in "6789":
+        return digits
+
+    raise HTTPException(
+        status.HTTP_400_BAD_REQUEST,
+        detail=(
+            "accounts_whatsapp_number must be a valid India (10-digit) or "
+            "Gulf (+971/+968/+965/+974) mobile"
+        ),
+    )
 
 
 def _business_brief(b: Business, role: str, permissions: dict[str, bool]) -> "BusinessBrief":

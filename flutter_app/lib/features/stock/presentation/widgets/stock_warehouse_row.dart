@@ -18,6 +18,7 @@ class StockWarehouseRow extends StatelessWidget {
     this.isFirstRow = false,
     this.isSelected = false,
     this.onSelect,
+    this.onDeliveredDetail,
   });
 
   final Map<String, dynamic> item;
@@ -27,6 +28,7 @@ class StockWarehouseRow extends StatelessWidget {
   final bool isFirstRow;
   final bool isSelected;
   final VoidCallback? onSelect;
+  final VoidCallback? onDeliveredDetail;
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +40,16 @@ class StockWarehouseRow extends StatelessWidget {
         status == 'low' || status == 'critical' || status == 'out';
     final deliveryKind = StockRowMetrics.deliveryIndicator(item);
     final diff = StockRowMetrics.diffQty(item);
-    final deliveryCue = StockRowMetrics.inlineDeliveryCue(item);
+    final rawCue = StockRowMetrics.inlineDeliveryCue(item);
+    final deliveryCue = rawCue != null &&
+            deliveryKind == StockDeliveryIndicator.delivered &&
+            onDeliveredDetail != null
+        ? GestureDetector(
+            onTap: onDeliveredDetail,
+            behavior: HitTestBehavior.opaque,
+            child: rawCue,
+          )
+        : rawCue;
     final activityMeta = StockRowMetrics.lastActivityMetaLine(item);
     final pendingQty = StockRowMetrics.pendingDeliveryQty(item) ?? 0;
     final pendingLine = pendingQty > 0.001

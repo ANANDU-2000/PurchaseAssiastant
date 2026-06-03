@@ -422,6 +422,37 @@ final stockListProvider = FutureProvider.autoDispose((ref) async {
   );
 });
 
+/// Server-side pending/delivered truck counts (refreshed on period change + 30s poll).
+final stockDeliveryIndicatorCountsProvider = FutureProvider.autoDispose<
+    ({int pending, int delivered})>((ref) async {
+  providerKeepAlive(ref, const Duration(seconds: 25));
+  final session = ref.watch(activeSessionProvider);
+  if (session == null || providerSkipApi(ref)) {
+    return (pending: 0, delivered: 0);
+  }
+  final query = ref.watch(stockListQueryProvider);
+  final op = ref.watch(stockOperationalFiltersProvider);
+  final counts = await ref.read(hexaApiProvider).stockDeliveryIndicatorCounts(
+        businessId: session.primaryBusiness.id,
+        q: query.q,
+        category: query.category,
+        subcategory: query.subcategory,
+        status: query.status,
+        sort: query.sort,
+        includePeriod: query.includePeriod,
+        periodStart: query.periodStart,
+        periodEnd: query.periodEnd,
+        missingBarcode: op.missingBarcodeOnly,
+        missingItemCode: op.missingItemCodeOnly,
+        reorderOnly: op.reorderOnly,
+        unit: op.unit,
+      );
+  return (
+    pending: coerceToInt(counts['pending']),
+    delivered: coerceToInt(counts['delivered']),
+  );
+});
+
 /// Loads **all** stock rows matching [stockListQueryProvider] filters (paged API calls).
 /// Used by bulk barcode print so the list is not limited to the stock screen page size.
 /// Selected catalog item ids for bulk barcode PDF (stable across list rebuilds).
@@ -527,6 +558,8 @@ final stockItemAuditProvider =
 /// Status bucket counts for stock filter chips (authoritative server summary).
 final stockStatusCountsProvider =
     FutureProvider.autoDispose<Map<String, int>>((ref) async {
+  final bundled = homeBundledStockStatusCounts(ref);
+  if (bundled != null && bundled.isNotEmpty) return bundled;
   final keepAlive = ref.keepAlive();
   final timer = Timer(const Duration(minutes: 2), keepAlive.close);
   ref.onDispose(timer.cancel);
@@ -643,6 +676,11 @@ final lowStockByCategoryProvider =
     includePeriod: true,
     periodStart: periodStart,
     periodEnd: periodEnd,
+  ).timeout(
+    const Duration(seconds: 25),
+    onTimeout: () {
+      throw TimeoutException('Low stock list fetch timed out after 25 seconds');
+    },
   );
   final merged = <Map<String, dynamic>>[];
   for (final item in lowRows) {

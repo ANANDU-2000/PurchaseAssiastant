@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/auth/session_notifier.dart';
+import '../../../../core/stock/stock_version_retry.dart';
 import '../../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../../core/design_system/hexa_responsive.dart';
 import '../../../../core/json_coerce.dart';
@@ -51,12 +52,14 @@ class _ScanStockResultBody extends ConsumerStatefulWidget {
 
 class _ScanStockResultBodyState extends ConsumerState<_ScanStockResultBody> {
   bool _saving = false;
+  late Map<String, dynamic> _item;
   late double _current;
 
   @override
   void initState() {
     super.initState();
-    _current = coerceToDouble(widget.item['current_stock']);
+    _item = Map<String, dynamic>.from(widget.item);
+    _current = coerceToDouble(_item['current_stock']);
   }
 
   Future<void> _applyDelta(double delta) async {
@@ -72,26 +75,35 @@ class _ScanStockResultBodyState extends ConsumerState<_ScanStockResultBody> {
     try {
       final session = ref.read(sessionProvider);
       if (session == null) return;
-      final id = widget.item['id']?.toString() ?? '';
-      await ref.read(hexaApiProvider).patchStockItem(
-            businessId: session.primaryBusiness.id,
-            itemId: id,
-            newQty: newQty,
-            adjustmentType: 'manual',
-            reason: delta >= 0 ? 'Scan quick add' : 'Scan quick remove',
-          );
-      invalidateWarehouseSurfaces(ref);
+      final id = _item['id']?.toString() ?? '';
+      final api = ref.read(hexaApiProvider);
+      final bid = session.primaryBusiness.id;
+      await api.patchStockItemWithRetry(
+        businessId: bid,
+        itemId: id,
+        newQty: newQty,
+        adjustmentType: 'manual',
+        reason: delta >= 0 ? 'Scan quick add' : 'Scan quick remove',
+        initialStockVersion: stockVersionFromItem(_item),
+      );
+      invalidateWarehouseSurfaces(ref, itemId: id);
       if (!mounted) return;
       setState(() => _current = newQty);
       await HapticFeedback.lightImpact();
       if (!widget.parentContext.mounted) return;
-      final name = widget.item['name']?.toString() ?? 'Item';
+      final name = _item['name']?.toString() ?? 'Item';
       showStockUndoSnackBar(
         context: widget.parentContext,
         ref: widget.parentRef,
         itemId: id,
         itemName: name,
       );
+    } on StaleStockConflict {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(StaleStockConflict.userMessage)),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -105,9 +117,9 @@ class _ScanStockResultBodyState extends ConsumerState<_ScanStockResultBody> {
 
   @override
   Widget build(BuildContext context) {
-    final name = widget.item['name']?.toString() ?? 'Item';
-    final unit = widget.item['unit']?.toString() ?? '';
-    final id = widget.item['id']?.toString() ?? '';
+    final name = _item['name']?.toString() ?? 'Item';
+    final unit = _item['unit']?.toString() ?? '';
+    final id = _item['id']?.toString() ?? '';
     final stockLine = stockDisplayPrimary(_current, unit);
 
     return Column(

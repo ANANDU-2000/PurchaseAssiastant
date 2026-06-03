@@ -6,8 +6,10 @@ import '../../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../../core/json_coerce.dart';
 import '../../../../core/providers/delivery_pipeline_provider.dart';
 import '../../../../core/providers/home_dashboard_provider.dart';
+import '../../../../core/providers/purchase_damage_reports_provider.dart';
 import '../../../../core/providers/stock_providers.dart'
     show openingStockMissingProvider, stockStatusCountsProvider;
+import '../../../../core/utils/snack.dart';
 
 /// Owner home: priority cards (low stock + pending delivery first), then opening/out.
 class HomeOwnerCompactAlerts extends ConsumerWidget {
@@ -29,6 +31,8 @@ class HomeOwnerCompactAlerts extends ConsumerWidget {
     if (pending == 0) {
       pending = ref.watch(homeDashboardDataProvider).snapshot.data.pendingDeliveryCount;
     }
+    final damagePending =
+        ref.watch(pendingDamageReportsCountProvider).valueOrNull ?? 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -57,6 +61,22 @@ class HomeOwnerCompactAlerts extends ConsumerWidget {
             ),
           ],
         ),
+        if (damagePending > 0) ...[
+          const SizedBox(height: 8),
+          _PriorityCard(
+            label: 'Damage alerts',
+            count: damagePending,
+            accent: const Color(0xFF7C3AED),
+            filled: true,
+            onTap: () {
+              context.go('/purchase');
+              showTopSnack(
+                context,
+                '$damagePending damage report(s) need your review — open a purchase',
+              );
+            },
+          ),
+        ],
         if (openingN > 0 || out > 0) ...[
           const SizedBox(height: 8),
           Row(

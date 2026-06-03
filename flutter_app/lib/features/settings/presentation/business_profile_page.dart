@@ -5,8 +5,10 @@ import 'package:go_router/go_router.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/router/navigation_ext.dart';
+import '../../../core/services/whatsapp_phone_normalize.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
+import '../widgets/accounts_whatsapp_field.dart';
 
 class BusinessProfilePage extends ConsumerStatefulWidget {
   const BusinessProfilePage({super.key});
@@ -82,22 +84,11 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
     return null;
   }
 
-  String? _normalizeAccountsWhatsappDigits(String raw) {
-    final t = raw.trim();
-    if (t.isEmpty) return null;
-    var digits = t.replaceAll(RegExp(r'\D'), '');
-    if (digits.startsWith('91') && digits.length == 12) {
-      digits = digits.substring(2);
-    }
-    return digits;
-  }
-
   String? _validateAccountsWhatsapp(String raw) {
     final t = raw.trim();
     if (t.isEmpty) return null;
-    final digits = _normalizeAccountsWhatsappDigits(t);
-    if (digits == null || digits.length != 10) {
-      return 'Enter a 10-digit mobile number';
+    if (!isValidAccountsWhatsappInput(t)) {
+      return 'Enter a valid India or Gulf mobile (+91, +971, +968, +965, +974)';
     }
     return null;
   }
@@ -124,7 +115,8 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
       return;
     }
 
-    final waDigits = _normalizeAccountsWhatsappDigits(_accountsWhatsappCtrl.text);
+    final waDigits =
+        storageDigitsForAccountsWhatsappInput(_accountsWhatsappCtrl.text);
 
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
@@ -251,15 +243,9 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  TextField(
+                  AccountsWhatsappField(
                     controller: _accountsWhatsappCtrl,
                     readOnly: readOnly,
-                    keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(
-                      labelText: 'Accounts Staff WhatsApp Number',
-                      hintText: '+91 XXXXX XXXXX',
-                      border: OutlineInputBorder(),
-                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(

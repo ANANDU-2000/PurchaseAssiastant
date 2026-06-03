@@ -1974,6 +1974,10 @@ async def create_catalog_item(
     if final_item_code is None:
         final_item_code = await _next_item_code(db, business_id)
 
+    final_barcode = _normalize_barcode(body.barcode) if body.barcode else None
+    if final_barcode is None and final_item_code:
+        final_barcode = final_item_code
+
     i = CatalogItem(
         business_id=business_id,
         category_id=body.category_id,
@@ -1987,7 +1991,7 @@ async def create_catalog_item(
         default_sale_unit=body.default_sale_unit,
         hsn_code=(body.hsn_code or "").strip() or None,
         item_code=final_item_code,
-        barcode=_normalize_barcode(body.barcode) if getattr(body, "barcode", None) else None,
+        barcode=final_barcode,
         tax_percent=body.tax_percent,
         default_landing_cost=body.default_landing_cost,
         default_selling_cost=body.default_selling_cost,

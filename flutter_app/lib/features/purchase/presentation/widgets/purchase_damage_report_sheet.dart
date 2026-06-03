@@ -94,6 +94,8 @@ class _PurchaseDamageReportSheetState
             qtyDamaged: qty,
             damageType: _damageType,
             notes: _notesCtrl.text,
+            emitNotification: true,
+            damagedItemsInBatch: 1,
           );
       if (mounted) Navigator.pop(context, true);
     } on DioException catch (e) {

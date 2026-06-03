@@ -93,6 +93,22 @@ purhcaseappss.zip
 login-test.json
 mcp_query.json
 
+# Local scratch / debug dumps
+build,md/
+migration_pre_counts.txt
+migration_post_validate.txt
+flutter_app/build_error_full.txt
+backend/schema_audit_chunks.txt
+backend/scripts/_api_routes.txt
+schema_expected.json
+master_item_profiles.json
+
+# Agent / session scratch at repo root (canonical docs: docs/, TASKS.md, README.md)
+PLAN.md
+PROMPT.md
+UX_REBUILD_PLAN.md
+DATABASE_REFACTOR.md
+
 # One-off schema audit dumps (regenerate via backend/scripts; keep schema_expected.json locally)
 backend/schema_live_rows.json
 backend/schema_audit_query.json

@@ -13,6 +13,7 @@ class StockPaginationBar extends StatelessWidget {
     required this.onPrev,
     required this.onNext,
     this.loading = false,
+    this.scrollOnly = false,
   });
 
   final int showingCount;
@@ -23,10 +24,13 @@ class StockPaginationBar extends StatelessWidget {
   final VoidCallback? onNext;
   final bool loading;
 
+  /// Infinite scroll: show counts only (no prev/next page buttons).
+  final bool scrollOnly;
+
   @override
   Widget build(BuildContext context) {
-    final canPrev = currentPage > 1 && onPrev != null;
-    final canNext = currentPage < maxPage && onNext != null;
+    final canPrev = !scrollOnly && currentPage > 1 && onPrev != null;
+    final canNext = !scrollOnly && currentPage < maxPage && onNext != null;
 
     return Material(
       color: const Color(0xFFF5F3EE),
@@ -39,14 +43,15 @@ class StockPaginationBar extends StatelessWidget {
         ),
         child: Row(
           children: [
-            IconButton(
-              tooltip: 'Previous page',
-              onPressed: canPrev ? onPrev : null,
-              icon: const Icon(Icons.chevron_left_rounded),
-              style: IconButton.styleFrom(
-                minimumSize: const Size(48, 48),
+            if (!scrollOnly)
+              IconButton(
+                tooltip: 'Previous page',
+                onPressed: canPrev ? onPrev : null,
+                icon: const Icon(Icons.chevron_left_rounded),
+                style: IconButton.styleFrom(
+                  minimumSize: const Size(48, 48),
+                ),
               ),
-            ),
             Expanded(
               child: Column(
                 children: [
@@ -58,35 +63,58 @@ class StockPaginationBar extends StatelessWidget {
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  Text(
-                    'Page $currentPage of $maxPage',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Colors.black54,
+                  if (!scrollOnly)
+                    Text(
+                      'Page $currentPage of $maxPage',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.black54,
+                      ),
+                      textAlign: TextAlign.center,
+                    )
+                  else if (loading)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  else if (showingCount < totalCount)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 2),
+                      child: Text(
+                        'Scroll for more',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.black54,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
-                    textAlign: TextAlign.center,
-                  ),
                 ],
               ),
             ),
-            if (loading)
-              const SizedBox(
-                width: 48,
-                height: 48,
-                child: Padding(
-                  padding: EdgeInsets.all(12),
-                  child: CircularProgressIndicator(strokeWidth: 2),
+            if (!scrollOnly)
+              if (loading)
+                const SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: Padding(
+                    padding: EdgeInsets.all(12),
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              else
+                IconButton(
+                  tooltip: 'Next page',
+                  onPressed: canNext ? onNext : null,
+                  icon: const Icon(Icons.chevron_right_rounded),
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                  ),
                 ),
-              )
-            else
-              IconButton(
-                tooltip: 'Next page',
-                onPressed: canNext ? onNext : null,
-                icon: const Icon(Icons.chevron_right_rounded),
-                style: IconButton.styleFrom(
-                  minimumSize: const Size(48, 48),
-                ),
-              ),
           ],
         ),
       ),

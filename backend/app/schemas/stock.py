@@ -111,6 +111,8 @@ class StockListItemOut(BaseModel):
     default_kg_per_bag: Decimal | None = None
     last_stock_updated_at: datetime | None = None
     last_stock_updated_by: str | None = None
+    last_movement_at: datetime | None = None
+    last_trade_purchase_id: uuid.UUID | None = None
     current_stock: Decimal
     reorder_level: Decimal
     unit: str | None
@@ -154,6 +156,11 @@ class StockListItemOut(BaseModel):
     total_delivered_qty: Decimal | None = None
     total_pending_delivery_qty: Decimal | None = None
     public_token: str | None = None
+
+
+class StockDeliveryIndicatorCountsOut(BaseModel):
+    pending: int = 0
+    delivered: int = 0
 
 
 class StockListOut(BaseModel):

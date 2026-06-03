@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/stock/stock_version_retry.dart';
 import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/json_coerce.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
@@ -34,6 +35,7 @@ Future<bool> showQuickStockActionSheet({
   required WidgetRef ref,
   required Map<String, dynamic> item,
   StockUpdateMode initialMode = StockUpdateMode.physical,
+  bool skipInitialRefresh = false,
 }) async {
   final result = await showHexaBottomSheet<bool>(
     context: context,
@@ -43,6 +45,7 @@ Future<bool> showQuickStockActionSheet({
       item: item,
       parentRef: ref,
       initialMode: initialMode,
+      skipInitialRefresh: skipInitialRefresh,
     ),
   );
   return result == true;
@@ -53,11 +56,13 @@ class _QuickStockActionBody extends ConsumerStatefulWidget {
     required this.item,
     required this.parentRef,
     this.initialMode = StockUpdateMode.physical,
+    this.skipInitialRefresh = false,
   });
 
   final Map<String, dynamic> item;
   final WidgetRef parentRef;
   final StockUpdateMode initialMode;
+  final bool skipInitialRefresh;
 
   @override
   ConsumerState<_QuickStockActionBody> createState() =>
@@ -87,6 +92,11 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     );
     _notesCtrl = TextEditingController();
     _qtyCtrl.addListener(_revalidateQty);
+    if (!widget.skipInitialRefresh) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_refreshItemFromServer());
+      });
+    }
   }
 
   double _seedQtyForMode(StockUpdateMode mode) {
@@ -98,23 +108,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     return sys.isFinite ? sys : 0;
   }
 
-  int? _stockVersion() {
-    final v = _item['stock_version'];
-    if (v is int) return v;
-    if (v is num) return v.toInt();
-    return int.tryParse(v?.toString() ?? '');
-  }
-
-  bool _isStaleStockVersionError(Object e) {
-    if (e is! DioException || e.response?.statusCode != 409) return false;
-    final data = e.response?.data;
-    if (data is! Map) return false;
-    final detail = data['detail'];
-    if (detail is Map) {
-      return detail['code']?.toString() == 'STALE_STOCK_VERSION';
-    }
-    return false;
-  }
+  int? _stockVersion() => stockVersionFromItem(_item);
 
   Future<void> _applyFreshItem(Map<String, dynamic> fresh) async {
     if (!mounted) return;
@@ -133,6 +127,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
             businessId: session.primaryBusiness.id,
             itemId: _itemId,
           );
+      if (!mounted) return false;
       await _applyFreshItem(fresh);
       return true;
     } catch (_) {
@@ -227,27 +222,31 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     if (session == null) return;
     final note = _notesCtrl.text.trim();
     final reasonLabel = _reasonLabel;
+    final api = ref.read(hexaApiProvider);
+    final bid = session.primaryBusiness.id;
     if (_mode == StockUpdateMode.system) {
-      await ref.read(hexaApiProvider).patchStockItem(
-            businessId: session.primaryBusiness.id,
-            itemId: _itemId,
-            newQty: parsed,
-            adjustmentType: _reasonType ?? 'correction',
-            reason: note.isNotEmpty ? '$reasonLabel — $note' : reasonLabel,
-            lastSeenStockVersion: _stockVersion(),
-          );
+      await api.patchStockItemWithRetry(
+        businessId: bid,
+        itemId: _itemId,
+        newQty: parsed,
+        adjustmentType: _reasonType ?? 'correction',
+        reason: note.isNotEmpty ? '$reasonLabel — $note' : reasonLabel,
+        initialStockVersion: _stockVersion(),
+      );
+      if (!mounted) return;
       ref.invalidate(appNotificationsListProvider);
       ref.invalidate(notificationCenterCoordinatorProvider);
     } else {
       final listQ = ref.read(stockListQueryProvider);
-      await ref.read(hexaApiProvider).recordPhysicalStockCount(
-            businessId: session.primaryBusiness.id,
-            itemId: _itemId,
-            countedQty: parsed,
-            notes: note.isNotEmpty ? '$reasonLabel — $note' : reasonLabel,
-            periodStart: listQ.periodStart,
-            periodEnd: listQ.periodEnd,
-          );
+      await api.recordPhysicalStockCount(
+        businessId: bid,
+        itemId: _itemId,
+        countedQty: parsed,
+        notes: note.isNotEmpty ? '$reasonLabel — $note' : reasonLabel,
+        periodStart: listQ.periodStart,
+        periodEnd: listQ.periodEnd,
+      );
+      if (!mounted) return;
     }
   }
 
@@ -270,9 +269,9 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     if (_saving) return;
     if (!mounted) return;
     setState(() => _saving = true);
-    var retriedStale = false;
     try {
       await _persistStock(parsed);
+      if (!mounted) return;
       invalidateWarehouseSurfaces(ref, itemId: _itemId);
       ref.invalidate(stockAuditPeriodProvider);
       ref.invalidate(stockChangesFeedProvider);
@@ -292,27 +291,19 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
       if (!context.mounted) return;
       Navigator.of(context).pop(true);
     } catch (e) {
-      if (_isStaleStockVersionError(e) && !retriedStale) {
-        retriedStale = true;
-        final refreshed = await _refreshItemFromServer();
-        if (refreshed && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Stock changed while you were editing. Values refreshed — tap Save again.',
-              ),
-              duration: Duration(seconds: 5),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-          return;
-        }
+      if (e is StaleStockConflict) {
+        if (!mounted) return;
+        await _refreshItemFromServer();
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              e is DioException ? friendlyApiError(e) : userFacingError(e),
+              e is StaleStockConflict
+                  ? StaleStockConflict.userMessage
+                  : e is DioException
+                      ? friendlyApiError(e)
+                      : userFacingError(e),
             ),
             duration: const Duration(seconds: 5),
             behavior: SnackBarBehavior.floating,

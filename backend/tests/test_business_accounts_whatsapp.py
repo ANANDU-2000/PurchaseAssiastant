@@ -54,3 +54,29 @@ def test_patch_business_accounts_whatsapp_invalid_digits():
         json={"accounts_whatsapp_number": "12345"},
     )
     assert bad.status_code == 400, bad.text
+
+
+def test_patch_business_accounts_whatsapp_uae_round_trip():
+    h, bid = _owner_headers()
+    patch = client.patch(
+        f"/v1/me/businesses/{bid}/branding",
+        headers=h,
+        json={"accounts_whatsapp_number": "+971 50 123 4567"},
+    )
+    assert patch.status_code == 200, patch.text
+    assert patch.json().get("accounts_whatsapp_number") == "971501234567"
+
+    listed = client.get("/v1/me/businesses", headers=h)
+    row = next(x for x in listed.json() if x["id"] == bid)
+    assert row.get("accounts_whatsapp_number") == "971501234567"
+
+
+def test_patch_business_accounts_whatsapp_uae_local_nine_digits():
+    h, bid = _owner_headers()
+    patch = client.patch(
+        f"/v1/me/businesses/{bid}/branding",
+        headers=h,
+        json={"accounts_whatsapp_number": "501234567"},
+    )
+    assert patch.status_code == 200, patch.text
+    assert patch.json().get("accounts_whatsapp_number") == "971501234567"

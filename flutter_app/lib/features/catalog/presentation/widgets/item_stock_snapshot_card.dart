@@ -519,6 +519,7 @@ class _OpeningStockSheetState extends ConsumerState<_OpeningStockSheet> {
       _ctrl.text = widget.currentStock.toStringAsFixed(0);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       _ctrl.selection = TextSelection(baseOffset: 0, extentOffset: _ctrl.text.length);
     });
   }
@@ -530,10 +531,12 @@ class _OpeningStockSheetState extends ConsumerState<_OpeningStockSheet> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     final session = ref.read(sessionProvider);
     if (session == null) return;
     final val = double.tryParse(_ctrl.text.trim());
     if (val == null || val < 0) return;
+    if (!mounted) return;
     setState(() => _saving = true);
     try {
       await ref.read(hexaApiProvider).setOpeningStock(
@@ -541,7 +544,7 @@ class _OpeningStockSheetState extends ConsumerState<_OpeningStockSheet> {
             itemId: widget.itemId,
             qty: val,
           );
-      ref.invalidate(itemDetailBundleProvider(widget.itemId));
+      if (!mounted) return;
       ref.invalidate(itemDetailBundleProvider(widget.itemId));
       if (mounted) Navigator.pop(context);
     } finally {
@@ -568,7 +571,9 @@ class _OpeningStockSheetState extends ConsumerState<_OpeningStockSheet> {
               labelText: 'Opening quantity',
               border: OutlineInputBorder(),
             ),
-            onSubmitted: (_) => _save(),
+            onSubmitted: (_) {
+              if (!_saving && mounted) _save();
+            },
           ),
           const SizedBox(height: 12),
           FilledButton(
@@ -609,10 +614,12 @@ class _ReorderLevelSheetState extends ConsumerState<_ReorderLevelSheet> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     final session = ref.read(sessionProvider);
     if (session == null) return;
     final val = double.tryParse(_ctrl.text.trim());
     if (val == null || val < 0) return;
+    if (!mounted) return;
     setState(() => _saving = true);
     try {
       await ref.read(hexaApiProvider).updateCatalogItem(
@@ -621,7 +628,7 @@ class _ReorderLevelSheetState extends ConsumerState<_ReorderLevelSheet> {
             patchReorderLevel: true,
             reorderLevel: val,
           );
-      ref.invalidate(itemDetailBundleProvider(widget.itemId));
+      if (!mounted) return;
       ref.invalidate(itemDetailBundleProvider(widget.itemId));
       if (mounted) Navigator.pop(context);
     } finally {
@@ -648,7 +655,9 @@ class _ReorderLevelSheetState extends ConsumerState<_ReorderLevelSheet> {
             labelText: 'Reorder quantity',
             border: OutlineInputBorder(),
           ),
-          onSubmitted: (_) => _save(),
+          onSubmitted: (_) {
+            if (!_saving && mounted) _save();
+          },
         ),
         const SizedBox(height: 12),
         FilledButton(

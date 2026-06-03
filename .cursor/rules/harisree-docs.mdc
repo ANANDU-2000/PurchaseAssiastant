@@ -9,6 +9,8 @@ Before Harisree-specific work, read:
 
 1. [docs/harisree/MASTER_REFERENCE.md](../../docs/harisree/MASTER_REFERENCE.md)
 2. [docs/harisree/README.md](../../docs/harisree/README.md)
-3. [CURRENT_CONTEXT.md](../../CURRENT_CONTEXT.md) and [PROGRESS_LOG.md](../../PROGRESS_LOG.md)
+3. [TASKS.md](../../TASKS.md) — sprint status and deploy checklist
+
+Debug / regression notes live under `docs/debug/` and `docs/` (e.g. `docs/TEST_RESULTS.md`), not repo root.
 
 Resume Render and verify `/health` before API or end-to-end testing (see MASTER_REFERENCE Step 0).

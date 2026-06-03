@@ -727,6 +727,7 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
       for (final l in p.lines)
         {
           'id': l.id,
+          'catalog_item_id': l.catalogItemId,
           'item_name': l.itemName,
           'qty': l.qty,
           'unit': l.unit,
@@ -985,6 +986,7 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
         PurchaseDetailDamageSection(
           purchaseId: p.id,
           canReport: _isStaff() || _isOwnerOrManager(),
+          canManageStatus: _isOwnerOrManager(),
           onReport: () async {
             final firstLine =
                 p.lines.isNotEmpty ? p.lines.first.itemName : null;
@@ -996,6 +998,7 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
             );
             if (ok == true && context.mounted) {
               ref.invalidate(purchaseDamageReportsProvider(p.id));
+              ref.invalidate(pendingDamageReportsCountProvider);
               showTopSnack(context, 'Damage reported — owner notified');
             }
           },

@@ -25,46 +25,11 @@ After substantive edits: **`flutter analyze`** (client); **`pytest`** when backe
 
 ---
 
-## PHASED BUILD ORDER (DO NOT SKIP)
+## SPRINT STATUS & AGENT RULES
 
-Complete and validate each phase before the next.
-
-### PHASE 1 — App flow & navigation
-- [ ] Cold open → **Home dashboard** (`/home`) after auth; no random Reports/History first screen.
-- [ ] **Bottom shell:** Home | Reports | History | Assistant — `StatefulShellRoute` preserves branch state; no full reload on tab switch.
-- [ ] **Back:** stack pages use `leading` / `BackButton` / `context.pop()` where appropriate; never pop past shell root without intent.
-- [ ] **No full-screen blocking loaders** on shell routes — skeletons inside sections only.
-- [ ] **Login / splash:** single redirect to Home; no redirect loops.
-
-### PHASE 2 — Data connection
-- [ ] Saved lines always have **`catalog_item_id`** when tied to catalog (already enforced server-side where applicable).
-- [ ] **Item history** from trade list + `catalog_item_lines` merge (trade + legacy) stays consistent.
-- [ ] **Category → type (subcategory) → item** navigation uses real IDs in URLs (`/catalog/...`); search opens **`/catalog/item/:id`** not name-only analytics when ID exists.
-- [ ] **Reports empty state:** if trade data exists in range, tables and KPI must reflect it (trade endpoints + KPI from `trade-summary`).
-
-### PHASE 3 — Dashboard rebuild
-- [ ] Top: period chips (Today | Week | Month | Year) + optional date range.
-- [ ] **Main metrics card:** purchases ₹, kg / bags / boxes (compact, readable numbers).
-- [ ] **Donut / ring:** tabs **Category | Subcategory | Items**; distribution matches selected tab; **no overlap**, responsive diameter, `LayoutBuilder` + `RepaintBoundary` around chart.
-- [ ] **List below ring:** name, total ₹, total qty; remove duplicate / “revenue” clutter where not needed.
-
-### PHASE 4 — Item system
-- [ ] Item detail: name, category/type, **supplier + tap-to-call**, optional broker call, **recent trade rows**, supplier comparison, stats, PDF CTA.
-- [ ] Remove empty “analytics” placeholders; small empty copy only when no trade lines.
-
-### PHASE 5 — Reports (table-first)
-- [ ] Period filter + view chips **Item | Supplier | Category**; tables match dashboard spend for same range.
-- [ ] Avoid nested long-scroll mess; one primary scroll where possible.
-
-### PHASE 6 — Alerts & PDF
-- [ ] Due-date reminders (local) + optional mark paid; no duplicate notifications.
-- [ ] Item / supplier PDFs: clean tables; **no emoji** in PDF; company fallback **NEW HARISREE AGENCY**.
-
-### PHASE 7 — Production readiness (CI/CD + quality)
-- [ ] CI: `flutter analyze` + `flutter test` + `pytest` on PR.
-- [ ] Backend: `/health` + `/health/db-check`; request logging / 5xx visibility (middleware).
-- [ ] Env/secrets documented; no secrets in repo.
-- [ ] Smoke: create purchase → appears in history + item view + reports for same date range.
+- **Living task board:** `TASKS.md` (do not duplicate phase checklists here).
+- **Product / deploy truth:** `docs/harisree/MASTER_REFERENCE.md` and `.cursor/rules/purchase-assistant-master.mdc`.
+- **Phased UX milestones** (navigation, dashboard, reports, production) are tracked in `TASKS.md` — complete one phase at a time before starting the next.
 
 ---
 

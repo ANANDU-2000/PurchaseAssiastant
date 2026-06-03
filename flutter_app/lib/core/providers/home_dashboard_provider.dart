@@ -17,6 +17,7 @@ import '../utils/line_display.dart';
 import '../reporting/trade_report_aggregate.dart';
 import 'api_degraded_provider.dart';
 import 'catalog_providers.dart';
+import 'warehouse_alerts_provider.dart' show WarehouseAlerts;
 
 /// Period chips on the home dashboard. [custom] uses
 /// [homeCustomDateRangeProvider] (inclusive start/end dates).
@@ -171,6 +172,109 @@ class ItemSliceStat {
   final String unit;
 }
 
+/// Owner-home operational slice from `home_operational` on home-overview shell_bundle.
+class HomeOperationalBundle {
+  const HomeOperationalBundle({
+    required this.stockStatusCounts,
+    required this.warehouseAlerts,
+    required this.deliveryPipeline,
+    required this.notificationsUnread,
+  });
+
+  final Map<String, int> stockStatusCounts;
+  final WarehouseAlerts warehouseAlerts;
+  final Map<String, dynamic> deliveryPipeline;
+  final int notificationsUnread;
+
+  bool get hasStockCounts => stockStatusCounts.isNotEmpty;
+
+  int get stockAttentionCount =>
+      (stockStatusCounts['low'] ?? 0) +
+      (stockStatusCounts['critical'] ?? 0) +
+      (stockStatusCounts['out'] ?? 0);
+
+  static HomeOperationalBundle? fromSnapshot(Map<String, dynamic> snap) {
+    final raw = snap['home_operational'];
+    if (raw is! Map) return null;
+    final m = Map<String, dynamic>.from(raw);
+    final countsRaw = m['stock_status_counts'];
+    final counts = <String, int>{};
+    if (countsRaw is Map) {
+      for (final e in countsRaw.entries) {
+        counts[e.key.toString()] = coerceToInt(e.value);
+      }
+    }
+    final whRaw = m['warehouse_alerts'];
+    final wh = whRaw is Map
+        ? WarehouseAlerts(
+            pendingDeliveries: coerceToInt(whRaw['pending_deliveries']),
+            lowStock: coerceToInt(whRaw['low_stock']),
+            criticalStock: coerceToInt(whRaw['critical_stock']),
+            pendingVerifications: coerceToInt(whRaw['pending_verifications']),
+            missingBarcode: coerceToInt(whRaw['missing_barcode']),
+            missingUsageLogs: coerceToInt(whRaw['missing_usage_logs']),
+            evictionCount: coerceToInt(whRaw['eviction_count']),
+            checklistCompletionPct:
+                coerceToDoubleNullable(whRaw['checklist_completion_pct']) ??
+                    100,
+          )
+        : const WarehouseAlerts();
+    final pipe = m['delivery_pipeline'] is Map
+        ? Map<String, dynamic>.from(m['delivery_pipeline'] as Map)
+        : <String, dynamic>{};
+    return HomeOperationalBundle(
+      stockStatusCounts: counts,
+      warehouseAlerts: wh,
+      deliveryPipeline: pipe,
+      notificationsUnread: coerceToInt(m['notifications_unread']),
+    );
+  }
+}
+
+/// Point-in-time stock totals from home-overview `stock_in_hand`.
+class HomeStockInHandSummary {
+  const HomeStockInHandSummary({
+    this.totalValueInr = 0,
+    this.bags = 0,
+    this.boxes = 0,
+    this.tins = 0,
+    this.kg = 0,
+    this.itemCount = 0,
+  });
+
+  final double totalValueInr;
+  final double bags;
+  final double boxes;
+  final double tins;
+  final double kg;
+  final int itemCount;
+
+  static HomeStockInHandSummary? fromSnapshot(Map<String, dynamic> snap) {
+    final raw = snap['stock_in_hand'];
+    if (raw is! Map) return null;
+    final m = Map<String, dynamic>.from(raw);
+    return HomeStockInHandSummary(
+      totalValueInr: coerceToDouble(m['total_value_inr']),
+      bags: coerceToDouble(m['bags']),
+      boxes: coerceToDouble(m['boxes']),
+      tins: coerceToDouble(m['tins']),
+      kg: coerceToDouble(m['kg']),
+      itemCount: coerceToInt(m['item_count']),
+    );
+  }
+}
+
+/// True when Home tab can use bundled operational counts from [homeDashboardDataProvider].
+bool homeTabHasOperationalBundle(Ref ref) {
+  if (!shellBranchIsVisible(ref, ShellBranch.home)) return false;
+  return ref.watch(homeDashboardDataProvider).snapshot.data.operational != null;
+}
+
+Map<String, int>? homeBundledStockStatusCounts(Ref ref) {
+  if (!homeTabHasOperationalBundle(ref)) return null;
+  return ref.watch(homeDashboardDataProvider).snapshot.data.operational!.stockStatusCounts;
+}
+
 class HomeDashboardData {
   const HomeDashboardData({
     required this.period,
@@ -193,6 +297,8 @@ class HomeDashboardData {
     this.brokerCount = 0,
     this.receivedDeliveryCount = 0,
     this.negativeStockCount = 0,
+    this.operational,
+    this.stockInHand,
   });
 
   final HomePeriod period;
@@ -218,6 +324,8 @@ class HomeDashboardData {
   final int brokerCount;
   final int receivedDeliveryCount;
   final int negativeStockCount;
+  final HomeOperationalBundle? operational;
+  final HomeStockInHandSummary? stockInHand;
 
   bool get isEmpty => purchaseCount == 0;
 
@@ -392,6 +500,8 @@ HomeDashboardData homeDashboardDataFromApiSnapshot(
     brokerCount: brokerCount,
     receivedDeliveryCount: receivedDeliveryCount,
     negativeStockCount: negativeStockCount,
+    operational: HomeOperationalBundle.fromSnapshot(clean),
+    stockInHand: HomeStockInHandSummary.fromSnapshot(clean),
   );
 }
 
@@ -870,6 +980,22 @@ final homeDashboardDataProvider =
   HomeDashboardDataNotifier.new,
 );
 
+/// Spec alias: single bundled home dashboard read (60s client cache).
+final dashboardProvider = homeDashboardDataProvider;
+
+/// Notification bell on Home — from shell bundle when available.
+final homeBundledNotificationsUnreadProvider = Provider<int>((ref) {
+  if (homeTabHasOperationalBundle(ref)) {
+    return ref
+        .watch(homeDashboardDataProvider)
+        .snapshot
+        .data
+        .operational!
+        .notificationsUnread;
+  }
+  return 0;
+});
+
 class HomeDashboardDataNotifier extends AutoDisposeNotifier<HomeDashboardDashState> {
   bool _dead = false;
 
@@ -921,8 +1047,7 @@ class HomeDashboardDataNotifier extends AutoDisposeNotifier<HomeDashboardDashSta
     final fetchedAt = _homeOverviewFetchedAt[dedupeKey];
     final cacheFresh = hasRenderableCache &&
         fetchedAt != null &&
-        DateTime.now().difference(fetchedAt) <
-            const Duration(minutes: 3);
+        DateTime.now().difference(fetchedAt) < const Duration(seconds: 60);
     if (cacheFresh) {
       return HomeDashboardDashState(
         snapshot: seed,

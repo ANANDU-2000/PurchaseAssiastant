@@ -102,6 +102,7 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
         .map(
           (l) => {
             'id': l.id,
+            'catalog_item_id': l.catalogItemId,
             'item_name': l.itemName,
             'qty': l.qty,
             'unit': l.unit,

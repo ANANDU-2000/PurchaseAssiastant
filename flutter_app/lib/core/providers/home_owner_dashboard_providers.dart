@@ -11,8 +11,16 @@ import '../utils/home_activity_units.dart';
 import 'stock_providers.dart'
     show lowStockByCategoryProvider, stockStatusCountsProvider;
 import 'home_breakdown_tab_providers.dart';
-import 'home_dashboard_provider.dart';
-import '../../features/stock/presentation/widgets/low_stock_category_tree.dart';
+import 'home_dashboard_provider.dart'
+    show
+        homeDashboardDataProvider,
+        homeTabHasOperationalBundle,
+        homePeriodProvider,
+        homeCustomDateRangeProvider,
+        HomePeriod,
+        HomeDashboardData,
+        homeDashboardDataFromApiSnapshot,
+        homePeriodRange;
 import 'delivery_pipeline_provider.dart';
 import 'notifications_provider.dart' show mergedNotificationFeedProvider;
 import 'warehouse_alerts_provider.dart';
@@ -126,6 +134,18 @@ class HomeInventorySummary {
 
 final homeInventorySummaryProvider =
     FutureProvider.autoDispose<HomeInventorySummary>((ref) async {
+  final inHand =
+      ref.watch(homeDashboardDataProvider).snapshot.data.stockInHand;
+  if (homeTabHasOperationalBundle(ref) && inHand != null) {
+    return HomeInventorySummary(
+      totalValueInr: inHand.totalValueInr,
+      bags: inHand.bags,
+      boxes: inHand.boxes,
+      tins: inHand.tins,
+      kg: inHand.kg,
+      itemCount: inHand.itemCount,
+    );
+  }
   _providerKeepAlive(ref, const Duration(minutes: 5));
   final session = ref.watch(activeSessionProvider);
   if (session == null) return HomeInventorySummary.empty;
@@ -182,9 +202,17 @@ final stockCriticalCountProvider = FutureProvider.autoDispose<int>((ref) async {
   return c.critical;
 });
 
-/// Items needing attention on home live bar (matches low-stock page semantics).
+/// Items needing attention on home live bar (bundled stock_status_counts when on Home).
 final homeStockAttentionCountProvider =
     FutureProvider.autoDispose<int>((ref) async {
+  if (homeTabHasOperationalBundle(ref)) {
+    return ref
+        .watch(homeDashboardDataProvider)
+        .snapshot
+        .data
+        .operational!
+        .stockAttentionCount;
+  }
   _providerKeepAlive(ref, const Duration(minutes: 2));
   final counts = await ref.watch(stockStatusCountsProvider.future);
   final out = coerceToInt(counts['out']);
@@ -193,15 +221,17 @@ final homeStockAttentionCountProvider =
   return out + low + critical;
 });
 
-/// Low-stock attention count aligned with [/stock/low-stock] grouped API.
+/// Low-stock attention on Home — uses shell bundle; grouped API only on low-stock route.
 final homeLowStockAttentionCountProvider = Provider.autoDispose<int>((ref) {
-  final grouped = ref.watch(lowStockByCategoryProvider);
-  return grouped.when(
-    data: (g) => countLowStockForTab(g, LowStockTreeTab.allLow),
-    loading: () => ref.watch(homeStockAttentionCountProvider).valueOrNull ?? 0,
-    error: (_, __) =>
-        ref.watch(homeStockAttentionCountProvider).valueOrNull ?? 0,
-  );
+  if (homeTabHasOperationalBundle(ref)) {
+    return ref
+        .watch(homeDashboardDataProvider)
+        .snapshot
+        .data
+        .operational!
+        .stockAttentionCount;
+  }
+  return ref.watch(homeStockAttentionCountProvider).valueOrNull ?? 0;
 });
 
 /// Pending delivery: warehouse summary + delivery pipeline (max of both).

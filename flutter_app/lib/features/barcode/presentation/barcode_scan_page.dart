@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../core/design_system/hexa_responsive.dart';
@@ -25,21 +26,22 @@ import '../../../core/providers/stock_offline_queue_provider.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../shared/widgets/search_picker_sheet.dart';
-import '../../stock/presentation/quick_stock_action_sheet.dart';
+import '../../stock/presentation/stock_sheet_launch.dart';
 import '../../stock/presentation/stock_undo_snackbar.dart';
 import 'warehouse_scan_action_sheet.dart';
 import 'barcode_scan_web_stub.dart'
     if (dart.library.html) 'barcode_scan_web.dart';
+import 'web_live_barcode_scanner.dart' show WebLiveBarcodeScanner;
 
 const _kMaxRecent = 10;
-const _kDebounceMs = 400;
+const _kDebounceMs = 200;
+const _kCameraPermGrantedKey = 'camera_perm_granted';
 const _kManualSearchDebounceMs = 400;
-/// Primary warehouse formats (fewer = faster camera decode on iOS).
+/// Primary warehouse formats (fewer = faster decode per frame).
 const _kWarehouseBarcodeFormats = <BarcodeFormat>[
-  BarcodeFormat.code128, // Primary warehouse format
-  BarcodeFormat.ean13,   // Product barcodes
-  BarcodeFormat.qrCode,  // Harisree QR labels
-  BarcodeFormat.code39,  // Some warehouse labels
+  BarcodeFormat.code128,
+  BarcodeFormat.ean13,
+  BarcodeFormat.qrCode,
 ];
 
 /// Warehouse barcode scan — camera + manual lookup → item detail.
@@ -56,6 +58,8 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
   static bool _cameraPermissionGrantedThisSession = false;
 
   MobileScannerController? _camera;
+  WebLiveBarcodeScanner? _webLiveScanner;
+  bool _useWebDetectorPreview = false;
   bool _cameraInitInFlight = false;
   String? _cameraDeniedMessage;
   final _manualCtrl = TextEditingController();
@@ -86,6 +90,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
   Timer? _safariNoDetectTimer;
   bool _safariUploadNudgeShown = false;
   bool _hadDetectThisVisit = false;
+  bool _scanConfirmed = false;
 
   @override
   void initState() {
@@ -181,20 +186,122 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
     }
   }
 
+  Future<bool> _readPersistedCameraPerm() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_kCameraPermGrantedKey) ?? false;
+  }
+
+  Future<void> _markCameraPermGranted() async {
+    _cameraPermissionGrantedThisSession = true;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kCameraPermGrantedKey, true);
+  }
+
+  Future<void> _stopWebLiveScanner() async {
+    await _webLiveScanner?.stop();
+    _webLiveScanner = null;
+    _useWebDetectorPreview = false;
+  }
+
   MobileScannerController _newScannerController() {
     return MobileScannerController(
-      detectionSpeed: DetectionSpeed.normal,
-      detectionTimeoutMs: 300,
+      detectionSpeed: DetectionSpeed.noDuplicates,
+      detectionTimeoutMs: kIsWeb ? 150 : 100,
       facing: CameraFacing.back,
       formats: _kWarehouseBarcodeFormats,
       autoStart: true,
+      returnImage: false,
     );
+  }
+
+  void _flashScanConfirmed() {
+    if (!mounted) return;
+    unawaited(HapticFeedback.mediumImpact());
+    setState(() => _scanConfirmed = true);
+    Future<void>.delayed(const Duration(milliseconds: 150), () {
+      if (mounted) setState(() => _scanConfirmed = false);
+    });
+  }
+
+  void _onWebBarcodeCode(String code) {
+    if (_busy || !mounted) return;
+    final v = code.trim();
+    if (v.isEmpty) return;
+    if (!_debouncePass(v)) return;
+    _flashScanConfirmed();
+    _hadDetectThisVisit = true;
+    _safariNoDetectTimer?.cancel();
+    unawaited(_lookupAndNavigate(v));
+  }
+
+  Future<bool> _tryStartSafariBarcodeDetector() async {
+    if (!kIsWeb || !isSafariBrowser) return false;
+    final scanner = createWebLiveBarcodeScanner();
+    if (scanner == null) return false;
+    final ok = await scanner.start(_onWebBarcodeCode);
+    if (!ok || !mounted) {
+      await scanner.stop();
+      return false;
+    }
+    await _camera?.dispose();
+    _camera = null;
+    _webLiveScanner = scanner;
+    _useWebDetectorPreview = true;
+    await _markCameraPermGranted();
+    if (mounted) {
+      setState(() {
+        _cameraDenied = false;
+        _cameraPermanent = false;
+        _cameraDeniedMessage = null;
+      });
+      _scheduleSafariNoDetectNudge();
+    }
+    return true;
+  }
+
+  Future<void> _startWebMobileScanner() async {
+    await _stopWebLiveScanner();
+    try {
+      _camera = _newScannerController();
+      await _markCameraPermGranted();
+      if (mounted) {
+        setState(() {
+          _cameraDenied = false;
+          _cameraPermanent = false;
+          _cameraDeniedMessage = null;
+        });
+        _scheduleSafariNoDetectNudge();
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _cameraDenied = true;
+          _cameraPermanent = false;
+          _cameraDeniedMessage =
+              'Could not start the camera in this browser. '
+              'Allow camera for this site in Safari settings, or use '
+              'Upload barcode photo / manual entry below.';
+        });
+      }
+    }
+  }
+
+  Future<void> _startNativeMobileScanner() async {
+    if (!mounted) return;
+    _camera = _newScannerController();
+    await _markCameraPermGranted();
+    if (mounted) {
+      setState(() {
+        _cameraDenied = false;
+        _cameraDeniedMessage = null;
+      });
+    }
   }
 
   void _scheduleSafariNoDetectNudge() {
     if (!kIsWeb || !isSafariBrowser) return;
     _safariNoDetectTimer?.cancel();
-    _safariNoDetectTimer = Timer(const Duration(seconds: 3), () {
+    _safariNoDetectTimer = Timer(const Duration(seconds: 4), () {
       if (!mounted ||
           _busy ||
           _hadDetectThisVisit ||
@@ -216,46 +323,21 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
   }
 
   Future<void> _initCamera() async {
-    if (_camera != null && _camera!.value.isRunning) return;
+    if ((_camera != null && _camera!.value.isRunning) ||
+        (_useWebDetectorPreview && (_webLiveScanner?.isActive ?? false))) {
+      return;
+    }
     if (_cameraInitInFlight) return;
     _cameraInitInFlight = true;
     try {
-      if (kIsWeb) {
-        try {
-          _camera = _newScannerController();
-          _cameraPermissionGrantedThisSession = true;
-          if (mounted) {
-            setState(() {
-              _cameraDenied = false;
-              _cameraPermanent = false;
-              _cameraDeniedMessage = null;
-            });
-            _scheduleSafariNoDetectNudge();
-          }
-        } catch (_) {
-          if (mounted) {
-            setState(() {
-              _cameraDenied = true;
-              _cameraPermanent = false;
-              _cameraDeniedMessage =
-                  'Could not start the camera in this browser. '
-                  'Allow camera for this site in Safari settings, or use '
-                  'Upload barcode photo / manual entry below.';
-            });
-          }
-        }
-        return;
+      final persisted = await _readPersistedCameraPerm();
+      if (persisted) {
+        _cameraPermissionGrantedThisSession = true;
       }
 
-      if (_cameraPermissionGrantedThisSession) {
-        if (!mounted) return;
-        _camera = _newScannerController();
-        if (mounted) {
-          setState(() {
-            _cameraDenied = false;
-            _cameraDeniedMessage = null;
-          });
-        }
+      if (kIsWeb) {
+        if (await _tryStartSafariBarcodeDetector()) return;
+        await _startWebMobileScanner();
         return;
       }
 
@@ -270,6 +352,12 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
         }
         return;
       }
+
+      if (_cameraPermissionGrantedThisSession) {
+        await _startNativeMobileScanner();
+        return;
+      }
+
       if (!status.isGranted) {
         final req = await Permission.camera.request();
         if (!req.isGranted) {
@@ -285,14 +373,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
       }
 
       if (!mounted) return;
-      _camera = _newScannerController();
-      _cameraPermissionGrantedThisSession = true;
-      if (mounted) {
-        setState(() {
-          _cameraDenied = false;
-          _cameraDeniedMessage = null;
-        });
-      }
+      await _startNativeMobileScanner();
     } finally {
       _cameraInitInFlight = false;
     }
@@ -329,7 +410,9 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
     _lastCode = null; // Reset debounce so same code can be scanned again
     _lastAt = null;
 
-    if (_camera != null) {
+    if (_useWebDetectorPreview && _webLiveScanner != null) {
+      // BarcodeDetector loop keeps running while _busy blocks new codes.
+    } else if (_camera != null) {
       try {
         // On iOS: camera may already be running (we didn't stop it)
         // On Android: restart after stop
@@ -512,6 +595,27 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
     if (session == null) return;
 
     _setBusy(true);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Theme.of(context).colorScheme.onInverseSurface,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Text('Looking up $code…')),
+            ],
+          ),
+          duration: const Duration(seconds: 30),
+        ),
+      );
+    }
 
     // Do NOT stop camera on iOS — just ignore new detects via _busy flag
     // Only stop on non-web (Android) where stop/start is reliable
@@ -538,14 +642,16 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
       await _pushRecent(
         BarcodeRecentScan(id: id, name: name, code: code),
       );
-      await HapticFeedback.mediumImpact();
       if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
       final returnTo = GoRouterState.of(context).uri.queryParameters['return'];
       if (returnTo == 'stock') {
-        final saved = await showQuickStockActionSheet(
+        final saved = await openQuickStockWithFreshItem(
           context: context,
           ref: ref,
-          item: Map<String, dynamic>.from(row),
+          itemId: id,
+          itemName: name,
+          fallbackRow: Map<String, dynamic>.from(row),
         );
         if (saved && mounted) {
           ref.invalidate(stockListProvider);
@@ -568,6 +674,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
       await _showFoundActions(row, id, name);
     } on TimeoutException {
       if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text(
@@ -582,6 +689,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
       await _resumeScan();
     } on DioException catch (e) {
       if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
       if (e.response?.statusCode == 404) {
         await _showNotFoundSheet(code);
         return;
@@ -594,6 +702,8 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
         ),
       );
       await _resumeScan();
+    } finally {
+      if (mounted) _setBusy(false);
     }
   }
 
@@ -617,7 +727,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
     final v = preferred.rawValue?.trim();
     if (v == null || v.isEmpty) return;
     if (!_debouncePass(v)) return;
-
+    _flashScanConfirmed();
     _hadDetectThisVisit = true;
     _safariNoDetectTimer?.cancel();
     unawaited(_lookupAndNavigate(v));
@@ -674,9 +784,14 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden) {
       if (cam != null) unawaited(cam.stop());
+      unawaited(_stopWebLiveScanner());
       _scanLineCtrl.stop();
     } else if (state == AppLifecycleState.resumed) {
-      if (cam != null) unawaited(cam.start());
+      if (_useWebDetectorPreview) {
+        unawaited(_initCamera());
+      } else if (cam != null) {
+        unawaited(cam.start());
+      }
       if (!_busy) {
         _scanLineCtrl.repeat(reverse: true);
       }
@@ -692,6 +807,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
     _manualCtrl.removeListener(_onManualChanged);
     _manualCtrl.dispose();
     _manualFocus.dispose();
+    unawaited(_stopWebLiveScanner());
     _camera?.dispose();
     _camera = null;
     super.dispose();
@@ -778,7 +894,8 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
           if (safariUpload)
             MaterialBanner(
               content: const Text(
-                'Safari camera scan is unreliable. Use Upload barcode photo for best results.',
+                'Live camera scan needs iOS 17 or newer in Safari. '
+                'Upload a barcode photo or use manual search below.',
               ),
               actions: [
                 TextButton(
@@ -802,25 +919,64 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
             Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Icon(Icons.videocam_off_outlined,
                       size: 48, color: theme.colorScheme.error),
                   const SizedBox(height: 12),
                   Text(
+                    'Camera access needed',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
                     _cameraDeniedMessage ??
-                        (_cameraPermanent
-                            ? 'Please allow camera access in Settings to scan barcodes.'
-                            : 'Camera permission is needed to scan barcodes.'),
+                        'Allow camera access to scan barcodes.',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium,
                   ),
                   const SizedBox(height: 16),
-                  if (_cameraPermanent)
-                    FilledButton(
+                  if (kIsWeb) ...[
+                    Text(
+                      'Safari (installed app)',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      '1. Open iPhone Settings\n'
+                      '2. Scroll to Safari → Advanced → Website Data (or find this app on Home Screen)\n'
+                      '3. Open Website Settings for Harisree\n'
+                      '4. Set Camera to Allow\n'
+                      '5. Return here and tap Try again',
+                    ),
+                    const SizedBox(height: 12),
+                  ] else if (_cameraPermanent) ...[
+                    Text(
+                      'iPhone / Android',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      '1. Open device Settings\n'
+                      '2. Find Harisree / Purchase Assistant\n'
+                      '3. Enable Camera\n'
+                      '4. Return and tap Try again',
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
                       onPressed: openAppSettings,
-                      child: const Text('Open Settings'),
-                    )
-                  else
+                      icon: const Icon(Icons.settings_outlined),
+                      label: const Text('Open Settings'),
+                    ),
+                    const SizedBox(height: 8),
+                  ] else ...[
                     FilledButton(
                       onPressed: () {
                         setState(() {
@@ -832,25 +988,32 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
                       },
                       child: const Text('Allow camera'),
                     ),
-                  const SizedBox(height: 12),
+                    const SizedBox(height: 8),
+                  ],
+                  OutlinedButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () {
+                            setState(() {
+                              _cameraDenied = false;
+                              _cameraPermanent = false;
+                              _cameraDeniedMessage = null;
+                            });
+                            unawaited(_initCamera());
+                          },
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Try again'),
+                  ),
+                  const SizedBox(height: 20),
+                  const Divider(),
+                  const SizedBox(height: 8),
                   Text(
-                    'Scanner unavailable on this device.',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.titleSmall,
+                    'Without camera',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 8),
-                  _FallbackAction(
-                    icon: Icons.qr_code_scanner_rounded,
-                    label: 'Scan with camera',
-                    onPressed: () {
-                      setState(() {
-                        _cameraDenied = false;
-                        _cameraPermanent = false;
-                        _cameraDeniedMessage = null;
-                      });
-                      unawaited(_initCamera());
-                    },
-                  ),
                   _FallbackAction(
                     icon: Icons.photo_outlined,
                     label: 'Upload barcode photo',
@@ -858,19 +1021,8 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
                   ),
                   _FallbackAction(
                     icon: Icons.keyboard,
-                    label: 'Enter manually',
+                    label: 'Search by name or code',
                     onPressed: () => _manualFocus.requestFocus(),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _cameraDenied = false;
-                        _cameraPermanent = false;
-                        _cameraDeniedMessage = null;
-                      });
-                      unawaited(_initCamera());
-                    },
-                    child: const Text('Retry'),
                   ),
                 ],
               ),
@@ -885,12 +1037,14 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: _camera != null
-                          ? MobileScanner(
-                              controller: _camera!,
-                              onDetect: _onDetect,
-                            )
-                          : Container(
+                      child: _useWebDetectorPreview && _webLiveScanner != null
+                          ? _webLiveScanner!.buildPreview()
+                          : _camera != null
+                              ? MobileScanner(
+                                  controller: _camera!,
+                                  onDetect: _onDetect,
+                                )
+                              : Container(
                               color: Colors.black87,
                               child: const Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -913,7 +1067,10 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
                     ),
                     Center(
                       child: CustomPaint(
-                        painter: ScannerReticlePainter(color: HexaColors.brandPrimary),
+                        painter: ScannerReticlePainter(
+                          color: HexaColors.brandPrimary,
+                          confirmed: _scanConfirmed,
+                        ),
                         child: Container(
                           width: math.min(320, size.width - 16),
                           height: 120,
@@ -1147,15 +1304,16 @@ class _FallbackAction extends StatelessWidget {
 }
 
 class ScannerReticlePainter extends CustomPainter {
-  ScannerReticlePainter({required this.color});
+  ScannerReticlePainter({required this.color, this.confirmed = false});
   final Color color;
+  final bool confirmed;
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = color
+      ..color = confirmed ? const Color(0xFF16A34A) : color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0;
+      ..strokeWidth = confirmed ? 4.0 : 3.0;
 
     final length = 16.0;
     final radius = 8.0;
@@ -1194,5 +1352,6 @@ class ScannerReticlePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant ScannerReticlePainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.confirmed != confirmed;
 }

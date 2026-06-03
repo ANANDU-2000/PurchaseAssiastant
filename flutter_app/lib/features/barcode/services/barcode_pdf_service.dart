@@ -1,4 +1,3 @@
-import 'dart:isolate';
 import 'dart:math' as math;
 
 import 'package:barcode/barcode.dart';
@@ -20,6 +19,7 @@ class BarcodeLabelData {
   const BarcodeLabelData({
     required this.itemCode,
     required this.itemName,
+    this.itemId,
     this.barcode,
     this.publicToken,
     this.unit,
@@ -31,6 +31,8 @@ class BarcodeLabelData {
     this.supplierName,
   });
 
+  /// Catalog item UUID when barcode and item_code are absent.
+  final String? itemId;
   /// Scannable packaging barcode (Code128/QR payload).
   final String? barcode;
   /// Public scan token for QR URL labels.
@@ -46,26 +48,40 @@ class BarcodeLabelData {
   final double? lastPurchaseRate;
   final String? supplierName;
 
-  /// Value encoded in the barcode image (barcode column, else item_code).
+  bool get usesItemIdFallback {
+    final b = barcode?.trim() ?? '';
+    final ic = itemCode.trim();
+    final id = itemId?.trim() ?? '';
+    return b.isEmpty && ic.isEmpty && id.isNotEmpty;
+  }
+
+  /// Value encoded in the barcode image (barcode, item_code, else item UUID).
   String get symbologyValue {
     final b = barcode?.trim() ?? '';
     if (b.isNotEmpty) return BarcodePdfService.sanitizePrintPayload(b);
-    return BarcodePdfService.sanitizePrintPayload(itemCode.trim());
+    final ic = itemCode.trim();
+    if (ic.isNotEmpty) return BarcodePdfService.sanitizePrintPayload(ic);
+    final id = itemId?.trim() ?? '';
+    if (id.isNotEmpty) return BarcodePdfService.sanitizePrintPayload(id);
+    return '';
   }
 
-  /// QR payload (browser scan route), fallback to barcode or item code.
+  /// QR payload (browser scan route), fallback to barcode, item code, or item id.
   String? qrScanUrl(String webBase) {
     final key = (publicToken?.trim().isNotEmpty == true)
         ? publicToken!.trim()
         : (barcode?.trim().isNotEmpty == true)
             ? barcode!.trim()
-            : itemCode.trim();
+            : itemCode.trim().isNotEmpty
+                ? itemCode.trim()
+                : (itemId?.trim() ?? '');
     if (key.isEmpty) return null;
     final base = webBase.endsWith('/') ? webBase.substring(0, webBase.length - 1) : webBase;
     return '$base/item/${Uri.encodeComponent(key)}';
   }
 
   Map<String, dynamic> toJson() => {
+        'itemId': itemId,
         'barcode': barcode,
         'itemCode': itemCode,
         'itemName': itemName,
@@ -91,6 +107,7 @@ class BarcodeLabelData {
       lpDate = DateTime.tryParse(lpRaw);
     }
     return BarcodeLabelData(
+      itemId: j['itemId'] as String?,
       barcode: j['barcode'] as String?,
       itemCode: j['itemCode'] as String? ?? '',
       itemName: j['itemName'] as String? ?? '',
@@ -105,18 +122,21 @@ class BarcodeLabelData {
   }
 
   static BarcodeLabelData? fromApiMap(Map<String, dynamic> j) {
+    final id = j['id']?.toString().trim() ?? '';
     final ic = j['item_code']?.toString().trim() ?? '';
     final bc = j['barcode']?.toString().trim() ?? '';
-    if (ic.isEmpty && bc.isEmpty) return null;
+    if (ic.isEmpty && bc.isEmpty && id.isEmpty) return null;
     DateTime? lpDate;
     final lpRaw = j['last_purchase_date'];
     if (lpRaw is String && lpRaw.isNotEmpty) {
       lpDate = DateTime.tryParse(lpRaw);
     }
     return BarcodeLabelData(
+      itemId: id.isEmpty ? null : id,
       barcode: bc.isEmpty ? null : bc,
-      itemCode: ic.isEmpty ? bc : ic,
-      itemName: j['item_name']?.toString() ?? (ic.isNotEmpty ? ic : bc),
+      itemCode: ic.isEmpty ? (bc.isEmpty ? '' : bc) : ic,
+      itemName: j['item_name']?.toString() ??
+          (ic.isNotEmpty ? ic : (bc.isNotEmpty ? bc : id)),
       unit: j['unit']?.toString(),
       currentStock: finiteQty(coerceToDoubleNullable(j['current_stock'])),
       lastPurchaseDate: lpDate,
@@ -375,7 +395,7 @@ class BarcodePdfService {
       if (kIsWeb) {
         return await _barcodeA4DenseFromPayload(payload);
       }
-      return await Isolate.run(() => _barcodeA4DenseFromPayload(payload));
+      return await compute(_barcodeA4DenseFromPayload, payload);
     } catch (e, st) {
       logBarcodeOperationError(e, st);
       if (symbol == BarcodeSymbolMode.qrCode) {
@@ -891,6 +911,14 @@ class BarcodePdfService {
         ),
       );
     }
+    if (data.usesItemIdFallback) {
+      children.add(
+        pw.Text(
+          pdfLabelText('No barcode — using item ID'),
+          style: pw.TextStyle(fontSize: codeSz - 1),
+        ),
+      );
+    }
 
     final stockDisplay = pdfQtyDisplayString(data.currentStock);
 
@@ -1289,7 +1317,7 @@ class BarcodePdfService {
   }
 }
 
-/// Top-level for [Isolate.run] (must be a library function).
+/// Top-level for [compute] (must be a library function).
 Future<Uint8List> _barcodeA4DenseFromPayload(Map<String, dynamic> payload) {
   return BarcodePdfService.buildA4DenseGridPdf(payload);
 }

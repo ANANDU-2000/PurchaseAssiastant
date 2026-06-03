@@ -5,10 +5,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/session_notifier.dart'
     show activeSessionProvider, hexaApiProvider;
 import '../json_coerce.dart';
+import 'home_dashboard_provider.dart'
+    show homeDashboardDataProvider, homeTabHasOperationalBundle;
 
 /// Owner dashboard: counts per delivery_status from API.
 final deliveryPipelineProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  if (homeTabHasOperationalBundle(ref)) {
+    return Map<String, dynamic>.from(
+      ref.watch(homeDashboardDataProvider).snapshot.data.operational!.deliveryPipeline,
+    );
+  }
   final link = ref.keepAlive();
   ref.onDispose(() => link.close());
 

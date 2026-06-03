@@ -16,6 +16,7 @@ import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/notification_center_provider.dart';
 import '../../../core/providers/server_notifications_provider.dart';
 import '../../../core/providers/stock_audit_providers.dart';
+import '../../../core/stock/stock_version_retry.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../stock/presentation/widgets/stock_update_mode_toggle.dart';
 import 'widgets/scan_item_stock_summary_card.dart';
@@ -48,6 +49,7 @@ class _WarehouseScanActionBody extends ConsumerStatefulWidget {
 class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBody> {
   final _qtyCtl = TextEditingController();
   final _notesCtl = TextEditingController();
+  late Map<String, dynamic> _item;
   StockUpdateMode _mode = StockUpdateMode.physical;
   String? _reasonType;
   bool _saving = false;
@@ -55,22 +57,45 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
   String? _qtyError;
   String? _reasonError;
 
-  @override
-  void initState() {
-    super.initState();
+  void _seedQtyFromItem() {
     final session = ref.read(sessionProvider);
     final privileged = session != null && sessionIsPrivilegedStockRole(session);
-    _mode = StockUpdateMode.physical;
     final phys = coerceToDoubleNullable(
-      widget.item['physical_stock_qty'] ?? widget.item['physical_count_qty'],
+      _item['physical_stock_qty'] ?? _item['physical_count_qty'],
     );
     final cur = privileged
-        ? coerceToDouble(widget.item['current_stock'])
-        : (phys ?? coerceToDouble(widget.item['current_stock']));
+        ? coerceToDouble(_item['current_stock'])
+        : (phys ?? coerceToDouble(_item['current_stock']));
     _qtyCtl.text = cur == cur.roundToDouble()
         ? '${cur.round()}'
         : cur.toStringAsFixed(1);
+  }
+
+  Future<void> _refreshItemFromServer() async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      final fresh = await ref.read(hexaApiProvider).getStockItem(
+            businessId: session.primaryBusiness.id,
+            itemId: _itemId,
+          );
+      if (!mounted) return;
+      setState(() {
+        _item = Map<String, dynamic>.from(fresh);
+        _seedQtyFromItem();
+      });
+    } catch (_) {}
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _item = Map<String, dynamic>.from(widget.item);
+    _seedQtyFromItem();
     _qtyCtl.addListener(_revalidateQty);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_refreshItemFromServer());
+    });
   }
 
   @override
@@ -97,6 +122,7 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
   }
 
   void _revalidateQty() {
+    if (!mounted) return;
     final next = _qtyErrorText();
     if (next != _qtyError) {
       setState(() => _qtyError = next);
@@ -110,15 +136,15 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
     });
   }
 
-  String get _itemId => widget.item['id']?.toString() ?? '';
+  String get _itemId => _item['id']?.toString() ?? '';
 
-  double get _systemQty => coerceToDouble(widget.item['current_stock']);
+  double get _systemQty => coerceToDouble(_item['current_stock']);
 
   double? get _enteredQty => _parseEnteredQty();
 
   String get _unit =>
-      widget.item['unit']?.toString() ??
-      widget.item['stock_unit']?.toString() ??
+      _item['unit']?.toString() ??
+      _item['stock_unit']?.toString() ??
       '';
 
   String get _unitLabel => _unit.isNotEmpty ? _unit.toUpperCase() : '';
@@ -197,10 +223,12 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
             ],
           ),
         );
+        if (!mounted) return;
         if (ok != true) return;
       }
     }
 
+    if (!mounted) return;
     setState(() => _saving = true);
     try {
       final bid = session.primaryBusiness.id;
@@ -231,18 +259,22 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
               ],
             ),
           );
-          if (ok != true || !mounted) {
+          if (!mounted) return;
+          if (ok != true) {
             setState(() => _saving = false);
             return;
           }
         }
-        await ref.read(hexaApiProvider).patchStockItem(
-              businessId: bid,
-              itemId: _itemId,
-              newQty: qty,
-              adjustmentType: _reasonType ?? 'correction',
-              reason: note.isNotEmpty ? '$reasonLabel — $note' : reasonLabel,
-            );
+        final api = ref.read(hexaApiProvider);
+        await api.patchStockItemWithRetry(
+          businessId: bid,
+          itemId: _itemId,
+          newQty: qty,
+          adjustmentType: _reasonType ?? 'correction',
+          reason: note.isNotEmpty ? '$reasonLabel — $note' : reasonLabel,
+          initialStockVersion: stockVersionFromItem(_item),
+        );
+        if (!mounted) return;
         ref.invalidate(appNotificationsListProvider);
         ref.invalidate(notificationCenterCoordinatorProvider);
       } else {
@@ -258,15 +290,17 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
                 notes: note.isEmpty ? null : note,
               );
         } else {
-          await ref.read(hexaApiProvider).verifyStockCount(
+          await ref.read(hexaApiProvider).verifyStockCountWithRetry(
                 businessId: bid,
                 itemId: _itemId,
                 countedQty: qty,
                 adjustmentType: _reasonType ?? 'verification',
                 reason: reasonLabel,
                 notes: note.isEmpty ? null : note,
+                initialStockVersion: stockVersionFromItem(_item),
               );
         }
+        if (!mounted) return;
       }
 
       invalidateWarehouseSurfaces(ref, itemId: _itemId);
@@ -283,6 +317,17 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
         ),
       );
       Navigator.pop(context, true);
+    } on StaleStockConflict {
+      if (!mounted) return;
+      await _refreshItemFromServer();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(StaleStockConflict.userMessage),
+          duration: Duration(seconds: 5),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } on DioException catch (e) {
       if (!mounted) return;
       final offline = e.type == DioExceptionType.connectionError ||
@@ -336,18 +381,18 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
         ? (parsedQty != null && (parsedQty - _systemQty).abs() > 0.01)
         : _diff.abs() > 0.01;
 
-    final lpQty = coerceToDoubleNullable(widget.item['last_purchase_qty']);
-    final lpUnit = widget.item['last_purchase_unit']?.toString().trim() ?? _unit;
-    final lpDateRaw = widget.item['last_purchase_date']?.toString();
+    final lpQty = coerceToDoubleNullable(_item['last_purchase_qty']);
+    final lpUnit = _item['last_purchase_unit']?.toString().trim() ?? _unit;
+    final lpDateRaw = _item['last_purchase_date']?.toString();
     final lpDate = lpDateRaw != null ? DateTime.tryParse(lpDateRaw) : null;
-    final supplier = widget.item['supplier_name']?.toString().trim() ?? '';
+    final supplier = _item['supplier_name']?.toString().trim() ?? '';
 
     if (isReadOnly) {
       return Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ScanItemStockSummaryCard(item: widget.item),
+          ScanItemStockSummaryCard(item: _item),
           const SizedBox(height: 12),
           Text(
             'Read-only account. Ask owner/admin to update stock.',
@@ -371,7 +416,7 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ScanItemStockSummaryCard(item: widget.item),
+          ScanItemStockSummaryCard(item: _item),
           const SizedBox(height: 10),
           const Text(
             'What would you like to do?',
@@ -440,7 +485,7 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
             ),
           ],
         ),
-        ScanItemStockSummaryCard(item: widget.item),
+        ScanItemStockSummaryCard(item: _item),
         if (lpQty != null && lpQty > 0) ...[
           const SizedBox(height: 8),
           Container(

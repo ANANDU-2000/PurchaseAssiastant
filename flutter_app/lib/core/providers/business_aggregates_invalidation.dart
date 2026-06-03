@@ -231,6 +231,7 @@ void invalidateWarehouseSurfacesLight(dynamic ref, {String? itemId}) {
   // Keep [stockListCacheProvider] entries alive so Stock tab does not flash
   // empty on every write/realtime tick — list re-reads cache when query matches.
   ref.invalidate(stockListProvider);
+  ref.invalidate(stockDeliveryIndicatorCountsProvider);
   ref.invalidate(bulkStockListProvider);
   ref.invalidate(stockTotalsProvider);
   ref.invalidate(stockOnHandTotalsProvider);

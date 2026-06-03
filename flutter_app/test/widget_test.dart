@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:harisree_warehouse/core/providers/prefs_provider.dart';
 import 'package:harisree_warehouse/core/widgets/friendly_load_error.dart';
-import 'package:harisree_warehouse/features/reports/presentation/reports_page.dart';
 import 'package:harisree_warehouse/features/auth/presentation/login_page.dart';
 
 void main() {
@@ -26,22 +25,7 @@ void main() {
     expect(find.text('Sign In'), findsWidgets);
   });
 
-  testWidgets('Reports shell renders title', (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
-    final prefs = await SharedPreferences.getInstance();
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          sharedPreferencesProvider.overrideWithValue(prefs),
-        ],
-        child: const MaterialApp(
-          home: ReportsPage(),
-        ),
-      ),
-    );
-    await tester.pump();
-    expect(find.text('Reports'), findsOneWidget);
-  });
+  /// Reports shell smoke: see `reports_page_smoke_test.dart` (needs session + provider overrides).
 
   /// Uses [ProviderContainer] instead of pumping [HexaApp]: splash schedules a long
   /// `restore()` timeout that leaves pending timers in widget tests.

@@ -50,3 +50,10 @@ def test_home_overview_shell_bundle_includes_panel_blocks():
     assert "deals" in purchased
     assert "home_shell" in body
     assert isinstance(body["home_shell"].get("items"), list)
+    op = body.get("home_operational") or {}
+    assert "stock_status_counts" in op
+    assert "all" in op["stock_status_counts"]
+    assert "warehouse_alerts" in op
+    assert "delivery_pipeline" in op
+    assert "notifications_unread" in op
+    assert isinstance(op["notifications_unread"], int)

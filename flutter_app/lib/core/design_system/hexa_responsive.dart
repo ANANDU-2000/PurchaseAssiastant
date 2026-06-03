@@ -10,8 +10,20 @@ const double kMobileMax = 599;
 const double kTabletMin = 600;
 const double kDesktopMin = 1024;
 
-/// Navigation rail shows at tablet width and above.
+/// Navigation rail shows at tablet width and above (legacy alias).
 const double kNavigationRailMin = 900;
+
+/// Shell: bottom navigation only below this width.
+const double kShellBottomNavMax = 600;
+
+/// Shell: left NavigationRail from tablet up.
+const double kShellRailMin = 600;
+
+/// Shell: extended rail with labels (desktop).
+const double kShellRailExtendedMin = 900;
+
+/// Compact NavigationRail width (icons only).
+const double kShellCompactRailWidth = 56;
 
 /// Extended rail / branded sidebar width target on desktop.
 const double kDesktopSidebarWidth = 240;

@@ -656,23 +656,21 @@ async def create_purchase_damage_report(
             item_name=body.item_name,
             qty_damaged=body.qty_damaged,
             damage_type=body.damage_type,
+            catalog_item_id=body.catalog_item_id,
+            unit=body.unit,
+            reason=body.reason,
+            photo_url=body.photo_url,
             notes=body.notes,
+            emit_notification=body.emit_notification,
+            damaged_items_in_batch=body.damaged_items_in_batch,
         )
     except LookupError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found")
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-    reporter_name = None
-    if row.reported_by_user_id:
-        reporter_name = (user.name or user.email or "").strip() or None
+    reporter_name = (user.name or user.email or "").strip() or None
     return PurchaseDamageReportOut(
-        id=row.id,
-        created_at=row.created_at,
-        reported_by=reporter_name,
-        item_name=row.item_name,
-        qty_damaged=row.qty_damaged,
-        damage_type=row.damage_type,
-        notes=row.notes,
+        **pds.damage_report_to_out(row, reporter_name=reporter_name),
     )
 
 
@@ -697,13 +695,7 @@ async def list_purchase_damage_reports(
     for row, reporter_name in rows:
         out.append(
             PurchaseDamageReportOut(
-                id=row.id,
-                created_at=row.created_at,
-                reported_by=(reporter_name or "").strip() or None,
-                item_name=row.item_name,
-                qty_damaged=row.qty_damaged,
-                damage_type=row.damage_type,
-                notes=row.notes,
+                **pds.damage_report_to_out(row, reporter_name=reporter_name),
             )
         )
     return out

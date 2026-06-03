@@ -11,7 +11,7 @@
   "background_color": "#0E4F46",
   "theme_color": "#0E4F46",
   "description": "Warehouse stock & purchase management",
-  "orientation": "portrait-primary",
+  "orientation": "portrait",
   "prefer_related_applications": false,
   "categories": ["business", "finance", "productivity"],
   "icons": [

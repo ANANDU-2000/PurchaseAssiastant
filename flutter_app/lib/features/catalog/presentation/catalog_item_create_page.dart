@@ -431,6 +431,7 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
       }
 
       await HapticFeedback.mediumImpact();
+      if (!mounted) return;
       if (widget.returnResultOnSave && newId.isNotEmpty) {
         _popPage(<String, dynamic>{'id': newId, 'name': name});
         return;

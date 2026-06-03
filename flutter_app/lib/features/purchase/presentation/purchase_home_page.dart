@@ -14,6 +14,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/router/post_auth_route.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/design_system/hexa_responsive.dart';
+import '../../../core/design_system/hexa_web_page_frame.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/models/trade_purchase_models.dart';
 import 'widgets/purchase_delivery_badge.dart';
@@ -1277,7 +1278,9 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
           ],
         ],
       ),
-      body: session == null
+      body: HexaWebPageFrame(
+        maxWidth: 800,
+        child: session == null
           ? _SignInPrompt(onTap: () => context.go('/login'))
           : rows.when(
               skipLoadingOnReload: false,
@@ -1731,6 +1734,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                 );
               },
             ),
+          ),
     );
   }
 

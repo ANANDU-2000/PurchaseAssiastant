@@ -19,7 +19,7 @@ Future<void> replayStockOfflineQueue({
     final kind = data['kind']?.toString();
     try {
       if (kind == 'stock_verify') {
-        await api.verifyStockCount(
+        await api.verifyStockCountWithRetry(
           businessId: businessId,
           itemId: data['item_id'].toString(),
           countedQty: data['counted_qty'] as num,

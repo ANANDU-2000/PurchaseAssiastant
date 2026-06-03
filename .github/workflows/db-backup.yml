@@ -1,37 +1,58 @@
 # Weekly logical backup of Render Postgres (harisree-db).
-# Required GitHub secret: RENDER_DB_EXTERNAL_URL (external postgresql://… from Render Dashboard → Connect)
+# Schedule: Sundays 03:00 UTC. Manual run: Actions → db-backup → Run workflow.
+#
+# Required repo secret (Settings → Secrets → Actions):
+#   RENDER_DB_EXTERNAL_URL — external postgresql://… from Render Dashboard → harisree-db → Connect
 name: db-backup
 
 on:
   schedule:
     - cron: "0 3 * * 0"
   workflow_dispatch:
+    inputs:
+      note:
+        description: "Optional label for this manual run (logged only)"
+        required: false
+        default: "manual"
 
 jobs:
   backup:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
-      - name: pg_dump to artifact
+      - name: Verify database URL secret
         env:
           RENDER_DB_EXTERNAL_URL: ${{ secrets.RENDER_DB_EXTERNAL_URL }}
         run: |
           if [ -z "$RENDER_DB_EXTERNAL_URL" ]; then
-            echo "::error::RENDER_DB_EXTERNAL_URL secret is not set."
+            echo "::error::RENDER_DB_EXTERNAL_URL secret is not set in GitHub repo settings."
             exit 1
           fi
+          echo "RENDER_DB_EXTERNAL_URL is configured (host redacted)."
+
+      - name: pg_dump (custom + plain SQL)
+        env:
+          RENDER_DB_EXTERNAL_URL: ${{ secrets.RENDER_DB_EXTERNAL_URL }}
+        run: |
           STAMP=$(date -u +%Y%m%d)
+          echo "Backup stamp: ${STAMP} (trigger: ${{ github.event_name }})"
           pg_dump "$RENDER_DB_EXTERNAL_URL" \
             --no-owner --no-acl --schema=public --format=custom \
             --file="harisree_render_${STAMP}.pgdump"
-          ls -lh "harisree_render_${STAMP}.pgdump"
+          pg_dump "$RENDER_DB_EXTERNAL_URL" \
+            --no-owner --no-acl --schema=public --format=plain \
+            --file="harisree_render_${STAMP}.sql"
+          ls -lh "harisree_render_${STAMP}.pgdump" "harisree_render_${STAMP}.sql"
 
-      - name: Upload backup artifact
+      - name: Upload backup artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: harisree-db-backup
-          path: harisree_render_*.pgdump
-          retention-days: 28
+          name: harisree-db-backup-${{ github.run_number }}
+          path: |
+            harisree_render_*.pgdump
+            harisree_render_*.sql
+          retention-days: 90
+          if-no-files-found: error

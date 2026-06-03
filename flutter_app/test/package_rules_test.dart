@@ -163,7 +163,7 @@ void main() {
       );
       final r = purchaseLineSaveBlockReason(l);
       expect(r, isNotNull);
-      expect(r, contains('Kg per bag'));
+      expect(r!.toLowerCase(), contains('kg per bag'));
     });
 
     test('BAG with kgPerUnit + per-kg cost is save-ready (HSN required → null)', () {

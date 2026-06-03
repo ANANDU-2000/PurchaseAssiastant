@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../../core/design_system/hexa_responsive.dart';
+
 /// Desktop/tablet: NavigationRail + content. Mobile: content only (bottom nav outside).
 class ResponsiveShellLayout extends StatefulWidget {
   const ResponsiveShellLayout({
     super.key,
     required this.rail,
     required this.body,
-    this.breakpoint = 900,
+    this.railMinWidth = kShellRailMin,
   });
 
   final Widget rail;
   final Widget body;
-  final double breakpoint;
+  final double railMinWidth;
 
   @override
   State<ResponsiveShellLayout> createState() => _ResponsiveShellLayoutState();
@@ -40,9 +42,10 @@ class _ResponsiveShellLayoutState extends State<ResponsiveShellLayout> {
       builder: (context, constraints) {
         if (!_hasUsableWidth(constraints)) {
           _retryAfterConstraints();
-          return const SizedBox.shrink();
+          // Avoid blank shell on web first frame — show body until width is known.
+          return widget.body;
         }
-        final wide = constraints.maxWidth >= widget.breakpoint;
+        final wide = constraints.maxWidth >= widget.railMinWidth;
         if (!wide) return widget.body;
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,

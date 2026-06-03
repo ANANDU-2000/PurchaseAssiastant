@@ -13,16 +13,27 @@ String stockApiDate(DateTime d) {
 /// Applies [p] to [stockListQueryProvider] with period purchase totals enabled.
 void applyStockPagePeriod(WidgetRef ref, HomePeriod p) {
   ref.read(stockPagePeriodProvider.notifier).state = p;
-  final range = homePeriodRange(p);
-  final endInclusive = range.end.subtract(const Duration(days: 1));
   final q = ref.read(stockListQueryProvider);
-  ref.read(stockListQueryProvider.notifier).state = q.copyWith(
-    includePeriod: true,
-    periodStart: stockApiDate(range.start),
-    periodEnd: stockApiDate(endInclusive),
-    page: 1,
-  );
+  if (p == HomePeriod.allTime) {
+    ref.read(stockListQueryProvider.notifier).state = q.copyWith(
+      includePeriod: false,
+      periodStart: null,
+      periodEnd: null,
+      page: 1,
+    );
+  } else {
+    final range = homePeriodRange(p);
+    final endInclusive = range.end.subtract(const Duration(days: 1));
+    ref.read(stockListQueryProvider.notifier).state = q.copyWith(
+      includePeriod: true,
+      periodStart: stockApiDate(range.start),
+      periodEnd: stockApiDate(endInclusive),
+      page: 1,
+    );
+  }
   ref.read(stockSelectedItemIdProvider.notifier).state = null;
+  ref.invalidate(stockListProvider);
+  ref.invalidate(stockDeliveryIndicatorCountsProvider);
 }
 
 /// Client-side filters for stock list rows not covered by `/stock/list` query params.

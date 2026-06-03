@@ -90,8 +90,9 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     }
     final stockAlertN = ref.watch(notificationsUnreadCountProvider);
     final width = MediaQuery.sizeOf(context).width;
-    final showsRail = width > 0 && width >= kNavigationRailMin;
-    final railExtended = width > 0 && width >= kDesktopMin;
+    final showRail = width > 0 && width >= kShellRailMin;
+    final railExtended = width > 0 && width >= kShellRailExtendedMin;
+    final showBottomBar = width > 0 && width < kShellBottomNavMax;
     final session = ref.watch(sessionProvider);
     final biz = session?.primaryBusiness;
 
@@ -124,32 +125,23 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     // explicit flex siblings (see also [NoTransitionPage] in app_router).
     final shellBody = AppShellBody(
       navigationShell: navigationShell,
-      bottomBar: hideShellChrome
+      bottomBar: hideShellChrome || !showBottomBar
           ? null
-          : LayoutBuilder(
-              builder: (context, c) {
-                if (c.maxWidth.isFinite &&
-                    c.maxWidth > 0 &&
-                    c.maxWidth >= kNavigationRailMin) {
-                  return const SizedBox.shrink();
-                }
-                return _ShellBottomBar(
-                  selectedIndex: idx,
-                  stockBadgeCount: stockAlertN,
-                  onDestinationSelected: go,
-                  showFab: !hideFab,
-                );
-              },
+          : _ShellBottomBar(
+              selectedIndex: idx,
+              stockBadgeCount: stockAlertN,
+              onDestinationSelected: go,
+              showFab: !hideFab,
             ),
     );
 
-    final rail = NavigationRail(
+    final railWidget = NavigationRail(
       selectedIndex: idx,
       extended: railExtended,
       minExtendedWidth: kDesktopSidebarWidth,
-      labelType: width < 380
-          ? NavigationRailLabelType.none
-          : NavigationRailLabelType.all,
+      labelType: railExtended
+          ? NavigationRailLabelType.all
+          : NavigationRailLabelType.none,
       onDestinationSelected: go,
       trailing: railExtended && biz != null
           ? DesktopSideNavFooter(
@@ -189,6 +181,15 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
       ],
     );
 
+    final rail = showRail
+        ? (railExtended
+            ? railWidget
+            : SizedBox(
+                width: kShellCompactRailWidth,
+                child: railWidget,
+              ))
+        : const SizedBox.shrink();
+
     return PopScope(
       canPop: idx == ShellBranch.home,
       onPopInvokedWithResult: (didPop, _) {
@@ -206,8 +207,9 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
             key: const ValueKey<String>('main_shell'),
             color: Theme.of(context).scaffoldBackgroundColor,
             child: ResponsiveShellLayout(
-              rail: hideShellChrome && !showsRail ? const SizedBox.shrink() : rail,
+              rail: rail,
               body: shellBody,
+              railMinWidth: kShellRailMin,
             ),
           ),
         ),

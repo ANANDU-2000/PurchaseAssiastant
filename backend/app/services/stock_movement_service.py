@@ -139,6 +139,8 @@ async def apply_stock_movement(
     metadata: dict[str, Any] | None = None,
     unit_mismatch_flag: bool = False,
     last_seen_stock_version: int | None = None,
+    force_version: bool = False,
+    version_tolerance: int = 0,
     create_projection: bool = True,
     create_activity: bool = True,
 ) -> StockMovementResult:
@@ -198,11 +200,16 @@ async def apply_stock_movement(
     current_version = int(getattr(item, "stock_version", 0) or 0)
     before = catalog_stock_qty(item)
     if last_seen_stock_version is not None and last_seen_stock_version != current_version:
-        raise StaleStockVersionError(
-            current_version=current_version,
-            current_qty=before,
-            item_name=item.name,
+        drift = current_version - int(last_seen_stock_version)
+        allowed = force_version or (
+            version_tolerance > 0 and 0 < drift <= version_tolerance
         )
+        if not allowed:
+            raise StaleStockVersionError(
+                current_version=current_version,
+                current_qty=before,
+                item_name=item.name,
+            )
 
     raw_qty = Decimal(qty)
     if mode == "absolute":

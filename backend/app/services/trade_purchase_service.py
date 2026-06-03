@@ -160,6 +160,7 @@ async def _emit_delivery_notification(
     body: str,
     priority: str,
     dedupe_key: str,
+    target_roles: list[str] | None = None,
 ) -> None:
     try:
         from app.services.notification_emitter import (
@@ -178,7 +179,8 @@ async def _emit_delivery_notification(
             dedupe_key=dedupe_key,
             action_route=f"/purchase/detail/{tp.id}",
             related_purchase_id=tp.id,
-            target_roles=["owner", "admin", "manager", "staff"],
+            target_roles=target_roles
+            or ["owner", "admin", "manager", "staff"],
         )
         await db.commit()
     except Exception:
@@ -1463,6 +1465,17 @@ async def dispatch_trade_purchase(
         body=f"{(sup or 'Supplier').strip()} — truck en route",
         priority=PRIORITY_INFO,
         dedupe_key=f"delivery_dispatched:{purchase_id}",
+    )
+    await _emit_delivery_notification(
+        db,
+        business_id=business_id,
+        tp=tp,
+        kind="delivery_assigned",
+        title=f"Delivery assigned: {tp.human_id}",
+        body=f"{(sup or 'Supplier').strip()} — verify on arrival",
+        priority=PRIORITY_INFO,
+        dedupe_key=f"delivery_assigned:{purchase_id}",
+        target_roles=["staff"],
     )
     return await get_trade_purchase(db, business_id, purchase_id)
 

@@ -20,8 +20,14 @@ from starlette.responses import Response
 
 from app.database import get_db
 from app.deps import require_permission
-from app.models import Membership, TradePurchase, TradePurchaseLine
+from app.models import Business, Membership, TradePurchase, TradePurchaseLine
 from app.services import trade_query as tq
+from app.services.export_files import (
+    build_purchases_month_pdf,
+    build_stock_inventory_xlsx,
+    fetch_month_trade_purchases,
+    fetch_stock_inventory_rows,
+)
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/exports", tags=["exports"])
 
@@ -250,5 +256,63 @@ async def post_backup_zip(
     return Response(
         content=buf.getvalue(),
         media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@router.get("/stock-inventory.xlsx")
+async def get_stock_inventory_xlsx(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_permission("export_access"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Excel inventory snapshot: qty, reorder, category, supplier."""
+    del _m
+    rows = await fetch_stock_inventory_rows(db, business_id)
+    if not rows:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail="No catalog items to export.",
+        )
+    stamp = date.today().isoformat()
+    content = build_stock_inventory_xlsx(rows)
+    fname = f"harisree_stock_{stamp}.xlsx"
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@router.get("/purchases-month.pdf")
+async def get_purchases_month_pdf(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_permission("export_access"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """PDF rollup of trade purchases for the current calendar month."""
+    del _m
+    today = date.today()
+    month_start = date(today.year, today.month, 1)
+    purchases = await fetch_month_trade_purchases(
+        db, business_id, month_start=month_start, month_end=today
+    )
+    if not purchases:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail="No trade purchases this month to export.",
+        )
+    br = await db.execute(select(Business.name).where(Business.id == business_id))
+    label = (br.scalar_one_or_none() or "").strip() or str(business_id)
+    content = build_purchases_month_pdf(
+        business_label=label,
+        month_start=month_start,
+        month_end=today,
+        purchases=purchases,
+    )
+    fname = f"harisree_purchases_{today.year}-{today.month:02d}.pdf"
+    return Response(
+        content=content,
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )

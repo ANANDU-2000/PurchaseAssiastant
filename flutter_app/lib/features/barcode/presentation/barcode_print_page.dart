@@ -245,6 +245,12 @@ class _BarcodePrintPageState extends ConsumerState<BarcodePrintPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(label != null ? label.itemName : 'Print label'),
+        bottom: _busy
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(4),
+                child: LinearProgressIndicator(minHeight: 4),
+              )
+            : null,
         actions: [
           if (label != null)
             PopupMenuButton<String>(
@@ -308,6 +314,17 @@ class _BarcodePrintPageState extends ConsumerState<BarcodePrintPage> {
         24 + MediaQuery.viewPaddingOf(context).bottom,
       ),
       children: [
+        if (_busy)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Generating label…',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: HexaColors.brandPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
         Text('LABEL PREVIEW',
             style: HexaDsType.label(10, color: HexaDsColors.textMuted)),
         const SizedBox(height: 8),
@@ -357,6 +374,11 @@ class _BarcodePrintPageState extends ConsumerState<BarcodePrintPage> {
                 Text(
                   'Barcode: ${label.barcode}',
                   style: const TextStyle(fontSize: 10, color: Colors.black54),
+                ),
+              if (label.usesItemIdFallback)
+                const Text(
+                  'No barcode — using item ID',
+                  style: TextStyle(fontSize: 10, color: Colors.black54),
                 ),
               if (label.unit != null && label.unit!.isNotEmpty)
                 Text('Unit: ${label.unit}',

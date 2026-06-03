@@ -27,6 +27,7 @@ from app.models.contacts import Supplier
 from app.read_cache_generation import trade_read_cache_generation
 from app.services import trade_mapping as trade_map
 from app.services import trade_query as tq
+from app.services.home_operational_bundle import build_home_operational_bundle
 from app.services.stock_inventory import compute_inventory_summary
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/reports", tags=["reports-trade"])
@@ -801,7 +802,6 @@ async def trade_home_overview(
     ),
 ) -> dict[str, Any]:
     """Bundled dashboard snapshot shape for Flutter home — delegates to snapshot builder (+ optional compact)."""
-    del _m
     if date_from > date_to:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="from_must_not_exceed_to")
     inclusive_days = (date_to - date_from).days + 1
@@ -828,6 +828,9 @@ async def trade_home_overview(
             }
             stock = await compute_inventory_summary(db, business_id)
             _attach_analytics_panel_blocks(out, stock)
+            out["home_operational"] = await build_home_operational_bundle(
+                db, business_id, _m
+            )
         if compact:
             _apply_trade_dashboard_compact(out)
         if home_shell is not None:

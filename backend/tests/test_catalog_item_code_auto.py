@@ -61,6 +61,31 @@ def test_create_catalog_item_auto_item_code():
     assert str(code).startswith("ITM-")
 
 
+def test_create_catalog_item_auto_barcode_from_item_code():
+    h, bid = _owner_headers()
+    cat = client.post(
+        f"/v1/businesses/{bid}/item-categories",
+        headers=h,
+        json={"name": f"Cat {uuid.uuid4().hex[:6]}"},
+    )
+    assert cat.status_code == 201, cat.text
+    cid = cat.json()["id"]
+    tid = client.get(
+        f"/v1/businesses/{bid}/item-categories/{cid}/category-types",
+        headers=h,
+    ).json()[0]["id"]
+    item = client.post(
+        f"/v1/businesses/{bid}/catalog-items",
+        headers=h,
+        json=_minimal_item_payload(h, bid, cid, tid, name="AUTO BARCODE SUGAR"),
+    )
+    assert item.status_code == 201, item.text
+    code = item.json().get("item_code")
+    barcode = item.json().get("barcode")
+    assert code is not None
+    assert barcode == code
+
+
 def test_create_catalog_item_without_supplier():
     h, bid = _owner_headers()
     cat = client.post(

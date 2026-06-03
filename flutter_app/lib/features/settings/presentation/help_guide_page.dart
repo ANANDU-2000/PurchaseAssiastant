@@ -45,7 +45,7 @@ class HelpGuidePage extends StatelessWidget {
             title: 'Opening stock and backup',
             items: const [
               'Owners should complete Opening stock setup before daily operations.',
-              'Use Backup & export from Settings for a manual ZIP copy of purchase data.',
+              'Settings → Export & Backup: stock Excel, monthly purchases PDF, ZIP CSV.',
               'Keep one recent backup outside the phone before large cleanups or audits.',
             ],
           ),
@@ -53,7 +53,7 @@ class HelpGuidePage extends StatelessWidget {
           FilledButton.icon(
             onPressed: () => context.push('/settings/backup'),
             icon: const Icon(Icons.backup_outlined),
-            label: const Text('Open Backup & export'),
+            label: const Text('Open Export & Backup'),
           ),
         ],
       ),

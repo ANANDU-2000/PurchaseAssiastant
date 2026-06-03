@@ -33,6 +33,26 @@ flutter analyze lib/features/purchase lib/features/barcode lib/core/providers/st
 | warning | 2 | Unused imports in `purchase_home_page.dart` (pre-existing) |
 | info | 2 | `dart:html` deprecation in barcode web helper (pre-existing) |
 
+## Barcode scan performance (2026-06-03)
+
+| Check | Status |
+|-------|--------|
+| iOS 17+ Safari live camera (`preferUploadBarcodeOnWeb`) | Code |
+| Scan debounce 200ms, 3 formats, detection timeout 150/100ms | Code |
+| Lookup SnackBar + `_busy` finally | Code |
+| Backend parallel lookup + 30s TTL cache | Code |
+| Alembic **058** barcode indexes | Migration added |
+| Native PDF `compute()`, print progress UI | Code |
+| Bulk print >50 confirm + batches of 20 | Code |
+
+**Commands (run after deploy):**
+```bash
+cd backend && python -m pytest tests/test_barcode_item_code.py tests/test_barcode_lookup_cache.py -q
+cd flutter_app && flutter analyze lib/features/barcode
+```
+
+**Result (2026-06-03):** pytest barcode tests **3 passed**; `flutter analyze lib/features/barcode` **0 issues**.
+
 ## Manual QA matrix (recommended before release)
 
 | Case | Platform | Expected |
@@ -45,6 +65,27 @@ flutter analyze lib/features/purchase lib/features/barcode lib/core/providers/st
 ## CI alignment
 
 Per `.cursorrules` Phase 7: PR should run full `flutter test`, `flutter analyze`, `pytest`.
+
+## Flutter canonical cleanup (2026-06-03)
+
+| Check | Status |
+|-------|--------|
+| `docs/cleanup/cleanup_report.md` + migration + checklist | Done |
+| Router: `/reports` → `reports_shell_page.dart` | Done |
+| Router: `/purchase/scan` → `ScanPurchaseV2Page` | Done |
+| DEPRECATED headers on 5 orphan files (no deletes) | Done |
+| `tool/find_dart_orphans.dart` | Added |
+
+**Commands:**
+```bash
+cd flutter_app
+flutter pub get
+flutter analyze
+flutter test
+dart run tool/find_dart_orphans.dart
+```
+
+**Result (2026-06-03):** `flutter analyze` on router — **0 issues**; full project analyze has **2 pre-existing errors** in `purchase_accounts_share_web.dart` (web-only). **`flutter test` — 257 passed.**
 
 ## Sign-off
 

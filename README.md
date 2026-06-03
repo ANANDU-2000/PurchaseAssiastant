@@ -1,6 +1,28 @@
 # HEXA Purchase Assistant
 
-Flutter + FastAPI purchase tracking with in-app AI assistant (`/ai` → `POST .../ai/chat`), profit clarity, analytics, and Price Intelligence (PIP).
+Warehouse ERP for **New Harisree Agency** — trade purchases, stock ledger, barcode ops, and owner reports. Flutter (Riverpod) + FastAPI + PostgreSQL, deployed as a **PWA** (Vercel) with API on **Render**.
+
+## Product overview
+
+| Area | Detail |
+|------|--------|
+| **Stack** | Flutter client · FastAPI · Postgres (Render) · optional Redis · GitHub Actions (CI, DB backup, API keep-alive) |
+| **Platforms** | iOS/Android **PWA** (Safari/Chrome), **desktop/tablet Chrome** (NavigationRail shell), native builds optional |
+| **Purchases** | Trade purchases (`trade_purchases` + `trade_purchase_lines`) — preview → confirm save; delivery pipeline; damage reports |
+| **Stock** | Catalog-linked qty, physical count vs system ledger, optimistic version + 409 retry, low-stock alerts |
+| **Barcode** | Camera scan, manual search, unknown code → create item or assign barcode |
+| **Reports** | Trade-backed KPIs (`/reports/trade-*`) — not legacy `entries` analytics |
+| **Sharing** | Purchase PDF + WhatsApp summary to accounts staff (number in Business Profile) |
+| **Backup** | Weekly `pg_dump` (GitHub Actions) + in-app Export & Backup (stock Excel, monthly purchases PDF, ZIP) |
+| **Roles** | Owner, manager, staff — permissions on stock edit, export, reports |
+
+**Data truth:** Spend KPIs and report tables use **trade** endpoints. Line money: weight lines → `qty × kg_per_unit × landing_cost_per_kg`; else `qty × landing_cost`.
+
+**Ops:** [Backup setup](docs/backup/BACKUP_SETUP.md) · [Migration index](backend/sql/MIGRATION_INDEX.md) · [Pre-client audit](PRE_CLIENT_AUDIT_RESULT.md) · [TASKS.md](TASKS.md) · [Harisree master reference](docs/harisree/MASTER_REFERENCE.md)
+
+**Scaling (production):** Render keep-alive cron (~10 min), stock list pagination + cache headers, home overview bundle cache, debounced search — see `PRE_CLIENT_AUDIT_RESULT.md` for handoff checklist.
+
+Also: in-app AI assistant (`/ai` → `POST .../ai/chat`), profit clarity, and Price Intelligence (PIP).
 
 ## Docs
 

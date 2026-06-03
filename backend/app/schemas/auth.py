@@ -43,6 +43,11 @@ class LoginRequest(BaseModel):
         description="Deprecated alias for email — kept for older Flutter web builds.",
     )
     password: str = Field(..., min_length=1, max_length=128)
+    device_token: str | None = Field(
+        default=None,
+        max_length=512,
+        description="Optional FCM/web push token stored on the user for notifications.",
+    )
 
     @model_validator(mode="after")
     def resolve_email(self) -> "LoginRequest":

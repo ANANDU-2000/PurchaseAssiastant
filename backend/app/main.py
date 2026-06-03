@@ -46,6 +46,7 @@ from app.routers import (
     report_views,
     search,
     trade_purchases,
+    damage_reports,
     stock,
     stock_audits,
     operations,
@@ -56,6 +57,28 @@ from app.routers import (
 logger = logging.getLogger(__name__)
 
 _BUSINESS_ROUTE_PREFIX_RE = re.compile(r"^/v1/businesses/([^/]+)/")
+
+_GET_CACHE_CONTROL_RULES: tuple[tuple[re.Pattern[str], int], ...] = (
+    (re.compile(r"^/v1/businesses/[^/]+/stock/list(?:/compact)?$"), 30),
+    (re.compile(r"^/v1/businesses/[^/]+/stock/delivery-indicator-counts$"), 30),
+    (re.compile(r"^/v1/businesses/[^/]+/dashboard$"), 60),
+    (re.compile(r"^/v1/businesses/[^/]+/reports/home-overview$"), 60),
+    (re.compile(r"^/v1/businesses/[^/]+/catalog-items$"), 120),
+)
+
+
+def _apply_get_cache_control(request: Request, response) -> None:
+    if request.method != "GET":
+        return
+    if response.status_code < 200 or response.status_code >= 300:
+        return
+    if response.headers.get("cache-control"):
+        return
+    path = request.url.path
+    for pattern, max_age in _GET_CACHE_CONTROL_RULES:
+        if pattern.search(path):
+            response.headers["Cache-Control"] = f"private, max-age={max_age}"
+            return
 
 
 @asynccontextmanager
@@ -317,6 +340,7 @@ async def harisree_request_monitor_middleware(request: Request, call_next):
         response.headers.setdefault("X-Request-Id", rid)
         response.headers["X-Process-Time-Ms"] = str(ms)
     response.headers.setdefault("X-Response-Time", f"{ms}ms")
+    _apply_get_cache_control(request, response)
 
     slow_ms = getattr(cfg, "http_slow_request_warning_ms", None) or 0
     is_slow = slow_ms > 0 and ms >= slow_ms
@@ -512,6 +536,7 @@ app.include_router(me.router)
 app.include_router(entries.router)
 app.include_router(exports.router)
 app.include_router(trade_purchases.router)
+app.include_router(damage_reports.router)
 app.include_router(reports_trade.router)
 app.include_router(report_views.router)
 app.include_router(search.router)

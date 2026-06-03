@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/auth/auth_error_messages.dart';
+import '../../../../core/stock/stock_version_retry.dart';
 import '../../../../core/auth/dashboard_role.dart';
 import '../../../../core/auth/session_notifier.dart';
 import '../../../../core/design_system/hexa_operational_tokens.dart';
@@ -151,12 +152,16 @@ class ItemPhysicalVerificationCard extends ConsumerWidget {
   Future<void> _verify(BuildContext context, WidgetRef ref, double countedQty) async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
+    final stock =
+        ref.read(itemDetailStockProvider(itemId)).valueOrNull ??
+            const <String, dynamic>{};
     try {
-      await ref.read(hexaApiProvider).verifyStockCount(
+      await ref.read(hexaApiProvider).verifyStockCountWithRetry(
             businessId: session.primaryBusiness.id,
             itemId: itemId,
             countedQty: countedQty,
             reason: 'Physical count',
+            initialStockVersion: stockVersionFromItem(stock),
           );
       ref.invalidate(itemDetailBundleProvider(itemId));
       ref.invalidate(stockItemActivityProvider(itemId));
@@ -164,6 +169,11 @@ class ItemPhysicalVerificationCard extends ConsumerWidget {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Physical count verified')),
+      );
+    } on StaleStockConflict {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(StaleStockConflict.userMessage)),
       );
     } on DioException catch (e) {
       if (!context.mounted) return;

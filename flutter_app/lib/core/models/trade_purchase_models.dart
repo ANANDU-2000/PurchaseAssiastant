@@ -210,6 +210,7 @@ class TradePurchaseLine {
     this.discount,
     this.taxPercent,
     this.catalogItemId,
+    this.receivedQty,
     this.hsnCode,
     this.itemCode,
     this.paymentDays,
@@ -251,6 +252,7 @@ class TradePurchaseLine {
   final double? discount;
   final double? taxPercent;
   final String? catalogItemId;
+  final double? receivedQty;
   final String? hsnCode;
   final String? itemCode;
   final int? paymentDays;
@@ -288,6 +290,7 @@ class TradePurchaseLine {
       discount: _decNullableDouble(j['discount']),
       taxPercent: _decNullableDouble(j['tax_percent']),
       catalogItemId: j['catalog_item_id']?.toString(),
+      receivedQty: _decNullableDouble(j['received_qty']),
       hsnCode: j['hsn_code']?.toString(),
       itemCode: j['item_code']?.toString(),
       paymentDays: coerceToIntNullable(j['payment_days']),

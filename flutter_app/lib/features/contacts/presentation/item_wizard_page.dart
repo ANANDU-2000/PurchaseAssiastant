@@ -1,3 +1,7 @@
+// DEPRECATED: No route or import references as of 2026-06-03.
+// Replacement: CatalogItemCreatePage (/catalog/item/create).
+// Do not use in new code. See docs/cleanup/DEPRECATED_FILES.md.
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -44,17 +48,127 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
   final _selling = TextEditingController();
   final _supplierIds = <String>{};
   final _brokerIds = <String>{};
+  final _nameFocus = FocusNode();
   String? _nameError;
+  String? _unitSuggestLabel;
+  bool _unitSuggestDismissed = false;
   static const _typeGeneralValue = '__general__';
+  static final _kgInName =
+      RegExp(r'(\d+(?:\.\d+)?)\s*kg', caseSensitive: false);
 
   @override
   void initState() {
     super.initState();
     _selectedCategoryId = widget.initialCategoryId;
+    _nameFocus.addListener(_onNameFocusChanged);
+  }
+
+  void _onNameFocusChanged() {
+    if (!_nameFocus.hasFocus) {
+      _applyUnitInferenceFromName();
+    }
+  }
+
+  void _applyUnitInferenceFromName() {
+    if (!mounted || _unitSuggestDismissed) return;
+    final match = _kgInName.firstMatch(_name.text);
+    if (match == null) {
+      if (_unitSuggestLabel != null) {
+        setState(() => _unitSuggestLabel = null);
+      }
+      return;
+    }
+    final kg = match.group(1) ?? '';
+    if (kg.isEmpty) return;
+    setState(() {
+      _unitSuggestLabel = 'Detected: Bag item · $kg kg per bag — Use this?';
+    });
+  }
+
+  void _applyUnitSuggestion() {
+    final match = _kgInName.firstMatch(_name.text);
+    if (match == null) return;
+    final kg = match.group(1) ?? '';
+    if (kg.isEmpty) return;
+    setState(() {
+      _unit = 'bag';
+      if (_kg.text.trim().isEmpty) {
+        _kg.text = kg;
+      }
+      _unitSuggestDismissed = true;
+      _unitSuggestLabel = null;
+      _markDirty();
+    });
+  }
+
+  void _resetItemFieldsForBatch() {
+    _name.clear();
+    _kg.clear();
+    _perBox.clear();
+    _perTin.clear();
+    _unit = null;
+    _nameError = null;
+    _unitSuggestLabel = null;
+    _unitSuggestDismissed = false;
+  }
+
+  Future<void> _showPostSaveBatchBar(String savedName) async {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Item "$savedName" created')),
+    );
+    final addAnother = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Add more items?',
+                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Supplier and subcategory stay selected so you can enter several items quickly.',
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Add another item'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Done'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (addAnother == true) {
+      setState(() {
+        _resetItemFieldsForBatch();
+        _step = 0;
+        _dirty = false;
+      });
+      return;
+    }
+    context.pop();
   }
 
   @override
   void dispose() {
+    _nameFocus.removeListener(_onNameFocusChanged);
+    _nameFocus.dispose();
     _name.dispose();
     _kg.dispose();
     _perBox.dispose();
@@ -94,7 +208,8 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
         ],
       ),
     );
-    if (leave == true && mounted) context.pop();
+    if (!mounted) return;
+    if (leave == true) context.pop();
   }
 
   bool _validateBasic() {
@@ -137,6 +252,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
 
   Future<void> _syncSupplierItemMap(String businessId, String itemId) async {
     final rows = await ref.read(suppliersListProvider.future);
+    if (!mounted) return;
     for (final r in rows) {
       final s = Map<String, dynamic>.from(r as Map);
       final sid = s['id']?.toString();
@@ -161,11 +277,13 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
               'item_ids': itemIds,
             },
           );
+      if (!mounted) return;
     }
   }
 
   Future<void> _syncBrokerItemMap(String businessId, String itemId) async {
     final rows = await ref.read(brokersListProvider.future);
+    if (!mounted) return;
     for (final r in rows) {
       final b = Map<String, dynamic>.from(r as Map);
       final bid = b['id']?.toString();
@@ -190,6 +308,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
               'item_ids': itemIds,
             },
           );
+      if (!mounted) return;
     }
   }
 
@@ -206,6 +325,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
             categoryId: cat,
             typeId: (typ != null && typ.isNotEmpty) ? typ : null,
           );
+      if (!mounted) return false;
       for (final m in rows) {
         final rowType = m['type_id']?.toString();
         final sameType = (typ == null || typ.isEmpty)
@@ -241,14 +361,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
     if (session == null) return;
     final bid = session.primaryBusiness.id;
     if (await _blockingDuplicateCatalogItem(bid)) return;
-    if (_supplierIds.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pick at least one default supplier in the next step.')),
-      );
-      setState(() => _step = 1);
-      return;
-    }
+    if (!mounted) return;
     final tinW = _unit == 'tin' ? double.tryParse(_perTin.text.trim()) : null;
     if (_unit == 'tin' && _perTin.text.trim().isNotEmpty && (tinW == null || tinW <= 0)) {
       if (!mounted) return;
@@ -275,11 +388,14 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
             defaultLandingCost: double.tryParse(_landing.text),
             defaultSellingCost: double.tryParse(_selling.text),
           );
+      if (!mounted) return;
       final itemId = created['id']?.toString();
       if (itemId != null && itemId.isNotEmpty) {
         await _syncSupplierItemMap(bid, itemId);
+        if (!mounted) return;
         await _syncBrokerItemMap(bid, itemId);
       }
+      if (!mounted) return;
       ref.invalidate(catalogItemsListProvider);
       ref.invalidate(itemCategoriesListProvider);
       invalidateTradePurchaseCaches(ref);
@@ -290,9 +406,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
       ref.invalidate(brokersListProvider);
       invalidateBusinessAggregates(ref);
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Item created')));
-      context.pop();
+      await _showPostSaveBatchBar(_name.text.trim());
     } on DioException catch (e) {
       if (!mounted) return;
       if (e.response?.statusCode == 409) {
@@ -464,10 +578,22 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
         const SizedBox(height: 8),
         TextField(
           controller: _name,
-          decoration: _d('Item Name *', hint: 'e.g. Ponni rice')
+          focusNode: _nameFocus,
+          decoration: _d('Item Name *', hint: 'e.g. Sugar 50 KG')
               .copyWith(errorText: _nameError),
           onChanged: (_) => _markDirty(),
         ),
+        if (_unitSuggestLabel != null && !_unitSuggestDismissed) ...[
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ActionChip(
+              avatar: const Icon(Icons.auto_awesome_outlined, size: 18),
+              label: Text(_unitSuggestLabel!),
+              onPressed: _applyUnitSuggestion,
+            ),
+          ),
+        ],
         const SizedBox(height: 8),
         Text('Unit type',
             style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
@@ -493,6 +619,8 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
             if (id != null) {
               setState(() {
                 _unit = id == none ? null : id;
+                _unitSuggestDismissed = true;
+                _unitSuggestLabel = null;
                 _markDirty();
               });
             }
@@ -537,11 +665,30 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
           ),
         ],
         const SizedBox(height: 8),
-        TextField(
-          controller: _hsn,
-          textCapitalization: TextCapitalization.characters,
-          decoration: _d('HSN / SAC (optional)', hint: 'e.g. 10063020'),
-          onChanged: (_) => _markDirty(),
+        ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: EdgeInsets.zero,
+          title: const Text(
+            'Advanced (HSN, Tax)',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+          ),
+          subtitle: const Text('Optional — does not block save'),
+          children: [
+            TextField(
+              controller: _hsn,
+              textCapitalization: TextCapitalization.characters,
+              decoration: _d('HSN / SAC (optional)', hint: 'e.g. 10063020'),
+              onChanged: (_) => _markDirty(),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _tax,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: _d('Tax % (optional)'),
+              onChanged: (_) => _markDirty(),
+            ),
+            const SizedBox(height: 8),
+          ],
         ),
       ],
     );
@@ -553,25 +700,6 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
       physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
       children: [
-        ExpansionTile(
-          initiallyExpanded: false,
-          tilePadding: EdgeInsets.zero,
-          title: const Text(
-            'Advanced: tax %',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-          ),
-          subtitle: const Text('Optional default GST % for this item'),
-          children: [
-            TextField(
-              controller: _tax,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: _d('Tax %'),
-              onChanged: (_) => _markDirty(),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-        const SizedBox(height: 4),
         TextField(
           controller: _landing,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -612,7 +740,7 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
     final ordered = _supplierIds.toList()..sort();
     if (ordered.isEmpty) {
       return Text(
-        'No suppliers linked yet — tap Add and pick from the searchable list.',
+        'No default supplier — link at first purchase or add below.',
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
@@ -650,12 +778,12 @@ class _ItemWizardPageState extends ConsumerState<ItemWizardPage> {
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
       children: [
         Text(
-          'Suppliers who sell this item',
+          'Default supplier (optional — can add later)',
           style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 6),
         Text(
-          'Search-first: add one at a time. Selected names show as chips — tap × to remove.',
+          'Search-first: add one at a time. Skip if unknown — link supplier on first purchase.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 height: 1.35,

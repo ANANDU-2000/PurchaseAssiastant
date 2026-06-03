@@ -388,9 +388,12 @@ abstract final class StockRowMetrics {
     return stockNumberColor(stockDisplayStatusFromApi(st));
   }
 
-  /// Relative label for [last_stock_updated_at] (list row info line).
+  /// Relative label for last movement or stock update (list row info line).
   static String? relativeUpdatedLabel(Map<String, dynamic> item) {
-    final raw = item['last_stock_updated_at']?.toString();
+    final movement = item['last_movement_at']?.toString();
+    final raw = (movement != null && movement.isNotEmpty)
+        ? movement
+        : item['last_stock_updated_at']?.toString();
     if (raw == null || raw.isEmpty) return null;
     final dt = DateTime.tryParse(raw)?.toLocal();
     if (dt == null) return null;

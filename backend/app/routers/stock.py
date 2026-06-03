@@ -1,5 +1,7 @@
+import asyncio
 import uuid
 from collections import defaultdict
+from time import monotonic
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -24,6 +26,7 @@ from app.models import (
     StaffActivityLog,
     StaffChecklistCompletion,
     StaffChecklistTemplate,
+    StockMovement,
     Supplier,
     TradePurchase,
     TradePurchaseLine,
@@ -44,6 +47,7 @@ from app.schemas.stock import (
     StockVarianceOut,
     StockDetailOut,
     StockIntelligenceOut,
+    StockDeliveryIndicatorCountsOut,
     StockListItemOut,
     StockListItemMinimalOut,
     StockListOut,
@@ -224,6 +228,7 @@ def _item_to_list_row(
     physical_stock_counted_by: str | None = None,
     total_delivered_qty: Decimal | None = None,
     total_pending_delivery_qty: Decimal | None = None,
+    last_movement_at: datetime | None = None,
 ) -> StockListItemOut:
     cur = catalog_stock_qty(item)
     warehouse_diff: Decimal | None = None
@@ -256,6 +261,8 @@ def _item_to_list_row(
         stock_status=stock_status(cur, ro),
         last_stock_updated_at=item.last_stock_updated_at,
         last_stock_updated_by=item.last_stock_updated_by,
+        last_movement_at=last_movement_at,
+        last_trade_purchase_id=getattr(item, "last_trade_purchase_id", None),
         period_purchased_qty=period_purchased_qty,
         period_usage_qty=period_usage_qty,
         period_variance_qty=ledger_var,
@@ -393,6 +400,20 @@ async def _latest_physical_count_map(
     return out
 
 
+_DELIVERED_TRUCK_MAX_DAYS = 5
+
+
+def _resolve_period_query(
+    period_start: str | None,
+    period_end: str | None,
+    date_from: str | None,
+    date_to: str | None,
+) -> tuple[str | None, str | None]:
+    ps = period_start if (period_start and str(period_start).strip()) else date_from
+    pe = period_end if (period_end and str(period_end).strip()) else date_to
+    return ps, pe
+
+
 def _parse_period_dates(
     period_start: str | None, period_end: str | None
 ) -> tuple[date | None, date | None]:
@@ -409,6 +430,48 @@ def _parse_period_dates(
         return ps, pe
     except ValueError:
         return None, None
+
+
+def _classify_delivery_indicator(
+    *,
+    has_pending_order: bool,
+    pending_delivery_qty: Decimal | None,
+    last_purchase_human_id: str | None,
+    last_purchase_delivered: bool | None,
+    last_purchase_at: datetime | None,
+) -> Literal["none", "pending", "delivered"]:
+    pending_del = pending_delivery_qty or Decimal(0)
+    if has_pending_order or pending_del > 0:
+        return "pending"
+    po = (last_purchase_human_id or "").strip()
+    if po and last_purchase_delivered is True:
+        if last_purchase_at is not None:
+            at = last_purchase_at
+            if at.tzinfo is None:
+                at = at.replace(tzinfo=timezone.utc)
+            days = max(0, (datetime.now(timezone.utc) - at).days)
+            if days > _DELIVERED_TRUCK_MAX_DAYS:
+                return "none"
+        return "delivered"
+    if po and last_purchase_delivered is False:
+        return "pending"
+    return "none"
+
+
+async def _last_movement_at_map(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    item_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, datetime]:
+    if not item_ids:
+        return {}
+    r = await db.execute(
+        select(StockMovement.item_id, func.max(StockMovement.created_at)).where(
+            StockMovement.business_id == business_id,
+            StockMovement.item_id.in_(item_ids),
+        ).group_by(StockMovement.item_id)
+    )
+    return {row[0]: row[1] for row in r.all() if row[1] is not None}
 
 
 async def _today_purchased_map(
@@ -1098,6 +1161,8 @@ async def list_stock(
     include_period: bool = Query(False),
     period_start: str | None = Query(None),
     period_end: str | None = Query(None),
+    date_from: str | None = Query(None, description="Alias for period_start (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="Alias for period_end (YYYY-MM-DD)"),
     include_today: bool = Query(True),
     purchased_in_period: bool = Query(False),
     missing_barcode: bool = Query(False),
@@ -1105,7 +1170,10 @@ async def list_stock(
     reorder_only: bool = Query(False),
     unit: str = Query(""),
 ):
-    ps, pe = _parse_period_dates(period_start, period_end)
+    ps_raw, pe_raw = _resolve_period_query(
+        period_start, period_end, date_from, date_to
+    )
+    ps, pe = _parse_period_dates(ps_raw, pe_raw)
     op_kwargs = {
         "missing_barcode": missing_barcode,
         "missing_item_code": missing_item_code,
@@ -1187,6 +1255,7 @@ async def list_stock(
     pending_meta = await _pending_order_meta_map(db, business_id, item_ids)
     physical_meta = await _latest_physical_count_map(db, business_id, item_ids)
     movement_delivered = await movement_delivered_qty_map(db, business_id, item_ids)
+    movement_at_map = await _last_movement_at_map(db, business_id, item_ids)
     items_dict = {item.id: item for item, _, _ in rows}
     sup_map = await _supplier_names_bulk(db, items_dict)
     items: list[StockListItemOut] = []
@@ -1250,9 +1319,79 @@ async def list_stock(
                 physical_stock_counted_by=phys.counted_by_name if phys else None,
                 total_delivered_qty=total_delivered,
                 total_pending_delivery_qty=pend[2],
+                last_movement_at=movement_at_map.get(item.id),
             )
         )
     return StockListOut(items=items, total=total, page=page, per_page=per_page)
+
+
+@router.get("/delivery-indicator-counts", response_model=StockDeliveryIndicatorCountsOut)
+async def delivery_indicator_counts(
+    business_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    q: str = Query(""),
+    category: str = Query(""),
+    subcategory: str = Query(""),
+    status: StatusFilter = Query("all"),
+    sort: SortBy = Query("name"),
+    include_period: bool = Query(False),
+    period_start: str | None = Query(None),
+    period_end: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    missing_barcode: bool = Query(False),
+    missing_item_code: bool = Query(False),
+    reorder_only: bool = Query(False),
+    unit: str = Query(""),
+):
+    """Global pending/delivered truck counts for stock list filters (not page-limited)."""
+    ps_raw, pe_raw = _resolve_period_query(
+        period_start, period_end, date_from, date_to
+    )
+    ps, pe = _parse_period_dates(ps_raw, pe_raw)
+    op_kwargs = {
+        "missing_barcode": missing_barcode,
+        "missing_item_code": missing_item_code,
+        "reorder_only": reorder_only,
+        "unit": unit,
+    }
+    _, rows = await _query_items(
+        db,
+        business_id,
+        q=q,
+        category=category,
+        subcategory=subcategory,
+        status_val=status,
+        sort=sort,
+        page=1,
+        per_page=10000,
+        **op_kwargs,
+    )
+    catalog_items = [item for item, _, _ in rows]
+    item_ids = [item.id for item in catalog_items]
+    trade_meta = await _last_trade_meta_map(db, catalog_items)
+    pending_meta = await _pending_order_meta_map(db, business_id, item_ids)
+    pending_n = 0
+    delivered_n = 0
+    for item, _, _ in rows:
+        meta = trade_meta.get(item.id, (None, None))
+        valid_last_trade = meta[0] is not None
+        pend = pending_meta.get(item.id, (False, None, None))
+        kind = _classify_delivery_indicator(
+            has_pending_order=pend[0],
+            pending_delivery_qty=pend[2],
+            last_purchase_human_id=meta[0] if valid_last_trade else None,
+            last_purchase_delivered=meta[1] if valid_last_trade else None,
+            last_purchase_at=(
+                getattr(item, "last_purchase_at", None) if valid_last_trade else None
+            ),
+        )
+        if kind == "pending":
+            pending_n += 1
+        elif kind == "delivered":
+            delivered_n += 1
+    return StockDeliveryIndicatorCountsOut(pending=pending_n, delivered=delivered_n)
 
 
 def _stock_row_to_minimal(row: StockListItemOut) -> StockListItemMinimalOut:
@@ -1402,6 +1541,37 @@ async def critical_stock(
     )
 
 
+_BARCODE_LOOKUP_CACHE_TTL_SEC = 30.0
+_BARCODE_LOOKUP_CACHE_MAX = 500
+# (business_id, code_lower) -> (monotonic_ts, BarcodeLookupOut dict)
+_barcode_lookup_cache: dict[tuple[uuid.UUID, str], tuple[float, dict]] = {}
+
+
+def _barcode_lookup_cache_get(
+    business_id: uuid.UUID, code: str
+) -> dict | None:
+    key = (business_id, code.lower())
+    entry = _barcode_lookup_cache.get(key)
+    if entry is None:
+        return None
+    ts, payload = entry
+    if monotonic() - ts > _BARCODE_LOOKUP_CACHE_TTL_SEC:
+        _barcode_lookup_cache.pop(key, None)
+        return None
+    return payload
+
+
+def _barcode_lookup_cache_set(
+    business_id: uuid.UUID, code: str, payload: dict
+) -> None:
+    if len(_barcode_lookup_cache) >= _BARCODE_LOOKUP_CACHE_MAX:
+        for stale_key in list(_barcode_lookup_cache.keys())[
+            : _BARCODE_LOOKUP_CACHE_MAX // 2
+        ]:
+            _barcode_lookup_cache.pop(stale_key, None)
+    _barcode_lookup_cache[(business_id, code.lower())] = (monotonic(), payload)
+
+
 @router.get("/barcode/lookup", response_model=BarcodeLookupOut)
 async def barcode_lookup(
     business_id: uuid.UUID,
@@ -1410,6 +1580,10 @@ async def barcode_lookup(
     code: str = Query(..., min_length=1),
 ):
     code_s = code.strip()
+    cached = _barcode_lookup_cache_get(business_id, code_s)
+    if cached is not None:
+        return BarcodeLookupOut(**cached)
+
     r = await db.execute(
         select(CatalogItem).where(
             CatalogItem.business_id == business_id,
@@ -1429,10 +1603,12 @@ async def barcode_lookup(
         item = r2.scalar_one_or_none()
     if not item:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
-    label = await _barcode_label(db, business_id, item)
-    phys_map = await _latest_physical_count_map(db, business_id, [item.id])
+    label, phys_map = await asyncio.gather(
+        _barcode_label(db, business_id, item),
+        _latest_physical_count_map(db, business_id, [item.id]),
+    )
     phys = phys_map.get(item.id)
-    return BarcodeLookupOut(
+    out = BarcodeLookupOut(
         id=item.id,
         name=item.name,
         item_code=item.item_code,
@@ -1451,6 +1627,10 @@ async def barcode_lookup(
         last_stock_updated_at=getattr(item, "last_stock_updated_at", None),
         last_stock_updated_by=getattr(item, "last_stock_updated_by", None),
     )
+    _barcode_lookup_cache_set(
+        business_id, code_s, out.model_dump(mode="json")
+    )
+    return out
 
 
 async def _adjustments_to_out(
@@ -3156,8 +3336,19 @@ async def record_physical_stock_count(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
     _membership: Annotated[Membership, Depends(require_permission("stock_edit"))],
+    force: bool = Query(
+        False,
+        description=(
+            "No-op for this route: physical count is observation-only and does not "
+            "use stock_version optimistic locking."
+        ),
+    ),
 ):
-    """Record a physical count without mutating authoritative stock."""
+    """Record a physical count without mutating authoritative stock.
+
+    Does not read ``last_seen_stock_version`` or bump ``stock_version``; concurrent
+    system stock edits do not block this endpoint (no 409 from version drift).
+    """
     r = await db.execute(
         select(CatalogItem).where(
             CatalogItem.id == item_id,
@@ -3215,6 +3406,12 @@ async def update_physical_stock(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
     membership: Annotated[Membership, Depends(require_permission("stock_edit"))],
+    force: bool = Query(
+        False,
+        description=(
+            "Skip optimistic version check after explicit user warning (staff/owner)."
+        ),
+    ),
 ):
     kind = {
         "verification": "physical_count",
@@ -3222,6 +3419,7 @@ async def update_physical_stock(
         "correction": "correction",
         "sale": "sale",
     }.get(body.adjustment_type, "physical_count")
+    version_tolerance = 2 if body.adjustment_type == "verification" else 0
     try:
         result = await apply_stock_movement(
             db,
@@ -3236,6 +3434,8 @@ async def update_physical_stock(
             source_type="physical_update",
             idempotency_key=body.idempotency_key,
             last_seen_stock_version=body.last_seen_stock_version,
+            force_version=force,
+            version_tolerance=version_tolerance,
         )
     except StaleStockVersionError as e:
         raise HTTPException(
@@ -3391,6 +3591,12 @@ async def patch_stock_item(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
     _membership: Annotated[Membership, Depends(require_permission("stock_edit"))],
+    force: bool = Query(
+        False,
+        description=(
+            "Skip optimistic version check after explicit user warning (staff/owner)."
+        ),
+    ),
 ):
     item_r = await db.execute(
         select(CatalogItem).where(
@@ -3418,6 +3624,7 @@ async def patch_stock_item(
         "correction": "correction",
         "sale": "sale",
     }.get(body.adjustment_type, body.adjustment_type)
+    version_tolerance = 2 if body.adjustment_type == "verification" else 0
     try:
         result = await apply_stock_movement(
             db,
@@ -3431,6 +3638,8 @@ async def patch_stock_item(
             source_type="stock_patch",
             idempotency_key=body.idempotency_key,
             last_seen_stock_version=body.last_seen_stock_version,
+            force_version=force,
+            version_tolerance=version_tolerance,
         )
     except StaleStockVersionError as e:
         raise HTTPException(

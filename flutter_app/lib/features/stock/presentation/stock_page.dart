@@ -19,6 +19,7 @@ import '../../../core/providers/business_write_event.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
 import '../../../core/providers/stock_providers.dart';
 import '../../../core/design_system/hexa_responsive.dart';
+import '../../../core/design_system/hexa_web_page_frame.dart';
 import '../../../core/router/post_auth_route.dart';
 import '../../../core/router/shell_navigation.dart';
 import '../../../features/shell/shell_branch_provider.dart';
@@ -30,6 +31,7 @@ import '../stock_period_utils.dart';
 import 'widgets/stock_pagination_bar.dart';
 import 'widgets/stock_operational_top_bar.dart';
 import 'widgets/stock_changes_tab.dart';
+import 'widgets/staff_delivered_detail_sheet.dart';
 import 'widgets/stock_row_actions.dart';
 import 'widgets/stock_warehouse_row.dart';
 import 'widgets/stock_warehouse_table_header.dart';
@@ -67,6 +69,7 @@ class _StockPageState extends ConsumerState<StockPage>
   final _subcatCtrl = TextEditingController();
   final _scroll = ScrollController();
   Timer? _debounce;
+  Timer? _deliveryCountsPoll;
   bool _loadingMore = false;
   bool _searchExpanded = false;
   String _instantSearch = '';
@@ -102,6 +105,11 @@ class _StockPageState extends ConsumerState<StockPage>
 
     applyStockPagePeriod(ref, ref.read(stockPagePeriodProvider));
 
+    _deliveryCountsPoll = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      ref.invalidate(stockDeliveryIndicatorCountsProvider);
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scroll.hasClients) return;
       final saved = ref.read(stockListScrollOffsetProvider);
@@ -125,6 +133,7 @@ class _StockPageState extends ConsumerState<StockPage>
     }
     _tabs.dispose();
     _debounce?.cancel();
+    _deliveryCountsPoll?.cancel();
     _searchCtrl.dispose();
     _subcatCtrl.dispose();
     _scroll.dispose();
@@ -189,7 +198,9 @@ class _StockPageState extends ConsumerState<StockPage>
 
   void _onScrollLoadMore() {
     if (!_scroll.hasClients || _loadingMore) return;
-    if (_scroll.position.extentAfter > 240) return;
+    final pos = _scroll.position;
+    if (pos.maxScrollExtent <= 0) return;
+    if (pos.pixels < pos.maxScrollExtent * 0.8) return;
     _goNextPage();
   }
 
@@ -201,26 +212,6 @@ class _StockPageState extends ConsumerState<StockPage>
     setState(() => _loadingMore = true);
     ref.read(stockListQueryProvider.notifier).state =
         q.copyWith(page: q.page + 1);
-  }
-
-  void _goPrevPage() {
-    final q = ref.read(stockListQueryProvider);
-    if (q.page <= 1) return;
-    final newPage = q.page - 1;
-    final keep = newPage * q.perPage;
-    setState(() {
-      if (_mergedData != null) {
-        final items = (_mergedData!['items'] as List?) ?? [];
-        if (items.length > keep) {
-          _mergedData = {
-            ..._mergedData!,
-            'items': items.take(keep).toList(),
-            'page': newPage,
-          };
-        }
-      }
-    });
-    ref.read(stockListQueryProvider.notifier).state = q.copyWith(page: newPage);
   }
 
   List<Map<String, dynamic>> _prepareItems(List<Map<String, dynamic>> raw) {
@@ -252,9 +243,11 @@ class _StockPageState extends ConsumerState<StockPage>
       context: context,
       ref: ref,
       item: item,
+      isStaffMode: _isStaffMode,
       onBeforeNavigate: _persistScrollOffset,
       onAfterNavigateReturn: _restoreScrollOffset,
     );
+    if (!mounted) return;
   }
 
   Future<void> _exportStockPdf() async {
@@ -288,6 +281,7 @@ class _StockPageState extends ConsumerState<StockPage>
         rows: items.take(500).toList(),
         filterSummary: summary.isEmpty ? null : summary,
       );
+      if (!mounted) return;
       final result = kIsWeb
           ? await savePdfBytes(
               buildBytes: () async => bytes,
@@ -299,11 +293,10 @@ class _StockPageState extends ConsumerState<StockPage>
               bytes: bytes,
               filename: 'harisree_stock_statement.pdf',
             );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result.message)),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.message)),
+      );
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -351,6 +344,7 @@ class _StockPageState extends ConsumerState<StockPage>
       ],
       text: 'Stock export',
     );
+    if (!mounted) return;
   }
 
   Future<void> _openFilters() async {
@@ -360,6 +354,7 @@ class _StockPageState extends ConsumerState<StockPage>
       subcategoryCtrl: _subcatCtrl,
       isStaffMode: _isStaffMode,
     );
+    if (!mounted) return;
     // Filter sheet updates query/op providers — list refetches without clearing UI.
   }
 
@@ -380,7 +375,6 @@ class _StockPageState extends ConsumerState<StockPage>
           Navigator.pop(context);
           applyStockPagePeriod(ref, p);
           _resetMerged();
-          ref.invalidate(stockListProvider);
         },
       ),
     );
@@ -406,7 +400,9 @@ class _StockPageState extends ConsumerState<StockPage>
         if (e is Map) Map<String, dynamic>.from(e),
     ];
     final items = _prepareItems(raw);
-    final deliveryCounts = StockRowMetrics.countDeliveryIndicators(raw);
+    final deliveryCounts =
+        ref.watch(stockDeliveryIndicatorCountsProvider).valueOrNull ??
+            StockRowMetrics.countDeliveryIndicators(raw);
     final deliveryFilter = ref.watch(stockDeliveryFilterProvider);
     final listQ = ref.watch(stockListQueryProvider);
     final chipCounts =
@@ -481,6 +477,17 @@ class _StockPageState extends ConsumerState<StockPage>
                   isFirstRow: i == 0,
                   isSelected: isSelected,
                   onTap: () => unawaited(_openRowActions(row)),
+                  onDeliveredDetail: _isStaffMode &&
+                          StockRowMetrics.deliveryIndicator(row) ==
+                              StockDeliveryIndicator.delivered
+                      ? () => unawaited(
+                            showStaffDeliveredDetailSheet(
+                              context: context,
+                              ref: ref,
+                              item: row,
+                            ),
+                          )
+                      : null,
                   onSelect: desktop && id.isNotEmpty
                       ? () => ref
                           .read(stockSelectedItemIdProvider.notifier)
@@ -492,17 +499,19 @@ class _StockPageState extends ConsumerState<StockPage>
             childCount: items.length,
           ),
         ),
-        SliverToBoxAdapter(
-          child: StockPaginationBar(
-            showingCount: items.length,
-            totalCount: total,
-            currentPage: listQ.page,
-            maxPage: maxPage,
-            loading: _loadingMore,
-            onPrev: listQ.page > 1 ? _goPrevPage : null,
-            onNext: listQ.page < maxPage ? _goNextPage : null,
+        if (items.length < total || _loadingMore)
+          SliverToBoxAdapter(
+            child: StockPaginationBar(
+              showingCount: items.length,
+              totalCount: total,
+              currentPage: listQ.page,
+              maxPage: maxPage,
+              loading: _loadingMore,
+              scrollOnly: true,
+              onPrev: null,
+              onNext: null,
+            ),
           ),
-        ),
       ],
       if (items.isEmpty)
         SliverFillRemaining(
@@ -753,12 +762,14 @@ class _StockPageState extends ConsumerState<StockPage>
         onExportExcel: _isStaffMode ? null : _exportStockExcel,
         tabController: _tabs,
       ),
-      body: TabBarView(
-        controller: _tabs,
-        children: [
-          listTab,
-          StockChangesTab(isStaffMode: _isStaffMode),
-        ],
+      body: HexaWebPageFrame(
+        child: TabBarView(
+          controller: _tabs,
+          children: [
+            listTab,
+            StockChangesTab(isStaffMode: _isStaffMode),
+          ],
+        ),
       ),
     );
 

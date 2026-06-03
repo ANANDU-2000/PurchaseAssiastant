@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/api/fastapi_error.dart';
@@ -118,6 +119,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   List<Map<String, dynamic>>? _lastCatalogSnapshot;
 
   Timer? _draftDebounce;
+
+  /// Sync snapshot for [dispose] — no [ref] after widget teardown.
+  String? _cachedDraftPrefsKey;
+  String? _cachedDraftBid;
+  String? _cachedDraftJson;
 
   /// Latest [purchase_date] per supplier from recent trade list (for autocomplete sort).
   Map<String, DateTime> _supplierLastPurchaseById = {};
@@ -530,10 +536,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         final o = jsonDecode(fromHive);
         if (o is Map<String, dynamic>) {
           await applyMap(o);
+          if (!mounted) return;
           return;
         }
         if (o is Map) {
           await applyMap(Map<String, dynamic>.from(o));
+          if (!mounted) return;
           return;
         }
       } catch (_) {}
@@ -547,7 +555,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       if (o is! Map) return;
       final m = Map<String, dynamic>.from(o);
       await applyMap(m);
+      if (!mounted) return;
       await OfflineStore.putPurchaseWizardDraft(bid, prefsStr);
+      if (!mounted) return;
       await p.remove(k);
     } catch (_) {}
   }
@@ -572,6 +582,15 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     };
   }
 
+  void _cacheDraftSnapshotForDispose() {
+    if (widget.editingId != null && widget.editingId!.isNotEmpty) return;
+    final s = ref.read(sessionProvider);
+    if (s == null) return;
+    _cachedDraftBid = s.primaryBusiness.id;
+    _cachedDraftPrefsKey = '${_draftKeyV1}_$_cachedDraftBid';
+    _cachedDraftJson = jsonEncode(_draftJsonForPersistence());
+  }
+
   void _flushDraftToPrefs() {
     if (widget.editingId != null && widget.editingId!.isNotEmpty) return;
     final k = _draftPrefsKey();
@@ -580,6 +599,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     final bid = s.primaryBusiness.id;
     final p = ref.read(sharedPreferencesProvider);
     final json = jsonEncode(_draftJsonForPersistence());
+    _cachedDraftPrefsKey = k;
+    _cachedDraftBid = bid;
+    _cachedDraftJson = json;
     unawaited(p.setString(k, json));
     unawaited(OfflineStore.putPurchaseWizardDraft(bid, json));
   }
@@ -606,16 +628,19 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _draftDebounce?.cancel();
-    if (widget.editingId == null || widget.editingId!.isEmpty) {
-      final s = ref.read(sessionProvider);
-      if (s != null) {
-        final k = '${_draftKeyV1}_${s.primaryBusiness.id}';
-        final bid = s.primaryBusiness.id;
-        final p = ref.read(sharedPreferencesProvider);
-        final json =
-            jsonEncode(_draftJsonForPersistence());
-        unawaited(p.setString(k, json));
-        unawaited(OfflineStore.putPurchaseWizardDraft(bid, json));
+    if ((widget.editingId == null || widget.editingId!.isEmpty) && _formDirty) {
+      if (_cachedDraftJson == null) {
+        _cacheDraftSnapshotForDispose();
+      }
+      final json = _cachedDraftJson;
+      final key = _cachedDraftPrefsKey;
+      final bid = _cachedDraftBid;
+      if (json != null && key != null && bid != null) {
+        unawaited(() async {
+          final p = await SharedPreferences.getInstance();
+          await p.setString(key, json);
+          await OfflineStore.putPurchaseWizardDraft(bid, json);
+        }());
       }
     }
     _partySupplierFocus.removeListener(_partyFieldFocusNotify);
@@ -1134,6 +1159,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
             includeDefaultUnit: true,
             defaultUnit: 'bag',
           );
+      if (!mounted) return;
       ref.invalidate(catalogItemsListProvider);
     } catch (_) {}
   }
@@ -1542,8 +1568,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         content: Text(
           shareAfterSave
               ? (_isEditMode()
-                  ? 'Save changes and share to accounts WhatsApp?'
-                  : 'Save and share purchase summary to accounts WhatsApp?')
+                  ? 'Save changes and share PDF + summary to accounts WhatsApp?'
+                  : 'Save and share purchase PDF + summary to accounts WhatsApp?')
               : (_isEditMode()
                   ? 'Save changes to this purchase?'
                   : 'Saving will submit this purchase to your records. Continue?'),
@@ -1708,6 +1734,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
             .read(purchaseDraftProvider.notifier)
             .buildTradePurchaseBody(forceDuplicate: forceDuplicate);
         if (!await _runServerTradeValidate(bid, tradeBody)) return;
+        if (!mounted) return;
         final forceDup = tradeBody['force_duplicate'] == true;
         final pd = d.purchaseDate ?? DateTime.now();
         saved = await scanPurchaseUpdateAndConfirm(
@@ -1718,8 +1745,10 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
           invoiceNumber: d.invoiceNumber,
           forceDuplicate: forceDup,
         );
+        if (!mounted) return;
       } else if (isEdit) {
         if (!await _runServerTradeValidate(bid, body)) return;
+        if (!mounted) return;
         saved = await api.updateTradePurchase(
               businessId: bid,
               purchaseId: widget.editingId!,
@@ -1727,11 +1756,13 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
             );
       } else {
         if (!await _runServerTradeValidate(bid, body)) return;
+        if (!mounted) return;
         saved = await api.createTradePurchase(
               businessId: bid,
               body: body,
             );
       }
+      if (!mounted) return;
       final draftSnap = ref.read(purchaseDraftProvider);
       final savedItemIds = catalogItemIdsFromTradeJson(saved);
       invalidatePurchaseWorkspace(ref, affectedItemIds: savedItemIds);
@@ -1765,6 +1796,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       }
       ref.read(purchaseDraftProvider.notifier).reset();
       await _clearDraftInPrefs();
+      if (!mounted) return;
       _syncControllersFromDraft();
       if (mounted) {
         setState(() {

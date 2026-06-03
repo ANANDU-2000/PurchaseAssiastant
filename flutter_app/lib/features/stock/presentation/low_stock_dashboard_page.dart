@@ -51,6 +51,8 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
 
   late final TabController _tabs;
   Timer? _debounce;
+  Timer? _loadSlowTimer;
+  bool _loadTimedOut = false;
   String _search = '';
   LowStockSearchScope _searchScope = LowStockSearchScope.all;
   String? _subcategoryFilter;
@@ -73,6 +75,23 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
         _tabs.animateTo(idx);
       }
     });
+    _scheduleLoadSlowTimer();
+  }
+
+  void _scheduleLoadSlowTimer() {
+    _loadSlowTimer?.cancel();
+    _loadSlowTimer = Timer(const Duration(seconds: 10), () {
+      if (!mounted) return;
+      if (ref.read(lowStockByCategoryProvider).isLoading) {
+        setState(() => _loadTimedOut = true);
+      }
+    });
+  }
+
+  void _refreshLowStock() {
+    if (_loadTimedOut && mounted) setState(() => _loadTimedOut = false);
+    ref.invalidate(lowStockByCategoryProvider);
+    _scheduleLoadSlowTimer();
   }
 
   int? _tabIndexFromFilter(String? raw) {
@@ -97,6 +116,7 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
   @override
   void dispose() {
     _debounce?.cancel();
+    _loadSlowTimer?.cancel();
     _tabs.dispose();
     super.dispose();
   }
@@ -278,6 +298,17 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
   @override
   Widget build(BuildContext context) {
     final groupedAsync = ref.watch(lowStockByCategoryProvider);
+    ref.listen(lowStockByCategoryProvider, (prev, next) {
+      if (!next.isLoading) {
+        _loadSlowTimer?.cancel();
+        _loadSlowTimer = null;
+        if (_loadTimedOut && mounted) {
+          setState(() => _loadTimedOut = false);
+        }
+      } else if (prev != null && !prev.isLoading && next.isLoading) {
+        _scheduleLoadSlowTimer();
+      }
+    });
 
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
@@ -442,49 +473,82 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
           orElse: () => null,
         ),
       ),
-      body: groupedAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => FriendlyLoadError(
-          message: 'Could not load low stock',
-          subtitle: loadStateErrorSubtitle(e),
-          onRetry: () => ref.invalidate(lowStockByCategoryProvider),
-        ),
-        data: (grouped) {
-          final desktop = context.isDesktopLayout;
-          final tree = TabBarView(
-            controller: _tabs,
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              for (final tab in _tabOrder)
-                LowStockCategoryTree(
-                  grouped: grouped,
-                  tab: tab,
-                  searchQuery: _search,
-                  searchScope: _searchScope,
-                  subcategoryFilter: _subcategoryFilter,
-                  staffMode: widget.staffMode,
-                  informedOwnerIds: _informedOwnerIds,
-                  onOrderNow: widget.staffMode ? null : _orderNow,
-                  onNotifyOwner: widget.staffMode ? _notifyOwner : null,
-                  onEditReorder: _editReorder,
-                  onStockUpdate: _stockUpdate,
-                  onSystemStockUpdate: _stockUpdateSystem,
-                  onReceive: _receive,
-                ),
-            ],
-          );
-          return RefreshIndicator(
-            onRefresh: () async {
-              ref.invalidate(lowStockByCategoryProvider);
-              await ref.read(lowStockByCategoryProvider.future);
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final boundedHeight =
+              constraints.maxHeight.isFinite && constraints.maxHeight > 0;
+          return groupedAsync.when(
+            loading: () => Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_loadTimedOut) ...[
+                    Text(
+                      'Taking longer than usual',
+                      style: HexaDsType.body(14, color: HexaDsColors.textMuted),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.tonalIcon(
+                      onPressed: _refreshLowStock,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Refresh'),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                  const CircularProgressIndicator(),
+                ],
+              ),
+            ),
+            error: (e, _) => FriendlyLoadError(
+              message: 'Could not load low stock',
+              subtitle: loadStateErrorSubtitle(e),
+              onRetry: _refreshLowStock,
+            ),
+            data: (grouped) {
+              final desktop = context.isDesktopLayout;
+              final tree = TabBarView(
+                controller: _tabs,
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  for (final tab in _tabOrder)
+                    LowStockCategoryTree(
+                      grouped: grouped,
+                      tab: tab,
+                      searchQuery: _search,
+                      searchScope: _searchScope,
+                      subcategoryFilter: _subcategoryFilter,
+                      staffMode: widget.staffMode,
+                      informedOwnerIds: _informedOwnerIds,
+                      onOrderNow: widget.staffMode ? null : _orderNow,
+                      onNotifyOwner: widget.staffMode ? _notifyOwner : null,
+                      onEditReorder: _editReorder,
+                      onStockUpdate: _stockUpdate,
+                      onSystemStockUpdate: _stockUpdateSystem,
+                      onReceive: _receive,
+                    ),
+                ],
+              );
+              final content = RefreshIndicator(
+                onRefresh: () async {
+                  _refreshLowStock();
+                  await ref.read(lowStockByCategoryProvider.future);
+                },
+                child: desktop
+                    ? HexaResponsiveCenter(
+                        maxWidth: 1280,
+                        padding: EdgeInsets.zero,
+                        child: tree,
+                      )
+                    : tree,
+              );
+              if (!boundedHeight) return content;
+              return SizedBox(
+                height: constraints.maxHeight,
+                child: content,
+              );
             },
-            child: desktop
-                ? HexaResponsiveCenter(
-                    maxWidth: 1280,
-                    padding: EdgeInsets.zero,
-                    child: tree,
-                  )
-                : tree,
           );
         },
       ),

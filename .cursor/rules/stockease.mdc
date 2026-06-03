@@ -9,10 +9,9 @@
 - Section header (TODAY / EARLIER) with nothing below it = REMOVE the header entirely.
 
 ### Search — CRITICAL RULE
-- NEVER call ref.read(stockListQueryProvider.notifier).state = ... on search text change
-- ALWAYS filter locally using a computed getter on the already-loaded list.
-- Search TextField onChanged: setState(() => _searchQuery = v.toLowerCase().trim()) — ONLY THIS. No provider writes.
-- Only call API on: pull-to-refresh, first load, period change, explicit retry.
+- **Home / reports / local lists:** NEVER write providers on every keystroke; filter the already-loaded list locally (`setState` + computed getter). Debounce ~300ms if you must query.
+- **Stock list (`stock_page.dart`):** Server-paginated — debounced updates to `stockListQueryProvider.q` (and `page: 1`) are allowed; do not apply the “local-only search” rule here.
+- Only refetch stock on: pull-to-refresh, first load, period change, filter sheet apply, explicit retry.
 
 ### Float Precision — CRITICAL
 - Integer check: ALWAYS `(n - n.roundToDouble()).abs() < 0.001`. NEVER `n == n.roundToDouble()`.

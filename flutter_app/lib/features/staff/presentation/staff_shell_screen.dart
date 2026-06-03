@@ -66,8 +66,9 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
 
     final sessionHint = ref.watch(apiDegradedProvider);
     final width = MediaQuery.sizeOf(context).width;
-    final showsRail = width >= kNavigationRailMin;
-    final railExtended = width >= kDesktopMin;
+    final showRail = width > 0 && width >= kShellRailMin;
+    final railExtended = width > 0 && width >= kShellRailExtendedMin;
+    final showBottomBar = width > 0 && width < kShellBottomNavMax;
     final session = ref.watch(sessionProvider);
     final biz = session?.primaryBusiness;
     final notifN = ref.watch(notificationsUnreadCountProvider);
@@ -78,6 +79,66 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
       _syncStaffBranch(branch);
       navigationShell.goBranch(branch);
     }
+
+    final staffRail = NavigationRail(
+      selectedIndex: idx,
+      extended: railExtended,
+      minExtendedWidth: kDesktopSidebarWidth,
+      labelType: railExtended
+          ? NavigationRailLabelType.all
+          : NavigationRailLabelType.none,
+      onDestinationSelected: go,
+      trailing: railExtended && biz != null
+          ? DesktopSideNavFooter(
+              businessName: biz.effectiveDisplayTitle,
+              roleLabel: biz.role.toUpperCase(),
+              notificationCount: notifN,
+              onNotificationsTap: () => context.push('/notifications'),
+            )
+          : null,
+      destinations: [
+        const NavigationRailDestination(
+          icon: Icon(Icons.home_outlined),
+          selectedIcon: Icon(Icons.home_rounded),
+          label: Text('Home'),
+        ),
+        const NavigationRailDestination(
+          icon: Icon(Icons.inventory_2_outlined),
+          selectedIcon: Icon(Icons.inventory_2_rounded),
+          label: Text('Stock'),
+        ),
+        const NavigationRailDestination(
+          icon: Icon(Icons.qr_code_scanner_outlined),
+          selectedIcon: Icon(Icons.qr_code_scanner_rounded),
+          label: Text('Scan'),
+        ),
+        const NavigationRailDestination(
+          icon: Icon(Icons.search_rounded),
+          selectedIcon: Icon(Icons.manage_search_rounded),
+          label: Text('Search'),
+        ),
+        NavigationRailDestination(
+          icon: Badge(
+            isLabelVisible: pendingDel > 0,
+            label: Text(pendingDel > 99 ? '99+' : '$pendingDel'),
+            backgroundColor: const Color(0xFFEA580C),
+            child: const Icon(Icons.local_shipping_outlined),
+          ),
+          selectedIcon: Badge(
+            isLabelVisible: pendingDel > 0,
+            label: Text(pendingDel > 99 ? '99+' : '$pendingDel'),
+            backgroundColor: const Color(0xFFEA580C),
+            child: const Icon(Icons.local_shipping_rounded),
+          ),
+          label: const Text('Deliveries'),
+        ),
+        const NavigationRailDestination(
+          icon: Icon(Icons.checklist_outlined),
+          selectedIcon: Icon(Icons.checklist_rounded),
+          label: Text('Tasks'),
+        ),
+      ],
+    );
 
     return BusinessWriteStockListener(
       child: ShellRealtimeListener(
@@ -91,68 +152,13 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (showsRail)
-                  NavigationRail(
-                    selectedIndex: idx,
-                    extended: railExtended,
-                    minExtendedWidth: kDesktopSidebarWidth,
-                    onDestinationSelected: go,
-                    trailing: railExtended && biz != null
-                        ? DesktopSideNavFooter(
-                            businessName: biz.effectiveDisplayTitle,
-                            roleLabel: biz.role.toUpperCase(),
-                            notificationCount: notifN,
-                            onNotificationsTap: () =>
-                                context.push('/notifications'),
-                          )
-                        : null,
-                    destinations: [
-                      const NavigationRailDestination(
-                        icon: Icon(Icons.home_outlined),
-                        selectedIcon: Icon(Icons.home_rounded),
-                        label: Text('Home'),
-                      ),
-                      const NavigationRailDestination(
-                        icon: Icon(Icons.inventory_2_outlined),
-                        selectedIcon: Icon(Icons.inventory_2_rounded),
-                        label: Text('Stock'),
-                      ),
-                      const NavigationRailDestination(
-                        icon: Icon(Icons.qr_code_scanner_outlined),
-                        selectedIcon: Icon(Icons.qr_code_scanner_rounded),
-                        label: Text('Scan'),
-                      ),
-                      const NavigationRailDestination(
-                        icon: Icon(Icons.search_rounded),
-                        selectedIcon: Icon(Icons.manage_search_rounded),
-                        label: Text('Search'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Badge(
-                          isLabelVisible: pendingDel > 0,
-                          label: Text(
-                            pendingDel > 99 ? '99+' : '$pendingDel',
-                          ),
-                          backgroundColor: const Color(0xFFEA580C),
-                          child: const Icon(Icons.local_shipping_outlined),
+                if (showRail)
+                  railExtended
+                      ? staffRail
+                      : SizedBox(
+                          width: kShellCompactRailWidth,
+                          child: staffRail,
                         ),
-                        selectedIcon: Badge(
-                          isLabelVisible: pendingDel > 0,
-                          label: Text(
-                            pendingDel > 99 ? '99+' : '$pendingDel',
-                          ),
-                          backgroundColor: const Color(0xFFEA580C),
-                          child: const Icon(Icons.local_shipping_rounded),
-                        ),
-                        label: const Text('Deliveries'),
-                      ),
-                      const NavigationRailDestination(
-                        icon: Icon(Icons.checklist_outlined),
-                        selectedIcon: Icon(Icons.checklist_rounded),
-                        label: Text('Tasks'),
-                      ),
-                    ],
-                  ),
                 Expanded(
                   child: AppShellBody(
                     navigationShell: navigationShell,
@@ -189,13 +195,13 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
                           ),
                         ),
                     ],
-                    bottomBar: showsRail
-                        ? null
-                        : _StaffShellBottomBar(
+                    bottomBar: showBottomBar
+                        ? _StaffShellBottomBar(
                             selectedIndex: idx,
                             pendingDeliveryCount: pendingDel,
                             onDestinationSelected: go,
-                          ),
+                          )
+                        : null,
                   ),
                 ),
               ],

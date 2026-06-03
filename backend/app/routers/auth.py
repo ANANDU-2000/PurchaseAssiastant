@@ -216,6 +216,12 @@ async def login(
         now = datetime.now(timezone.utc)
         user.last_login_at = now
         user.last_active_at = now
+        tok = (body.device_token or "").strip()
+        if tok:
+            info = dict(user.device_info or {})
+            info["push_token"] = tok[:512]
+            info["push_token_updated_at"] = now.isoformat()
+            user.device_info = info
         mem_q = await db.execute(select(Membership).where(Membership.user_id == user.id).limit(1))
         mem = mem_q.scalar_one_or_none()
         db.add(

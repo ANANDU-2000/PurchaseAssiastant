@@ -86,6 +86,12 @@ String? notificationKindPrefKey(NotificationItem n) {
   if (kind == 'reorder_request' || kind == 'staff_alert') {
     return 'staff_alert';
   }
+  if (kind == 'damage_report' || kind == 'damage_acknowledged') {
+    return 'delivery';
+  }
+  if (kind == 'delivery_assigned') {
+    return 'delivery';
+  }
   if (kind == 'delivery_idle' ||
       kind == 'delivery_pending' ||
       kind == 'delivery_received' ||
@@ -143,6 +149,12 @@ NotificationCategoryFilter notificationCategoryForItem(NotificationItem n) {
       kind == 'approval_required' ||
       n.type == NotificationType.purchaseOverdue) {
     return NotificationCategoryFilter.critical;
+  }
+  if (kind == 'damage_report' || kind == 'damage_acknowledged') {
+    return NotificationCategoryFilter.purchases;
+  }
+  if (kind == 'delivery_assigned') {
+    return NotificationCategoryFilter.staff;
   }
   if (n.type == NotificationType.purchaseDue ||
       n.type == NotificationType.purchaseOverdue ||

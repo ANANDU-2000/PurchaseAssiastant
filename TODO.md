@@ -4,11 +4,11 @@ All items from the master recovery plan are **completed**.
 
 | ID | Task | Status | Evidence |
 |----|------|--------|----------|
-| triage-purchase-barcode-stock | Purchase / barcode / stock root-cause fixes | Done | Code patches + `PURCHASE_ENTRY_ROOT_CAUSE.md`, `BARCODE_SYSTEM_REPORT.md`, `STOCK_ENGINE_AUDIT.md` |
+| triage-purchase-barcode-stock | Purchase / barcode / stock root-cause fixes | Done | Code patches + `docs/debug/PURCHASE_ENTRY_ROOT_CAUSE.md`, `BARCODE_SYSTEM_REPORT.md`, `STOCK_ENGINE_AUDIT.md` |
 | stabilize-navigation-performance | Duplicate reloads, routes, desktop/staff shell | Done | Prior session: `staff_home_page.dart` route; resume throttle in `session_notifier.dart` |
 | db-migration-hardening | Migration compatibility on prod schema variants | Done | `051_*.sql` conditional blocks; `DATABASE_REFACTOR.md` |
 | generate-md-deliverables | All audit/report markdown files | Done | Repo root `*.md` deliverables |
-| final-regression | analyze + pytest sign-off | Done | `TEST_RESULTS.md`, `PRODUCTION_READINESS_REPORT.md` |
+| final-regression | analyze + pytest sign-off | Done | `docs/TEST_RESULTS.md`, `PRODUCTION_READINESS_REPORT.md` |
 
 ## Post-recovery operational checklist (ops, not code)
 
@@ -19,4 +19,4 @@ All items from the master recovery plan are **completed**.
 
 ## No remaining code TODOs from this plan
 
-Further work is product backlog only (see `UX_REBUILD_PLAN.md` for non-blocking UX enhancements).
+Further work is product backlog only (see `docs/archive/UX_REBUILD_PLAN.md` for non-blocking UX enhancements).

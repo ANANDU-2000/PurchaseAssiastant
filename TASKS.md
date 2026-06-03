@@ -942,7 +942,7 @@ Verification gates per phase:
 ## Master Fix v3 — DB + §29 completion (2026-05-24)
 
 - [x] Supabase MCP audit: critical columns present; `harisree_034_master_fix_v3_prod_parity` applied
-- [x] Repo mirror: [`backend/sql/034_master_fix_v3_prod_parity.sql`](backend/sql/034_master_fix_v3_prod_parity.sql)
+- [x] Repo mirror: [`backend/sql/034b_master_fix_v3_prod_parity.sql`](backend/sql/034b_master_fix_v3_prod_parity.sql)
 - [x] Stock alerts summary: `out_of_stock`, `missing_item_code`, `total_items`; chip counts via API
 - [x] `update_stock_sheet` → `invalidateWarehouseSurfaces`
 - [x] Stock search: instant local filter + API debounce
@@ -1080,7 +1080,7 @@ Verification gates per phase:
 - [x] Period purchased sum uses normalized lines (not raw `SUM(qty)`)
 - [x] Stock apply/revert/diff on confirm uses normalized qty
 - [x] API: `ledger_variance_qty`, `period_usage_qty`, `qty_in_stock_unit` on recent purchases, `current_stock_kg`
-- [x] Migration `backend/sql/033_trade_line_qty_in_stock_unit.sql` + backfill/repair scripts
+- [x] Migration `backend/sql/033b_trade_line_qty_in_stock_unit.sql` + backfill/repair scripts
 - [x] Flutter dual display (BAG + kg subtitle) on stock row, preview, item detail, intelligence
 - [x] `invalidatePurchaseWorkspace` → `invalidateWarehouseSurfaces` for realtime stock refresh
 - [x] **Prod (Supabase MCP 2026-05-23):** migration `trade_line_qty_in_stock_unit`, `fix_prod_catalog_unit_profiles.sql`, SQL backfill 96/109 lines (`qty_in_stock_unit`); 13 edge unit mismatches remain (runtime normalize)

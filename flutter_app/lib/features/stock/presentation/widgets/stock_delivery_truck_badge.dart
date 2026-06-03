@@ -8,10 +8,12 @@ class StockDeliveryTruckBadge extends StatelessWidget {
     super.key,
     required this.item,
     this.compact = false,
+    this.onDeliveredTap,
   });
 
   final Map<String, dynamic> item;
   final bool compact;
+  final VoidCallback? onDeliveredTap;
 
   static const _pendingColor = Color(0xFFEA580C);
   static const _deliveredColor = Color(0xFF16A34A);
@@ -26,9 +28,7 @@ class StockDeliveryTruckBadge extends StatelessWidget {
     final qty = isPending ? StockRowMetrics.deliveryQtyBadge(item) : '';
     final size = compact ? 16.0 : 18.0;
 
-    return Tooltip(
-      message: isPending ? 'Pending delivery' : 'Delivered to stock',
-      child: Container(
+    final badge = Container(
         padding: EdgeInsets.symmetric(
           horizontal: compact ? 4 : 5,
           vertical: compact ? 3 : 4,
@@ -65,7 +65,26 @@ class StockDeliveryTruckBadge extends StatelessWidget {
             ],
           ],
         ),
-      ),
+      );
+
+    final wrapped = !isPending && onDeliveredTap != null
+        ? Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onDeliveredTap,
+              borderRadius: BorderRadius.circular(6),
+              child: badge,
+            ),
+          )
+        : badge;
+
+    return Tooltip(
+      message: isPending
+          ? 'Pending delivery'
+          : onDeliveredTap != null
+              ? 'Tap for delivery details'
+              : 'Delivered to stock',
+      child: wrapped,
     );
   }
 }

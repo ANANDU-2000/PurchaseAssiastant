@@ -1,3 +1,4 @@
+// Shim: kept for deep-link compatibility. Router uses ScanPurchaseV2Page directly.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'scan_purchase_v2_page.dart';

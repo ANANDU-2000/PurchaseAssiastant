@@ -1,3 +1,7 @@
+// DEPRECATED: No route or import references as of 2026-06-03.
+// Replacement: ItemHistoryPage (/catalog/item/:id/history or item detail).
+// Do not use in new code. See docs/cleanup/DEPRECATED_FILES.md.
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';

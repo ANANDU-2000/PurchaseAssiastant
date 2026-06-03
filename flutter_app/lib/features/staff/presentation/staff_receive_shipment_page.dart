@@ -110,6 +110,7 @@ class _StaffReceiveShipmentPageState
         for (final l in p.lines)
           {
             'id': l.id,
+            'catalog_item_id': l.catalogItemId,
             'item_name': l.itemName,
             'qty': l.qty,
             'unit': l.unit,

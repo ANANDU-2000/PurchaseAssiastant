@@ -12,9 +12,7 @@ import '../../../../core/providers/delivery_pipeline_provider.dart';
 import '../../../../core/providers/home_dashboard_provider.dart';
 import '../../../../core/providers/home_owner_dashboard_providers.dart';
 import '../../../../core/providers/stock_providers.dart'
-    show lowStockByCategoryProvider, openingStockMissingProvider, stockStatusCountsProvider;
-import '../../../stock/presentation/widgets/low_stock_category_tree.dart'
-    show countLowStockForTab, LowStockTreeTab;
+    show openingStockMissingProvider, stockStatusCountsProvider;
 import 'home_analytics_helpers.dart';
 import 'home_owner_quick_actions.dart';
 import 'home_purchase_control_center.dart';
@@ -39,11 +37,18 @@ class HomeOwnerDashboardBody extends ConsumerWidget {
       pending = ref.watch(homeDashboardDataProvider).snapshot.data.pendingDeliveryCount;
     }
     final dash = ref.watch(homeDashboardDataProvider).snapshot.data;
-    final inv = ref.watch(homeInventorySummaryProvider).valueOrNull;
-    final lowCount = ref.watch(lowStockByCategoryProvider).maybeWhen(
-          data: (g) => countLowStockForTab(g, LowStockTreeTab.allLow),
-          orElse: () => 0,
-        );
+    final sh = dash.stockInHand;
+    final HomeInventorySummary? invSummary = sh != null
+        ? HomeInventorySummary(
+            totalValueInr: sh.totalValueInr,
+            bags: sh.bags,
+            boxes: sh.boxes,
+            tins: sh.tins,
+            kg: sh.kg,
+            itemCount: sh.itemCount,
+          )
+        : ref.watch(homeInventorySummaryProvider).valueOrNull;
+    final lowCount = low + out;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -122,11 +127,13 @@ class HomeOwnerDashboardBody extends ConsumerWidget {
             ),
             _KpiTile(
               label: 'Warehouse',
-              value: inv != null && inventoryUnitsLine(inv).isNotEmpty
-                  ? inventoryUnitsLine(inv)
-                  : '${inv?.itemCount ?? dash.itemSlices.length}',
-              subtitle: inv != null && inventoryUnitsLine(inv).isNotEmpty
-                  ? '${inv.itemCount} items on hand'
+              value: invSummary != null &&
+                      inventoryUnitsLine(invSummary).isNotEmpty
+                  ? inventoryUnitsLine(invSummary)
+                  : '${invSummary?.itemCount ?? dash.itemSlices.length}',
+              subtitle: invSummary != null &&
+                      inventoryUnitsLine(invSummary).isNotEmpty
+                  ? '${invSummary.itemCount} items on hand'
                   : 'Active items',
               onTap: () => goShellTab(
                     context,

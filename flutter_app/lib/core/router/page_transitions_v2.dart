@@ -1,3 +1,5 @@
+// DEPRECATED: Unused; router uses page_transitions.dart. See docs/cleanup/DEPRECATED_FILES.md.
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 

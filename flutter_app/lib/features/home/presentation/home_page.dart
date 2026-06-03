@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/design_system/hexa_responsive.dart';
+import '../../../core/design_system/hexa_web_page_frame.dart';
 import '../../../core/router/shell_navigation.dart';
 import '../../../features/shell/shell_branch_provider.dart';
 import '../../../core/auth/dashboard_role.dart';
@@ -21,12 +22,9 @@ import '../../../core/providers/app_period_provider.dart'
     show homePeriodSyncListenerProvider;
 import '../../../core/providers/home_dashboard_provider.dart'
     show bustHomeDashboardVolatileCaches, homeDashboardDataProvider;
-import '../../../core/providers/delivery_pipeline_provider.dart';
 import '../../../core/providers/home_owner_dashboard_providers.dart'
     show
-        homeInventorySummaryProvider,
         homeRecentActivityFeedProvider,
-        homeStockAttentionCountProvider,
         stockAlertCountsProvider,
         stockAuditPeriodProvider,
         stockLowTopHomeProvider,
@@ -41,12 +39,6 @@ import '../../../core/providers/notification_center_provider.dart'
     show notificationCenterCoordinatorProvider;
 import '../../../core/providers/server_notifications_provider.dart'
     show appNotificationsListProvider;
-import '../../../core/providers/stock_providers.dart'
-    show
-        lowStockByCategoryProvider,
-        stockStatusCountsProvider;
-import '../../../core/providers/warehouse_alerts_provider.dart'
-    show warehouseAlertsProvider;
 import '../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../purchase/presentation/widgets/purchase_saved_sheet.dart';
@@ -113,11 +105,7 @@ class _HomePageState extends ConsumerState<HomePage>
   }
 
   void _invalidateAlertProviders() {
-    ref.invalidate(warehouseAlertsProvider);
-    ref.invalidate(stockStatusCountsProvider);
-    ref.invalidate(lowStockByCategoryProvider);
-    ref.invalidate(deliveryPipelineProvider);
-    ref.invalidate(homeStockAttentionCountProvider);
+    ref.invalidate(homeDashboardDataProvider);
     ref.invalidate(appNotificationsListProvider);
     ref.invalidate(notificationCenterCoordinatorProvider);
   }
@@ -150,10 +138,8 @@ class _HomePageState extends ConsumerState<HomePage>
       bustHomeDashboardVolatileCaches();
     }
     ref.invalidate(homeDashboardDataProvider);
-    ref.invalidate(homeInventorySummaryProvider);
     ref.invalidate(homeRecentActivityFeedProvider);
     ref.invalidate(stockLowTopHomeProvider);
-    ref.invalidate(lowStockByCategoryProvider);
     ref.invalidate(stockVariancesTodayProvider);
     ref.invalidate(stockAuditPeriodProvider);
     _invalidateAlertProviders();
@@ -355,7 +341,6 @@ class _HomePageState extends ConsumerState<HomePage>
             !providerSkipApi(ref)) {
           // Always refresh lightweight home surfaces (fixes empty activity after Stock tab).
           ref.invalidate(homeRecentActivityFeedProvider);
-          ref.invalidate(homeInventorySummaryProvider);
           if (shouldRefreshOnShellTabReturn(_homeLastRefreshedAt)) {
             _scheduleRefresh();
           }
@@ -481,7 +466,8 @@ class _HomePageState extends ConsumerState<HomePage>
       body: ColoredBox(
         color: HexaColors.brandBackground,
         child: SafeArea(
-          child: RefreshIndicator(
+          child: HexaWebPageFrame(
+            child: RefreshIndicator(
             onRefresh: _refresh,
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(
@@ -560,6 +546,7 @@ class _HomePageState extends ConsumerState<HomePage>
                 ),
               ),
             ],
+            ),
           ),
         ),
       ),
@@ -604,13 +591,10 @@ class _HomePageState extends ConsumerState<HomePage>
 
   void _invalidateOwnerCachesFromContainer(ProviderContainer c) {
     bustHomeDashboardVolatileCaches();
-    c.invalidate(homeInventorySummaryProvider);
-    c.invalidate(stockStatusCountsProvider);
     c.invalidate(stockLowTopHomeProvider);
     c.invalidate(stockAuditPeriodProvider);
     c.invalidate(stockVariancesTodayProvider);
     c.invalidate(homeRecentActivityFeedProvider);
     c.invalidate(homeDashboardDataProvider);
-    c.invalidate(warehouseAlertsProvider);
   }
 }

@@ -23,6 +23,7 @@ Read and follow (in order when trade-offs arise):
 - **Single living board:** `TASKS.md` (sprint bugs, backlog, blockers, deploy checklist)
 - Harisree docs: `docs/harisree/` (`MASTER_REFERENCE.md`, `FEATURES_DEEP_PLAN.md`, `README.md`)
 - Do **not** add new root `*_AUDIT.md`, `PROGRESS_LOG.md`, `PROJECT_STATUS.md`, etc. (gitignored)
+- Debug write-ups: `docs/debug/`, plans: `docs/plans/`, test sign-off: `docs/TEST_RESULTS.md`
 
 ## Non‑negotiables
 

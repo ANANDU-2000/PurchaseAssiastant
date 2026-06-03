@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/auth/dashboard_role.dart';
 import '../../../../core/auth/session_notifier.dart';
 import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/providers/home_dashboard_provider.dart';
 import '../../../../core/providers/notifications_provider.dart';
 import '../../../../core/theme/hexa_colors.dart';
 
@@ -22,7 +23,11 @@ class HomeCompactHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider);
-    final bellCount = ref.watch(notificationsUnreadCountProvider);
+    final bundledUnread =
+        ref.watch(homeDashboardDataProvider).snapshot.data.operational?.notificationsUnread;
+    final bellCount = bundledUnread != null && bundledUnread > 0
+        ? bundledUnread
+        : ref.watch(notificationsUnreadCountProvider);
     final title = _shortWarehouseName(
       session?.primaryBusiness.effectiveDisplayTitle ?? 'Warehouse',
     );

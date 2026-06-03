@@ -11,8 +11,7 @@ import '../models/trade_purchase_models.dart';
 import 'page_transitions.dart';
 import '../widgets/hexa_page_error_boundary.dart';
 import '../../features/shell/shell_branch_provider.dart';
-import '../../features/analytics/presentation/full_reports_page.dart';
-import '../../features/reports/reports_bi_tab.dart';
+import '../../features/reports/shell/reports_shell_page.dart';
 import '../../features/catalog/presentation/item_analytics_redirect_page.dart';
 import '../../features/reports/drill/reports_item_report_page.dart';
 import '../../features/reports/drill/reports_purchase_report_page.dart';
@@ -54,7 +53,7 @@ import '../../features/purchase/presentation/purchase_detail_page.dart';
 import '../../features/purchase/presentation/purchase_home_page.dart';
 import '../../features/purchase/presentation/purchase_entry_wizard_v2.dart';
 import '../../features/purchase/presentation/purchase_scan_draft_wizard_page.dart';
-import '../../features/purchase/presentation/scan_purchase_page.dart';
+import '../../features/purchase/presentation/scan_purchase_v2_page.dart';
 import '../../features/reports/presentation/sales_comparison_page.dart';
 import '../../features/reports/presentation/reports_category_drill_page.dart';
 import '../../features/reports/presentation/reports_subcategory_drill_page.dart';
@@ -111,6 +110,8 @@ bool _isOwnerShellTab(String loc) {
 /// Staff may only open operational routes (shell + stock/barcode/catalog helpers).
 bool _isStaffAllowedRoute(String loc) {
   if (loc.startsWith('/staff')) return true;
+  if (loc == '/purchase/new' || loc.startsWith('/purchase/edit/')) return true;
+  if (loc == '/reports' || loc.startsWith('/reports/')) return true;
   if (loc == '/settings' || loc.startsWith('/settings/')) return true;
   if (loc == '/notifications') return true;
   if (loc.startsWith('/barcode/')) return true;
@@ -126,7 +127,6 @@ bool _isStaffAllowedRoute(String loc) {
     return true;
   }
   if (loc.startsWith('/operations/')) return true;
-  if (loc == '/stock/opening-setup') return true;
   if (loc.startsWith('/stock/intelligence/') ||
       loc.startsWith('/stock/') && loc.endsWith('/history')) {
     return true;
@@ -136,11 +136,15 @@ bool _isStaffAllowedRoute(String loc) {
 }
 
 String _staffRedirectForBlockedRoute(String loc) {
-  if (loc.startsWith('/purchase')) return '/staff/deliveries';
+  if (loc.startsWith('/purchase') &&
+      loc != '/purchase/new' &&
+      !loc.startsWith('/purchase/edit/')) {
+    return '/staff/deliveries';
+  }
   if (loc.startsWith('/stock')) return '/staff/stock';
   if (loc.startsWith('/search')) return '/staff/search';
   if (loc.startsWith('/home')) return '/staff/home';
-  if (loc.startsWith('/reports') || loc.startsWith('/analytics')) {
+  if (loc.startsWith('/analytics')) {
     return '/staff/home';
   }
   if (loc.startsWith('/settings') ||
@@ -220,6 +224,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (loc.startsWith('/settings/users') &&
           !sessionCanManageUsers(session)) {
         return '/settings';
+      }
+      if (sessionIsStaff(session) && loc == '/stock/opening-setup') {
+        return '/staff/stock';
       }
       if (sessionIsStaff(session)) {
         if (_isStaffAllowedRoute(loc)) return null;
@@ -894,7 +901,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'purchase_scan',
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
-          child: const ScanPurchasePage(),
+          child: const ScanPurchaseV2Page(),
         ),
       ),
       GoRoute(

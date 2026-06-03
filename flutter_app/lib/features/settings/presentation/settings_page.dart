@@ -16,6 +16,8 @@ import '../../../core/router/post_auth_route.dart'
     show sessionCanAdminUsers, sessionIsStaff;
 import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/theme/theme_context_ext.dart';
+import '../widgets/accounts_whatsapp_settings_card.dart';
+import '../widgets/backup_monthly_banner.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -82,6 +84,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
           shrinkWrap: true,
           children: [
+          if (isOwner) const BackupMonthlyBanner(),
           _SectionTitle('Account'),
           _SettingsCard(
             children: [
@@ -177,6 +180,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ],
           ),
           _SectionTitle('Business'),
+          if (isOwner) const AccountsWhatsappSettingsCard(),
+          if (isOwner) const SizedBox(height: 12),
           _BusinessCard(
             session: session,
             canManageUsers: canManageUsers,
@@ -217,6 +222,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ),
             ],
           ),
+          if (!isStaff) ...[
+            _SectionTitle('Export & Backup'),
+            _SettingsCard(
+              children: [
+                _NavTile(
+                  icon: Icons.cloud_download_outlined,
+                  title: 'Export & Backup',
+                  subtitle:
+                      'Stock Excel, purchases PDF (this month), ZIP trade data',
+                  onTap: () => context.push('/settings/backup'),
+                ),
+              ],
+            ),
+          ],
           _SectionTitle('Data'),
           _SettingsCard(
             children: [
@@ -257,12 +276,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 subtitle: 'Assign codes and print barcodes',
                 onTap: () => context.push('/catalog/missing-codes'),
               ),
-              _NavTile(
-                icon: Icons.folder_zip_outlined,
-                title: 'Backup',
-                subtitle: 'Download purchase records for your files',
-                onTap: () => context.push('/settings/backup'),
-              ),
+              if (!isOwner)
+                _NavTile(
+                  icon: Icons.folder_zip_outlined,
+                  title: 'Backup',
+                  subtitle: 'Download purchase records for your files',
+                  onTap: () => context.push('/settings/backup'),
+                ),
               if (isOwner)
                 _NavTile(
                   icon: Icons.checklist_rtl_outlined,

@@ -166,13 +166,85 @@ def test_physical_update_rejects_stale_stock_version():
         headers=h,
         json={
             "counted_qty": 9,
-            "adjustment_type": "verification",
-            "reason": "Physical Count",
+            "adjustment_type": "correction",
+            "reason": "Correction",
             "last_seen_stock_version": 0,
         },
     )
     assert stale.status_code == 409, stale.text
     assert stale.json()["detail"]["code"] == "STALE_STOCK_VERSION"
+
+
+def test_patch_stock_allows_verification_tolerance_within_two_versions():
+    h, bid = _owner_headers()
+    iid = _catalog_item_id(h, bid, current_stock=10)
+    client.patch(
+        f"/v1/businesses/{bid}/stock/{iid}",
+        headers=h,
+        json={"new_qty": 11, "adjustment_type": "correction", "reason": "prep"},
+    )
+
+    ok = client.patch(
+        f"/v1/businesses/{bid}/stock/{iid}",
+        headers=h,
+        json={
+            "new_qty": 12,
+            "adjustment_type": "verification",
+            "reason": "floor count",
+            "last_seen_stock_version": 0,
+        },
+    )
+    assert ok.status_code == 200, ok.text
+
+
+def test_patch_stock_force_skips_stale_version():
+    h, bid = _owner_headers()
+    iid = _catalog_item_id(h, bid, current_stock=10)
+    for qty in (11, 12, 13):
+        client.patch(
+            f"/v1/businesses/{bid}/stock/{iid}",
+            headers=h,
+            json={
+                "new_qty": qty,
+                "adjustment_type": "correction",
+                "reason": "bump",
+            },
+        )
+
+    forced = client.patch(
+        f"/v1/businesses/{bid}/stock/{iid}",
+        headers=h,
+        params={"force": "true"},
+        json={
+            "new_qty": 20,
+            "adjustment_type": "correction",
+            "reason": "forced",
+            "last_seen_stock_version": 0,
+        },
+    )
+    assert forced.status_code == 200, forced.text
+
+
+def test_physical_update_verification_tolerance_within_two_versions():
+    h, bid = _owner_headers()
+    iid = _catalog_item_id(h, bid, current_stock=10)
+    client.patch(
+        f"/v1/businesses/{bid}/stock/{iid}",
+        headers=h,
+        json={"new_qty": 11, "adjustment_type": "correction", "reason": "prep"},
+    )
+
+    ok = client.post(
+        f"/v1/businesses/{bid}/stock/{iid}/physical-update",
+        headers=h,
+        json={
+            "counted_qty": 9,
+            "adjustment_type": "verification",
+            "reason": "Physical Count",
+            "last_seen_stock_version": 0,
+        },
+    )
+    assert ok.status_code == 200, ok.text
 
 
 def test_quick_purchase_requires_supplier_and_writes_activity():

@@ -1,3 +1,6 @@
+// DEPRECATED: No references; use PurchaseItemEntrySheet directly.
+// See docs/cleanup/DEPRECATED_FILES.md.
+
 import 'purchase_item_entry_sheet.dart';
 
 /// Full-screen add/edit purchase line.

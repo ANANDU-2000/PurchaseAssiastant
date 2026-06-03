@@ -146,10 +146,14 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
 
   static const int _kMaxLabelsPerPdf = 100;
 
-  List<List<String>> _chunkItemIds(List<String> ids) {
+  List<List<String>> _chunkItemIds(
+    List<String> ids, {
+    int chunkSize = _kMaxLabelsPerPdf,
+  }) {
     final out = <List<String>>[];
-    for (var i = 0; i < ids.length; i += _kMaxLabelsPerPdf) {
-      out.add(ids.sublist(i, min(i + _kMaxLabelsPerPdf, ids.length)));
+    final size = chunkSize.clamp(1, _kMaxLabelsPerPdf);
+    for (var i = 0; i < ids.length; i += size) {
+      out.add(ids.sublist(i, min(i + size, ids.length)));
     }
     return out;
   }
@@ -174,9 +178,20 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
     bool previewMode = false,
   }) async {
     if (_selected.isEmpty || _busy) return;
+    final selectedCount = ref.read(bulkBarcodeSelectionProvider).length;
+    if (!mounted) return;
+    final largeChoice = await confirmLargeBulkPrint(context, selectedCount);
+    if (largeChoice == LargeBulkPrintChoice.cancelled) return;
+
     _lastPdfRetry = retry;
     _pdfCancelled = false;
     setState(() => _busy = true);
+    var effectiveMultiBatch = multiBatch;
+    var pdfChunkSize = _kMaxLabelsPerPdf;
+    if (largeChoice == LargeBulkPrintChoice.batchesOf20) {
+      effectiveMultiBatch = true;
+      pdfChunkSize = kLargeBulkPrintBatchSize;
+    }
     try {
       var allIds = ref.read(bulkBarcodeSelectionProvider).toList();
       final rowsById = _stockRowsById();
@@ -203,7 +218,7 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
         return;
       }
       allIds = printableIds;
-      if (!multiBatch && allIds.length > _kMaxLabelsPerPdf) {
+      if (!effectiveMultiBatch && allIds.length > _kMaxLabelsPerPdf) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -217,7 +232,9 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
         allIds = allIds.sublist(0, _kMaxLabelsPerPdf);
       }
 
-      final idBatches = multiBatch ? _chunkItemIds(allIds) : [allIds];
+      final idBatches = effectiveMultiBatch
+          ? _chunkItemIds(allIds, chunkSize: pdfChunkSize)
+          : [allIds];
       var batchesDone = 0;
       final accumulatedPdfs = <Uint8List>[];
       final accumulatedIds = <String>[];
@@ -248,7 +265,7 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
           _markIdsDownloaded(targetIds);
         }
         batchesDone++;
-        if (multiBatch &&
+        if (effectiveMultiBatch &&
             !deliverOnceAtEnd &&
             bi < idBatches.length - 1 &&
             mounted &&
@@ -263,7 +280,7 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
         await action(accumulatedPdfs, accumulatedIds);
       }
 
-      if (multiBatch && idBatches.length > 1 && !deliverOnceAtEnd) {
+      if (effectiveMultiBatch && idBatches.length > 1 && !deliverOnceAtEnd) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(

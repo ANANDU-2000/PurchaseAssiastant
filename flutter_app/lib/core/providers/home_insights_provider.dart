@@ -1,3 +1,6 @@
+// DEPRECATED: No references as of 2026-06-03. Scheduled for removal after verification.
+// See docs/cleanup/DEPRECATED_FILES.md.
+
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';

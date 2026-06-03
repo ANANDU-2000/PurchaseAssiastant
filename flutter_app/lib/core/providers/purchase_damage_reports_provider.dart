@@ -11,3 +11,16 @@ final purchaseDamageReportsProvider = FutureProvider.autoDispose
         purchaseId: purchaseId,
       );
 });
+
+/// Owner home: pending damage reports awaiting approval.
+final pendingDamageReportsCountProvider = FutureProvider<int>((ref) async {
+  final session = ref.watch(activeSessionProvider);
+  if (session == null) return 0;
+  final role = session.primaryBusiness.role.toLowerCase();
+  if (role != 'owner' && role != 'manager' && !session.isSuperAdmin) {
+    return 0;
+  }
+  return ref.read(hexaApiProvider).getPendingDamageReportsCount(
+        businessId: session.primaryBusiness.id,
+      );
+});

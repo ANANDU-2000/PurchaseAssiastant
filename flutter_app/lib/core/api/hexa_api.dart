@@ -12,7 +12,9 @@ import 'dio_auto_retry_interceptor.dart';
 import 'hexa_connection_timeout_retry_interceptor.dart';
 import '../auth/auth_error_messages.dart' show dioIsAutoRetryableTransport;
 import '../config/app_config.dart';
+import '../json_coerce.dart';
 import '../models/session.dart';
+import '../stock/stock_version_retry.dart';
 import '../strict_decimal.dart';
 
 bool _reports404HintLogged = false;
@@ -1618,21 +1620,63 @@ class HexaApi {
   Future<Map<String, dynamic>> createPurchaseDamageReport({
     required String businessId,
     required String purchaseId,
-    required String itemName,
     required double qtyDamaged,
-    required String damageType,
+    String? itemName,
+    String? damageType,
+    String? catalogItemId,
+    String? unit,
+    String? reason,
+    String? photoUrl,
     String? notes,
+    bool emitNotification = true,
+    int? damagedItemsInBatch,
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/trade-purchases/$purchaseId/damage-reports',
       data: {
-        'item_name': itemName,
+        if (itemName != null && itemName.trim().isNotEmpty)
+          'item_name': itemName.trim(),
         'qty_damaged': qtyDamaged,
-        'damage_type': damageType,
+        if (damageType != null && damageType.isNotEmpty)
+          'damage_type': damageType,
+        if (catalogItemId != null && catalogItemId.isNotEmpty)
+          'catalog_item_id': catalogItemId,
+        if (unit != null && unit.trim().isNotEmpty) 'unit': unit.trim(),
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+        if (photoUrl != null && photoUrl.trim().isNotEmpty)
+          'photo_url': photoUrl.trim(),
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+        'emit_notification': emitNotification,
+        if (damagedItemsInBatch != null && damagedItemsInBatch > 0)
+          'damaged_items_in_batch': damagedItemsInBatch,
+      },
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> patchPurchaseDamageReportStatus({
+    required String businessId,
+    required String reportId,
+    required String status,
+    String? notes,
+  }) async {
+    final res = await _dio.patch<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/damage-reports/$reportId',
+      data: {
+        'status': status,
         if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
       },
     );
     return res.data ?? {};
+  }
+
+  Future<int> getPendingDamageReportsCount({
+    required String businessId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/damage-reports/pending-count',
+    );
+    return coerceToInt(res.data?['count']);
   }
 
   Future<List<Map<String, dynamic>>> listPurchaseDamageReports({
@@ -2420,6 +2464,38 @@ class HexaApi {
     return Uint8List.fromList(raw);
   }
 
+  /// Server-built stock inventory Excel (all catalog items).
+  Future<Uint8List> downloadStockInventoryXlsx({
+    required String businessId,
+  }) async {
+    final res = await _dio.get<List<int>>(
+      '/v1/businesses/$businessId/exports/stock-inventory.xlsx',
+      options: Options(
+        responseType: ResponseType.bytes,
+        receiveTimeout: const Duration(seconds: 120),
+      ),
+    );
+    final raw = res.data;
+    if (raw == null) return Uint8List(0);
+    return Uint8List.fromList(raw);
+  }
+
+  /// Server-built PDF of trade purchases for the current calendar month.
+  Future<Uint8List> downloadPurchasesMonthPdf({
+    required String businessId,
+  }) async {
+    final res = await _dio.get<List<int>>(
+      '/v1/businesses/$businessId/exports/purchases-month.pdf',
+      options: Options(
+        responseType: ResponseType.bytes,
+        receiveTimeout: const Duration(seconds: 120),
+      ),
+    );
+    final raw = res.data;
+    if (raw == null) return Uint8List(0);
+    return Uint8List.fromList(raw);
+  }
+
   Future<Map<String, dynamic>> supplierPurchaseDefaults({
     required String businessId,
     required String supplierId,
@@ -2518,9 +2594,14 @@ class HexaApi {
         if (missingItemCode) 'missing_item_code': true,
         if (reorderOnly) 'reorder_only': true,
         if (unit.trim().isNotEmpty) 'unit': unit.trim(),
-        if (periodStart != null && periodStart.isNotEmpty)
+        if (periodStart != null && periodStart.isNotEmpty) ...{
           'period_start': periodStart,
-        if (periodEnd != null && periodEnd.isNotEmpty) 'period_end': periodEnd,
+          'date_from': periodStart,
+        },
+        if (periodEnd != null && periodEnd.isNotEmpty) ...{
+          'period_end': periodEnd,
+          'date_to': periodEnd,
+        },
       },
     );
     return res.data ??
@@ -2530,6 +2611,48 @@ class HexaApi {
           'page': page,
           'per_page': perPage,
         };
+  }
+
+  /// Pending/delivered truck counts for stock list filters (full catalog slice).
+  Future<Map<String, dynamic>> stockDeliveryIndicatorCounts({
+    required String businessId,
+    String q = '',
+    String category = '',
+    String subcategory = '',
+    String status = 'all',
+    String sort = 'name',
+    bool includePeriod = false,
+    String? periodStart,
+    String? periodEnd,
+    bool missingBarcode = false,
+    bool missingItemCode = false,
+    bool reorderOnly = false,
+    String unit = '',
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/stock/delivery-indicator-counts',
+      queryParameters: {
+        'q': q,
+        'category': category,
+        'subcategory': subcategory,
+        'status': status,
+        'sort': sort,
+        if (includePeriod) 'include_period': true,
+        if (missingBarcode) 'missing_barcode': true,
+        if (missingItemCode) 'missing_item_code': true,
+        if (reorderOnly) 'reorder_only': true,
+        if (unit.trim().isNotEmpty) 'unit': unit.trim(),
+        if (periodStart != null && periodStart.isNotEmpty) ...{
+          'period_start': periodStart,
+          'date_from': periodStart,
+        },
+        if (periodEnd != null && periodEnd.isNotEmpty) ...{
+          'period_end': periodEnd,
+          'date_to': periodEnd,
+        },
+      },
+    );
+    return res.data ?? <String, dynamic>{'pending': 0, 'delivered': 0};
   }
 
   /// On-hand warehouse valuation (landing cost × qty) and unit buckets.
@@ -2808,6 +2931,30 @@ class HexaApi {
     return res.data ?? {};
   }
 
+  /// PATCH stock with one silent retry on `STALE_STOCK_VERSION` (409).
+  Future<Map<String, dynamic>> patchStockItemWithRetry({
+    required String businessId,
+    required String itemId,
+    required num newQty,
+    String adjustmentType = 'verification',
+    String? reason,
+    int? initialStockVersion,
+    String? idempotencyKey,
+  }) {
+    return runWithStockVersionRetry(
+      initialVersion: initialStockVersion,
+      operation: (version) => patchStockItem(
+        businessId: businessId,
+        itemId: itemId,
+        newQty: newQty,
+        adjustmentType: adjustmentType,
+        reason: reason,
+        lastSeenStockVersion: version,
+        idempotencyKey: idempotencyKey,
+      ),
+    );
+  }
+
   Future<Map<String, dynamic>> updatePhysicalStock({
     required String businessId,
     required String itemId,
@@ -2839,6 +2986,36 @@ class HexaApi {
     return res.data ?? {};
   }
 
+  /// POST physical-update with one silent retry on `STALE_STOCK_VERSION` (409).
+  Future<Map<String, dynamic>> updatePhysicalStockWithRetry({
+    required String businessId,
+    required String itemId,
+    required num countedQty,
+    required String adjustmentType,
+    required String reason,
+    String? notes,
+    int? initialStockVersion,
+    String? idempotencyKey,
+    String? periodStart,
+    String? periodEnd,
+  }) {
+    return runWithStockVersionRetry(
+      initialVersion: initialStockVersion,
+      operation: (version) => updatePhysicalStock(
+        businessId: businessId,
+        itemId: itemId,
+        countedQty: countedQty,
+        adjustmentType: adjustmentType,
+        reason: reason,
+        notes: notes,
+        lastSeenStockVersion: version,
+        idempotencyKey: idempotencyKey,
+        periodStart: periodStart,
+        periodEnd: periodEnd,
+      ),
+    );
+  }
+
   /// Physical count from barcode scan (mandatory reason when variance).
   Future<Map<String, dynamic>> verifyStockCount({
     required String businessId,
@@ -2858,6 +3035,29 @@ class HexaApi {
       },
     );
     return res.data ?? {};
+  }
+
+  /// verify-count with retry when server returns stale version (rare concurrent edit).
+  Future<Map<String, dynamic>> verifyStockCountWithRetry({
+    required String businessId,
+    required String itemId,
+    required num countedQty,
+    required String reason,
+    String adjustmentType = 'verification',
+    String? notes,
+    int? initialStockVersion,
+  }) {
+    return runWithStockVersionRetry(
+      initialVersion: initialStockVersion,
+      operation: (_) => verifyStockCount(
+        businessId: businessId,
+        itemId: itemId,
+        countedQty: countedQty,
+        reason: reason,
+        adjustmentType: adjustmentType,
+        notes: notes,
+      ),
+    );
   }
 
   Future<Map<String, dynamic>> recordPhysicalStockCount({

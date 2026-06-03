@@ -13,6 +13,7 @@
 
 ## Alembic (production-oriented)
 
+- **Full index:** [sql/MIGRATION_INDEX.md](../sql/MIGRATION_INDEX.md) — Alembic chain 001–057, SQL file pairing, supplemental scripts.
 - Config: [alembic.ini](../alembic.ini), env: [alembic/env.py](../alembic/env.py).
 - Initial revision: [alembic/versions/001_trade_purchase_core.py](../alembic/versions/001_trade_purchase_core.py) — creates `trade_purchases`, `trade_purchase_lines`, `trade_purchase_drafts`, `broker_supplier_links` if missing.
 

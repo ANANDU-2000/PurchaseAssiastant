@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/provider_api_guard.dart';
 import '../auth/session_notifier.dart' show activeSessionProvider, hexaApiProvider;
 import '../json_coerce.dart';
+import 'home_dashboard_provider.dart' show homeDashboardDataProvider, homeTabHasOperationalBundle;
 import 'stock_providers.dart' show providerKeepAlive;
 
 /// Consolidated warehouse alert counts for home / stock LIVE chips.
@@ -51,6 +52,14 @@ class WarehouseAlerts {
 
 final warehouseAlertsProvider =
     FutureProvider.autoDispose<WarehouseAlerts>((ref) async {
+  if (homeTabHasOperationalBundle(ref)) {
+    return ref
+        .watch(homeDashboardDataProvider)
+        .snapshot
+        .data
+        .operational!
+        .warehouseAlerts;
+  }
   providerKeepAlive(ref, const Duration(seconds: 60));
   if (providerSkipApi(ref)) return const WarehouseAlerts();
   final session = ref.watch(activeSessionProvider);

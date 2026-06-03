@@ -1,28 +1,50 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../calc_engine.dart';
+import '../catalog/item_trade_history.dart' show tradeLineToCalc;
 import '../models/business_profile.dart';
 import '../models/trade_purchase_models.dart';
 import '../providers/business_profile_provider.dart';
 import '../router/navigation_ext.dart';
+import '../units/dynamic_unit_label_engine.dart' as unit_lbl;
+import '../utils/trade_purchase_rate_display.dart';
 import 'pdf_actions.dart';
+import 'purchase_accounts_share_stub.dart'
+    if (dart.library.html) 'purchase_accounts_share_web.dart' as web_share;
 import 'purchase_pdf.dart';
+import 'whatsapp_phone_normalize.dart';
 
-/// India mobile: 10 digits; strips +91 when 12 digits present.
-String? normalizeIndiaMobile10(String? raw) {
-  if (raw == null) return null;
-  final t = raw.trim();
-  if (t.isEmpty) return null;
-  var digits = t.replaceAll(RegExp(r'\D'), '');
-  if (digits.startsWith('91') && digits.length == 12) {
-    digits = digits.substring(2);
-  }
-  if (digits.length != 10) return null;
-  return digits;
+export 'whatsapp_phone_normalize.dart'
+    show normalizeAccountsWhatsappPhone, normalizeGulfMobile, normalizeIndiaMobile10;
+
+const int _kMaxSummaryLines = 40;
+
+final NumberFormat _inr = NumberFormat.currency(
+  locale: 'en_IN',
+  symbol: '₹',
+  decimalDigits: 0,
+);
+
+String _formatQtyUnit(TradePurchaseLine l) {
+  final u = l.unit.trim();
+  if (u.isEmpty) return '${l.qty}';
+  return '${l.qty} $u';
 }
+
+String _formatLineRate(TradePurchaseLine l) {
+  final rate = tradePurchaseLineDisplayPurchaseRate(l);
+  final suffix = unit_lbl.purchaseRateSuffix(l);
+  return '${_inr.format(rate)}/$suffix';
+}
+
+double _lineTotalAmount(TradePurchaseLine l) =>
+    l.lineTotal ?? lineMoney(tradeLineToCalc(l));
 
 String buildAccountsWhatsAppSummary(TradePurchase p, BusinessProfile biz) {
   final title = biz.displayTitle.trim().isNotEmpty
@@ -32,26 +54,46 @@ String buildAccountsWhatsAppSummary(TradePurchase p, BusinessProfile biz) {
       ? p.supplierName!.trim()
       : '—';
   final dateStr = DateFormat('dd/MM/yyyy').format(p.purchaseDate);
-  final total = NumberFormat.currency(
-    locale: 'en_IN',
-    symbol: '₹',
-    decimalDigits: 0,
-  ).format(p.totalAmount);
   final ref = p.humanId.trim().isNotEmpty ? p.humanId.trim() : p.id;
-  final lineCount = p.lines.length;
+  final total = _inr.format(p.totalAmount);
 
-  return 'New Purchase Order — $title\n'
-      'Supplier: $supplier\n'
-      'Date: $dateStr\n'
-      'Items: $lineCount items\n'
-      'Total: $total\n'
-      'Ref: $ref';
+  final buf = StringBuffer()
+    ..writeln(title)
+    ..writeln('Purchase date: $dateStr')
+    ..writeln('Supplier: $supplier')
+    ..writeln('Ref: $ref')
+    ..writeln()
+    ..writeln('Items:');
+
+  final lines = p.lines;
+  final show = lines.length > _kMaxSummaryLines ? _kMaxSummaryLines : lines.length;
+  for (var i = 0; i < show; i++) {
+    final l = lines[i];
+    final lineTotal = _inr.format(_lineTotalAmount(l));
+    buf.writeln(
+      '${i + 1}) ${l.itemName.trim()} | ${_formatQtyUnit(l)} @ ${_formatLineRate(l)} = $lineTotal',
+    );
+  }
+  if (lines.length > _kMaxSummaryLines) {
+    buf.writeln('…and ${lines.length - _kMaxSummaryLines} more items');
+  }
+
+  buf
+    ..writeln()
+    ..writeln('Grand total: $total');
+
+  return buf.toString().trim();
 }
 
-Uri whatsappUriForAccounts(String phone10, String message) {
+Uri whatsappUriForPhone(String waMeDigits, String message) {
   return Uri.parse(
-    'https://wa.me/91$phone10?text=${Uri.encodeComponent(message)}',
+    'https://wa.me/$waMeDigits?text=${Uri.encodeComponent(message)}',
   );
+}
+
+@Deprecated('Use whatsappUriForPhone with waMeDigits from normalizeAccountsWhatsappPhone')
+Uri whatsappUriForAccounts(String phone10, String message) {
+  return whatsappUriForPhone('91$phone10', message);
 }
 
 /// Generic WhatsApp summary (no fixed recipient).
@@ -76,17 +118,17 @@ Future<bool> ensureAccountsWhatsappConfigured(
   BuildContext context,
   WidgetRef ref,
 ) async {
-  final phone =
-      normalizeIndiaMobile10(ref.read(invoiceBusinessProfileProvider).accountsWhatsappNumber);
-  if (phone != null) return true;
+  final stored =
+      ref.read(invoiceBusinessProfileProvider).accountsWhatsappNumber;
+  if (normalizedFromStoredAccountsWhatsapp(stored) != null) return true;
   if (!context.mounted) return false;
 
   final go = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('Accounts WhatsApp not set'),
+      title: const Text('Accounts staff WhatsApp not set'),
       content: const Text(
-        'Set accounts staff WhatsApp number in Settings first. Go to Settings?',
+        'Go to Settings → Business Profile to add the accounts staff WhatsApp number before sharing.',
       ),
       actions: [
         TextButton(
@@ -101,38 +143,83 @@ Future<bool> ensureAccountsWhatsappConfigured(
     ),
   );
   if (go == true && context.mounted) {
-    await context.push('/settings/business');
+    await context.push('/settings');
   }
   if (!context.mounted) return false;
   final after =
-      normalizeIndiaMobile10(ref.read(invoiceBusinessProfileProvider).accountsWhatsappNumber);
-  return after != null;
+      ref.read(invoiceBusinessProfileProvider).accountsWhatsappNumber;
+  return normalizedFromStoredAccountsWhatsapp(after) != null;
 }
 
-/// Shares purchase PDF via OS sheet, then opens WhatsApp to accounts staff with summary.
-/// WhatsApp deep links cannot attach PDF bytes; user attaches PDF from the share sheet if needed.
+/// Saves flow: PDF bytes → Web Share (PWA) → native share with file → wa.me text.
 Future<PdfActionResult> sharePurchaseToAccountsStaff(
   TradePurchase p,
   BusinessProfile biz,
 ) async {
-  final phone10 = normalizeIndiaMobile10(biz.accountsWhatsappNumber);
-  if (phone10 == null) {
+  final phone = normalizedFromStoredAccountsWhatsapp(biz.accountsWhatsappNumber) ??
+      normalizeAccountsWhatsappPhone(biz.accountsWhatsappNumber);
+  if (phone == null) {
     return const PdfActionResult(
       ok: false,
       message: 'Accounts WhatsApp number is not configured.',
     );
   }
 
-  final pdfResult = await sharePurchasePdf(p, biz);
-  if (!pdfResult.ok) {
-    return pdfResult;
-  }
+  try {
+    final bytes = await buildPurchasePdfBytes(p, biz);
+    final filename = buildPurchaseSharePdfFileName(p);
+    final message = buildAccountsWhatsAppSummary(p, biz);
+    final subject = '${p.supplierName ?? 'Purchase'} - ${p.humanId}';
 
-  final message = buildAccountsWhatsAppSummary(p, biz);
-  final waUri = whatsappUriForAccounts(phone10, message);
-  if (await canLaunchUrl(waUri)) {
-    await launchUrl(waUri, mode: LaunchMode.externalApplication);
-  }
+    if (kIsWeb) {
+      final shared = await web_share.tryWebSharePurchasePdf(
+        bytes: bytes,
+        filename: filename,
+        text: message,
+        title: subject,
+      );
+      if (shared) {
+        return const PdfActionResult(
+          ok: true,
+          message: 'Shared purchase PDF to accounts',
+        );
+      }
+    }
 
-  return pdfResult;
+    try {
+      await Share.shareXFiles(
+        [
+          XFile.fromData(
+            bytes,
+            mimeType: 'application/pdf',
+            name: filename,
+          ),
+        ],
+        text: message,
+        subject: subject,
+      );
+    } catch (e, st) {
+      logPdfFailure('purchase_accounts_share', 'shareXFiles', e, st);
+      return const PdfActionResult(
+        ok: false,
+        message: 'Could not share PDF. Try again.',
+      );
+    }
+
+    final waUri = whatsappUriForPhone(phone.waMeDigits, message);
+    if (await canLaunchUrl(waUri)) {
+      await launchUrl(waUri, mode: LaunchMode.externalApplication);
+    }
+
+    return const PdfActionResult(
+      ok: true,
+      message: 'PDF shared — WhatsApp opened with summary',
+    );
+  } catch (e, st) {
+    logPdfFailure('purchase_accounts_share', 'share', e, st);
+    return const PdfActionResult(
+      ok: false,
+      message: 'Could not export PDF. Check connection and retry.',
+    );
+  }
 }
