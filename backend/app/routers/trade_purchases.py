@@ -55,6 +55,18 @@ from app.schemas.purchase_damage import PurchaseDamageReportIn, PurchaseDamageRe
 router = APIRouter(prefix="/v1/businesses/{business_id}/trade-purchases", tags=["trade-purchases"])
 _log = logging.getLogger(__name__)
 
+
+def _stock_version_conflict_http(e: StaleStockVersionError) -> HTTPException:
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        detail={
+            "code": "STOCK_VERSION_CONFLICT",
+            "message": f"Stock conflict on {e.item_name}. Please retry.",
+            "item_name": e.item_name,
+            "current_version": e.current_version,
+        },
+    )
+
 _ALLOWED_TRADE_LIST_STATUSES = frozenset({
     "draft",
     "due_soon",
@@ -487,10 +499,7 @@ async def commit_trade_purchase_delivery(
             db, business_id, purchase_id, user
         )
     except StaleStockVersionError as e:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail=f"Stock conflict on {e.item_name}. Please retry.",
-        ) from e
+        raise _stock_version_conflict_http(e) from e
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     if not out:
@@ -516,10 +525,7 @@ async def verify_trade_purchase_delivery(
             body,
         )
     except StaleStockVersionError as e:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail=f"Stock conflict on {e.item_name}. Please retry.",
-        ) from e
+        raise _stock_version_conflict_http(e) from e
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     if not out:
@@ -588,6 +594,14 @@ async def update_trade_purchase(
                 "message": e.message,
                 "existing_id": str(e.existing_id),
                 "existing_human_id": e.existing_human_id,
+            },
+        ) from e
+    except tps.TradePurchaseStateConflictError as e:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": e.code,
+                "message": e.message,
             },
         ) from e
     except ValueError as e:

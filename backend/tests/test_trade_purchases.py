@@ -430,10 +430,11 @@ def test_list_purchase_date_range_inclusive_filter():
     d_mid = date(2024, 6, 10)
     d_new = date(2024, 12, 1)
 
-    for pd in (d_old, d_mid, d_new):
+    for i, pd in enumerate((d_old, d_mid, d_new)):
         body = {
             "purchase_date": pd.isoformat(),
             "supplier_id": sid,
+            "force_duplicate": i > 0,
             "lines": [
                 {
                     "catalog_item_id": iid,
@@ -817,13 +818,14 @@ def test_purchase_to_date_filter_is_inclusive_without_next_day_leak():
     h, bid = _register_and_business()
     sid = _supplier_id(h, bid)
     iid = _catalog_item_id(h, bid)
-    for purchase_date in ("2026-05-20", "2026-05-21"):
+    for i, purchase_date in enumerate(("2026-05-20", "2026-05-21")):
         r = client.post(
             f"/v1/businesses/{bid}/trade-purchases",
             headers=h,
             json={
                 "purchase_date": purchase_date,
                 "supplier_id": sid,
+                "force_duplicate": i > 0,
                 "lines": [_line_body(iid)],
             },
         )
@@ -1032,8 +1034,8 @@ def test_stock_period_purchased_counts_only_delivered_purchase_lines():
     assert abs(float(rows[0]["pending_delivery_qty"]) - 10.0) < 0.001
 
 
-def test_edit_committed_purchase_adjusts_system_stock():
-    """Editing a stock-committed PO line qty updates catalog current_stock by the delta."""
+def test_edit_committed_purchase_rejected_with_conflict():
+    """Stock-committed PO edits are blocked; revert delivery before editing."""
     h, bid = _register_and_business()
     sid = _supplier_id(h, bid)
     iid = _catalog_item_id(h, bid)
@@ -1068,11 +1070,56 @@ def test_edit_committed_purchase_adjusts_system_stock():
             "lines": [line],
         },
     )
-    assert upd.status_code == 200, upd.text
-    updates = upd.json().get("stock_updates") or []
-    assert len(updates) >= 1
-    assert any(abs(float(u.get("delta", 0)) + 2.0) < 0.01 for u in updates)
+    assert upd.status_code == 409, upd.text
+    detail = upd.json().get("detail")
+    assert isinstance(detail, dict)
+    assert detail.get("code") == "PURCHASE_ALREADY_COMMITTED"
 
     stock_after = client.get(f"/v1/businesses/{bid}/stock/{iid}", headers=h)
     assert stock_after.status_code == 200, stock_after.text
-    assert abs(float(stock_after.json()["current_stock"]) - 8.0) < 0.001
+    assert abs(float(stock_after.json()["current_stock"]) - 10.0) < 0.001
+
+
+def test_duplicate_catalog_line_rejected_on_create():
+    """Same catalog item + unit twice on one purchase → 422."""
+    h, bid = _register_and_business()
+    sid = _supplier_id(h, bid)
+    iid = _catalog_item_id(h, bid)
+    line = _line_body(iid)
+    r = client.post(
+        f"/v1/businesses/{bid}/trade-purchases",
+        headers=h,
+        json={
+            "purchase_date": date.today().isoformat(),
+            "status": "confirmed",
+            "supplier_id": sid,
+            "lines": [line, line],
+        },
+    )
+    assert r.status_code == 422, r.text
+    detail = r.json().get("detail")
+    assert isinstance(detail, list)
+    assert any(
+        "duplicate line" in str(e.get("msg", "")).lower()
+        for e in detail
+        if isinstance(e, dict)
+    )
+
+
+def test_duplicate_purchase_without_force_returns_409():
+    h, bid = _register_and_business()
+    sid = _supplier_id(h, bid)
+    iid = _catalog_item_id(h, bid)
+    payload = {
+        "purchase_date": "2026-05-21",
+        "status": "confirmed",
+        "supplier_id": sid,
+        "lines": [_line_body(iid)],
+    }
+    first = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=payload)
+    assert first.status_code == 201, first.text
+    second = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=payload)
+    assert second.status_code == 409, second.text
+    body = second.json().get("detail")
+    assert isinstance(body, dict)
+    assert body.get("code") == "DUPLICATE_PURCHASE_DETECTED"

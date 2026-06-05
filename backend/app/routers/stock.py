@@ -1878,6 +1878,11 @@ async def _fetch_low_stock_candidates(
             period_start=period_start,
             period_end=period_end,
             include_today=False,
+            purchased_in_period=False,
+            missing_barcode=False,
+            missing_item_code=False,
+            reorder_only=False,
+            unit="",
         )
         total_seen = out.total
         for it in out.items:
@@ -3427,8 +3432,9 @@ async def update_physical_stock(
         "correction": "correction",
         "sale": "sale",
     }.get(body.adjustment_type, "physical_count")
-    # Floor edits often use list rows one version behind; allow +1 drift (not verification +2).
-    version_tolerance = 2 if body.adjustment_type == "verification" else 1
+    # Only verification may tolerate small read drift; corrections/deltas must
+    # reject stale versions so two staff devices cannot apply conflicting edits.
+    version_tolerance = 2 if body.adjustment_type == "verification" else 0
     try:
         result = await apply_stock_movement_with_retry(
             db,
@@ -3633,7 +3639,7 @@ async def patch_stock_item(
         "correction": "correction",
         "sale": "sale",
     }.get(body.adjustment_type, body.adjustment_type)
-    version_tolerance = 2 if body.adjustment_type == "verification" else 1
+    version_tolerance = 2 if body.adjustment_type == "verification" else 0
     try:
         result = await apply_stock_movement_with_retry(
             db,

@@ -17,6 +17,7 @@ class PurchaseDetailDeliveryBanner extends StatelessWidget {
     this.onRevert,
     this.isOwnerOrManager = false,
     this.isStaff = false,
+    this.deliveryBusy = false,
   });
 
   final TradePurchase purchase;
@@ -27,6 +28,7 @@ class PurchaseDetailDeliveryBanner extends StatelessWidget {
   final VoidCallback? onRevert;
   final bool isOwnerOrManager;
   final bool isStaff;
+  final bool deliveryBusy;
 
   @override
   Widget build(BuildContext context) {
@@ -121,36 +123,43 @@ class PurchaseDetailDeliveryBanner extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
+          if (deliveryBusy) ...[
+            const LinearProgressIndicator(minHeight: 2),
+            const SizedBox(height: 8),
+          ],
           ..._actions(ds),
         ],
       ),
     );
   }
 
+  VoidCallback? _enabled(VoidCallback? handler) =>
+      deliveryBusy ? null : handler;
+
   List<Widget> _actions(DeliveryStatus ds) {
     final out = <Widget>[];
     if (isOwnerOrManager &&
         ds == DeliveryStatus.pending &&
         onDispatch != null) {
-      out.add(_btn('Mark dispatched', onDispatch!, outlined: false));
+      out.add(_btn('Mark dispatched', _enabled(onDispatch), outlined: false));
     }
     if (isStaff &&
         (ds == DeliveryStatus.pending ||
             ds == DeliveryStatus.dispatched ||
             ds == DeliveryStatus.inTransit) &&
         onArrive != null) {
-      out.add(_btn('Mark arrived at warehouse', onArrive!, outlined: false));
+      out.add(_btn('Mark arrived at warehouse', _enabled(onArrive), outlined: false));
     }
     if ((isStaff || isOwnerOrManager) && ds.needsStaffAction && onVerify != null) {
-      out.add(_btn('Submit warehouse counts', onVerify!));
+      out.add(_btn('Submit warehouse counts', _enabled(onVerify)));
     }
     if (isOwnerOrManager && ds.readyForOwnerCommit && onCommit != null) {
-      out.add(_btn('Commit to stock', onCommit!, outlined: false));
+      out.add(_btn('Commit to stock', _enabled(onCommit), outlined: false));
     }
     if (isOwnerOrManager &&
         ds == DeliveryStatus.stockCommitted &&
         onRevert != null) {
-      out.add(_btn('Revert delivery & stock', onRevert!, destructive: true));
+      out.add(_btn('Revert delivery & stock', _enabled(onRevert), destructive: true));
     }
     if (out.isEmpty) return const [];
     return out
@@ -161,7 +170,7 @@ class PurchaseDetailDeliveryBanner extends StatelessWidget {
 
   Widget _btn(
     String label,
-    VoidCallback onPressed, {
+    VoidCallback? onPressed, {
     bool outlined = true,
     bool destructive = false,
   }) {

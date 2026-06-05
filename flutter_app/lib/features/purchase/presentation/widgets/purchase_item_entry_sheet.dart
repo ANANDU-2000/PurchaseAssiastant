@@ -137,6 +137,8 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
   /// Extra bottom inset so fields clear pinned preview + IME when scrolling into view.
   static const double _kPinnedPreviewReserve = 310;
 
+  bool _commitInFlight = false;
+
   final _itemCtrl = TextEditingController();
   final _itemFocus = FocusNode();
   final _qtyFocus = FocusNode();
@@ -2048,6 +2050,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
   }
 
   void _commit({required bool closeSheet}) {
+    if (_commitInFlight) return;
     final line = _validateAndBuildLine();
     if (line == null) {
       if (mounted) {
@@ -2071,6 +2074,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
       }
       return;
     }
+    _commitInFlight = true;
     widget.onCommitted(line);
     final itemId = _selectedCatalogItemId;
     final rate = _parseD(_landingCtrl.text);
@@ -2089,10 +2093,12 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
       } else {
         _resetAfterAdd();
       }
+      _commitInFlight = false;
       return;
     }
     // Full-screen page: caller may chain another add via pop result.
     _popSheet<bool>(!closeSheet);
+    _commitInFlight = false;
   }
 
   String _purchaseRateLabel(bool _) {

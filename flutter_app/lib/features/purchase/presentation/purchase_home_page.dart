@@ -608,6 +608,17 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
 
   /// Rows patched until list refresh completes after mark paid/delivered.
   final Map<String, TradePurchase> _optimisticPurchasePatches = {};
+
+  void _clearLocalStateForDeletedPurchases(Iterable<String> ids) {
+    if (!mounted) return;
+    setState(() {
+      for (final id in ids) {
+        _optimisticPurchasePatches.remove(id);
+        _selected.remove(id);
+      }
+    });
+  }
+
   String _lastRouteFilter = '';
   _HistPeriodPreset _preset = _HistPeriodPreset.month;
   bool _isRefreshing = false;
@@ -852,6 +863,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
             purchaseId: p.id,
           );
       invalidateAfterPurchaseDelete(ref, purchase: p);
+      _clearLocalStateForDeletedPurchases([p.id]);
       try {
         await ref.read(tradePurchasesListProvider.future);
       } catch (_) {}
@@ -927,6 +939,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
       ref,
       extraItemIds: catalogIds,
     );
+    _clearLocalStateForDeletedPurchases(ids);
     for (final id in ids) {
       ref.invalidate(tradePurchaseDetailProvider(id));
     }
@@ -2312,6 +2325,15 @@ class _PurchaseHistoryFullscreenSearchPageState
   final Map<String, TradePurchase> _optimisticPurchasePatches = {};
   _HistPeriodPreset _preset = _HistPeriodPreset.month;
 
+  void _clearLocalStateForDeletedPurchases(Iterable<String> ids) {
+    if (!mounted) return;
+    setState(() {
+      for (final id in ids) {
+        _optimisticPurchasePatches.remove(id);
+      }
+    });
+  }
+
   List<TradePurchase> _mergeOptimisticRows(List<TradePurchase> list) {
     if (_optimisticPurchasePatches.isEmpty) return list;
     return [
@@ -2533,6 +2555,7 @@ class _PurchaseHistoryFullscreenSearchPageState
             purchaseId: p.id,
           );
       invalidateAfterPurchaseDelete(ref, purchase: p);
+      _clearLocalStateForDeletedPurchases([p.id]);
       try {
         await ref.read(tradePurchasesListProvider.future);
       } catch (_) {}

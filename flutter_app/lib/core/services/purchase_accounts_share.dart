@@ -15,6 +15,7 @@ import '../router/navigation_ext.dart';
 import '../units/dynamic_unit_label_engine.dart' as unit_lbl;
 import '../utils/trade_purchase_rate_display.dart';
 import 'pdf_actions.dart';
+import 'purchase_export_service.dart';
 import 'purchase_accounts_share_stub.dart'
     if (dart.library.html) 'purchase_accounts_share_web.dart' as web_share;
 import 'purchase_pdf.dart';
@@ -239,6 +240,21 @@ Future<bool> ensureAccountsWhatsappConfigured(
 
 /// Save & Share: PDF + summary to [biz.accountsWhatsappNumber] only.
 Future<PdfActionResult> sharePurchaseToAccountsStaff(
+  TradePurchase p,
+  BusinessProfile biz, {
+  String? generatedByName,
+}) {
+  return runGuardedPurchasePdfAction(
+    purchaseId: p.id,
+    action: () => _sharePurchaseToAccountsStaffInner(
+      p,
+      biz,
+      generatedByName: generatedByName,
+    ),
+  );
+}
+
+Future<PdfActionResult> _sharePurchaseToAccountsStaffInner(
   TradePurchase p,
   BusinessProfile biz, {
   String? generatedByName,

@@ -96,6 +96,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   bool _isBootstrapping = false;
   String? _editBootstrapError;
   bool _isSaving = false;
+  bool _itemSheetInFlight = false;
   bool _formDirty = false;
   String? _previewHumanId;
   String? _editHumanId;
@@ -1190,6 +1191,24 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   }
 
   Future<void> _openItemSheet(
+    List<Map<String, dynamic>> catalog, {
+    int? editIndex,
+    Map<String, dynamic>? initialOverride,
+  }) async {
+    if (_itemSheetInFlight) return;
+    _itemSheetInFlight = true;
+    try {
+      await _openItemSheetImpl(
+        catalog,
+        editIndex: editIndex,
+        initialOverride: initialOverride,
+      );
+    } finally {
+      _itemSheetInFlight = false;
+    }
+  }
+
+  Future<void> _openItemSheetImpl(
     List<Map<String, dynamic>> catalog, {
     int? editIndex,
     Map<String, dynamic>? initialOverride,

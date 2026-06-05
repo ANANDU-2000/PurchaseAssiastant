@@ -2866,6 +2866,14 @@ class HexaApi {
     return res.data ?? {};
   }
 
+  Future<int?> _freshStockVersion({
+    required String businessId,
+    required String itemId,
+  }) async {
+    final fresh = await getStockItem(businessId: businessId, itemId: itemId);
+    return stockVersionFromItem(fresh);
+  }
+
   /// Alert owners/managers about a catalog item (in-app notifications).
   Future<void> notifyOwnerStockItem({
     required String businessId,
@@ -2975,6 +2983,10 @@ class HexaApi {
   }) {
     return runWithStockVersionRetry(
       initialVersion: initialStockVersion,
+      refreshVersion: () => _freshStockVersion(
+        businessId: businessId,
+        itemId: itemId,
+      ),
       operation: (version, {force = false}) => patchStockItem(
         businessId: businessId,
         itemId: itemId,
@@ -3036,6 +3048,10 @@ class HexaApi {
   }) {
     return runWithStockVersionRetry(
       initialVersion: initialStockVersion,
+      refreshVersion: () => _freshStockVersion(
+        businessId: businessId,
+        itemId: itemId,
+      ),
       operation: (version, {force = false}) => updatePhysicalStock(
         businessId: businessId,
         itemId: itemId,
@@ -3085,6 +3101,10 @@ class HexaApi {
   }) {
     return runWithStockVersionRetry(
       initialVersion: initialStockVersion,
+      refreshVersion: () => _freshStockVersion(
+        businessId: businessId,
+        itemId: itemId,
+      ),
       operation: (_, {force = false}) => verifyStockCount(
         businessId: businessId,
         itemId: itemId,

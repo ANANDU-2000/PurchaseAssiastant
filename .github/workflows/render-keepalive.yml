@@ -3,7 +3,7 @@ name: Render API keep-alive
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/8 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -13,11 +13,19 @@ jobs:
       - name: GET /health/ready
         run: |
           set -euo pipefail
-          code=$(curl -sS -o /tmp/ready.json -w "%{http_code}" \
-            --max-time 30 "https://my-purchases-api.onrender.com/health/ready")
-          echo "HTTP $code"
-          cat /tmp/ready.json
-          if [ "$code" != "200" ]; then
-            echo "::warning::Render /health/ready returned $code"
+          ok=0
+          for i in 1 2 3; do
+            code=$(curl -sS -o /tmp/ready.json -w "%{http_code}" \
+              --max-time 30 "https://my-purchases-api.onrender.com/health/ready")
+            echo "Attempt $i: HTTP $code"
+            cat /tmp/ready.json || true
+            if [ "$code" = "200" ]; then
+              ok=1
+              break
+            fi
+            sleep 10
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::warning::Render /health/ready did not return 200 after retries"
             exit 1
           fi

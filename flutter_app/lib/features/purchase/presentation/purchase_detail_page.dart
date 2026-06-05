@@ -16,6 +16,7 @@ import '../../../core/providers/business_aggregates_invalidation.dart'
         invalidateAfterPurchaseDelete,
         syncPurchaseStockFromPurchaseJson,
         invalidatePurchaseWorkspace;
+import '../../../core/providers/business_write_revision.dart';
 import '../../../core/providers/delivery_pipeline_provider.dart';
 import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/providers/stock_offline_queue_provider.dart';
@@ -237,6 +238,18 @@ class _PurchaseDetailPageState extends ConsumerState<PurchaseDetailPage> {
   Timer? _slowLoadTimer;
   bool _slowLoadPastSkeleton = false;
   bool _slowLoadTimerArmed = false;
+  bool _handledUnavailable = false;
+
+  void _handlePurchaseUnavailable(String message) {
+    if (_handledUnavailable || !mounted) return;
+    _handledUnavailable = true;
+    invalidateAfterPurchaseDelete(ref, purchaseId: widget.purchaseId);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      showTopSnack(context, message);
+      context.popOrGo(_purchaseHistoryBackRoute(ref));
+    });
+  }
 
   @override
   void dispose() {
@@ -270,6 +283,29 @@ class _PurchaseDetailPageState extends ConsumerState<PurchaseDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(businessDataWriteRevisionProvider, (prev, next) {
+      if (prev != null && next > prev && mounted) {
+        ref.invalidate(tradePurchaseDetailProvider(widget.purchaseId));
+      }
+    });
+    ref.listen<AsyncValue<TradePurchase>>(
+      tradePurchaseDetailProvider(widget.purchaseId),
+      (prev, next) {
+        next.whenOrNull(
+          data: (p) {
+            if (p.statusEnum == PurchaseStatus.deleted) {
+              _handlePurchaseUnavailable('This purchase was deleted.');
+            }
+          },
+          error: (e, _) {
+            if (e is TradePurchaseUnavailableError) {
+              _handlePurchaseUnavailable(e.message);
+            }
+          },
+        );
+      },
+    );
+
     final async = ref.watch(tradePurchaseDetailProvider(widget.purchaseId));
     final seed = widget.seedPurchase;
     final seedOk = seed != null && seed.id == widget.purchaseId;
@@ -311,6 +347,25 @@ class _PurchaseDetailPageState extends ConsumerState<PurchaseDetailPage> {
         );
       },
       error: (e, _) {
+        if (e is TradePurchaseUnavailableError) {
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            appBar: AppBar(
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: () => context.popOrGo(_purchaseHistoryBackRoute(ref)),
+              ),
+              title: const Text('Purchase'),
+              backgroundColor: Colors.transparent,
+              foregroundColor: HexaColors.brandPrimary,
+            ),
+            body: HexaErrorCard(
+              message: 'Purchase unavailable',
+              subtitle: e.message,
+              onRetry: () => context.popOrGo(_purchaseHistoryBackRoute(ref)),
+            ),
+          );
+        }
         return Scaffold(
           backgroundColor: Colors.transparent,
           appBar: AppBar(
@@ -537,6 +592,24 @@ class PurchaseDetailBody extends ConsumerStatefulWidget {
 }
 
 class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
+  bool _deliveryActionInFlight = false;
+  bool _exportInFlight = false;
+  bool _paymentInFlight = false;
+
+  Future<T?> _guardAction<T>({
+    required bool Function() isBusy,
+    required void Function(bool) setBusy,
+    required Future<T?> Function() action,
+  }) async {
+    if (isBusy()) return null;
+    setBusy(true);
+    try {
+      return await action();
+    } finally {
+      if (mounted) setBusy(false);
+    }
+  }
+
   bool _isOwnerOrManager() {
     final session = ref.read(sessionProvider);
     if (session == null) return false;
@@ -578,10 +651,21 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
       purchaseId: purchase.id,
       body: apiBody,
     );
+    ref.invalidate(deliveryPipelineProvider);
     if (context.mounted) showTopSnack(context, message);
   }
 
   Future<void> _dispatch(BuildContext context, TradePurchase p) async {
+    await _guardAction<void>(
+      isBusy: () => _deliveryActionInFlight,
+      setBusy: (v) => setState(() => _deliveryActionInFlight = v),
+      action: () async {
+        await _dispatchImpl(context, p);
+      },
+    );
+  }
+
+  Future<void> _dispatchImpl(BuildContext context, TradePurchase p) async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
     final truckCtrl = TextEditingController();
@@ -679,6 +763,16 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
   }
 
   Future<void> _arrive(BuildContext context, TradePurchase p) async {
+    await _guardAction<void>(
+      isBusy: () => _deliveryActionInFlight,
+      setBusy: (v) => setState(() => _deliveryActionInFlight = v),
+      action: () async {
+        await _arriveImpl(context, p);
+      },
+    );
+  }
+
+  Future<void> _arriveImpl(BuildContext context, TradePurchase p) async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
     try {
@@ -748,6 +842,7 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
   }
 
   Future<void> _commitStock(BuildContext context, TradePurchase p) async {
+    if (_deliveryActionInFlight) return;
     final ok = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
@@ -770,6 +865,16 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
         ) ??
         false;
     if (!ok) return;
+    await _guardAction<void>(
+      isBusy: () => _deliveryActionInFlight,
+      setBusy: (v) => setState(() => _deliveryActionInFlight = v),
+      action: () async {
+        await _commitStockImpl(context, p);
+      },
+    );
+  }
+
+  Future<void> _commitStockImpl(BuildContext context, TradePurchase p) async {
     final session = ref.read(sessionProvider);
     if (session == null) return;
     try {
@@ -818,6 +923,7 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
   }
 
   Future<void> _revertDelivery(BuildContext context, TradePurchase p) async {
+    if (_deliveryActionInFlight) return;
     final session = ref.read(sessionProvider);
     if (session == null) return;
     final ok = await showDialog<bool>(
@@ -841,30 +947,36 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
         ) ??
         false;
     if (!ok) return;
-    try {
-      final updated = await ref.read(hexaApiProvider).markPurchaseDelivered(
-            businessId: session.primaryBusiness.id,
-            purchaseId: p.id,
-            isDelivered: false,
+    await _guardAction<void>(
+      isBusy: () => _deliveryActionInFlight,
+      setBusy: (v) => setState(() => _deliveryActionInFlight = v),
+      action: () async {
+        try {
+          final updated = await ref.read(hexaApiProvider).markPurchaseDelivered(
+                businessId: session.primaryBusiness.id,
+                purchaseId: p.id,
+                isDelivered: false,
+              );
+          final purchase = TradePurchase.fromJson(updated);
+          await _afterDeliveryMutation(
+            context,
+            purchase: purchase,
+            apiBody: updated,
+            message: 'Delivery reverted · stock reversed',
           );
-      final purchase = TradePurchase.fromJson(updated);
-      await _afterDeliveryMutation(
-        context,
-        purchase: purchase,
-        apiBody: updated,
-        message: 'Delivery reverted · stock reversed',
-      );
-    } catch (e) {
-      if (context.mounted) {
-        showTopSnack(
-          context,
-          e is DioException
-              ? friendlyApiError(e)
-              : 'Could not revert delivery. Try again.',
-          isError: true,
-        );
-      }
-    }
+        } catch (e) {
+          if (context.mounted) {
+            showTopSnack(
+              context,
+              e is DioException
+                  ? friendlyApiError(e)
+                  : 'Could not revert delivery. Try again.',
+              isError: true,
+            );
+          }
+        }
+      },
+    );
   }
 
   List<Widget> _lineRows(
@@ -957,6 +1069,7 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
           purchase: p,
           isOwnerOrManager: _isOwnerOrManager(),
           isStaff: _isStaff(),
+          deliveryBusy: _deliveryActionInFlight,
           onDispatch: _isOwnerOrManager()
               ? () => _dispatch(context, p)
               : null,
@@ -1012,22 +1125,28 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
     required Future<PdfActionResult> Function() action,
     required VoidCallback onRetry,
   }) async {
-    showTopSnack(context, 'Preparing PDF…');
-    final result = await action();
-    if (!context.mounted) return;
-    if (!result.ok) {
-      showTopSnack(
-        context,
-        result.message,
-        isError: true,
-        action: SnackBarAction(
-          label: 'Retry',
-          onPressed: onRetry,
-        ),
-      );
-      return;
+    if (_exportInFlight) return;
+    setState(() => _exportInFlight = true);
+    try {
+      showTopSnack(context, 'Preparing PDF…');
+      final result = await action();
+      if (!context.mounted) return;
+      if (!result.ok) {
+        showTopSnack(
+          context,
+          result.message,
+          isError: true,
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: onRetry,
+          ),
+        );
+        return;
+      }
+      showTopSnack(context, result.message);
+    } finally {
+      if (mounted) setState(() => _exportInFlight = false);
     }
-    showTopSnack(context, result.message);
   }
 
   Widget _sidePanel(
@@ -1360,6 +1479,7 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
 
   Future<void> _markPaidSheet(
       BuildContext context, WidgetRef ref, TradePurchase p) async {
+    if (_paymentInFlight) return;
     final ctrl = TextEditingController(text: p.remaining.toStringAsFixed(2));
     final ok = await showHexaBottomSheet<bool>(
       context: context,
@@ -1395,6 +1515,7 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
     if (v == null || v < 0) return;
     final session = ref.read(sessionProvider);
     if (session == null) return;
+    setState(() => _paymentInFlight = true);
     try {
       await ref.read(hexaApiProvider).patchPurchasePayment(
             businessId: session.primaryBusiness.id,
@@ -1420,6 +1541,8 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
           ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _paymentInFlight = false);
     }
   }
 }

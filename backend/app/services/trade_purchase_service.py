@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete, exists, func, not_, or_, select
+from sqlalchemy import delete, exists, func, not_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -230,6 +230,30 @@ class TradePurchaseDuplicateError(Exception):
         self.message = message
 
 
+class TradePurchaseStateConflictError(Exception):
+    """Purchase state blocks the requested mutation."""
+
+    def __init__(self, *, code: str, message: str) -> None:
+        self.code = code
+        self.message = message
+
+
+async def _advisory_xact_lock(db: AsyncSession, lock_key: str) -> None:
+    """Serialize concurrent purchase create/commit/update on Postgres."""
+    dialect_name = ""
+    try:
+        bind = db.get_bind()
+        if bind is not None and bind.dialect is not None:
+            dialect_name = (bind.dialect.name or "").lower()
+    except Exception:
+        dialect_name = ""
+    if dialect_name == "postgresql":
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint)"),
+            {"lock_key": lock_key},
+        )
+
+
 # Purchases with these statuses are ignored for duplicate matching and excluded from duplicates.
 _STATUS_EXCLUDED_FROM_DUP_MATCH: frozenset[str] = frozenset({"deleted", "cancelled"})
 _DUP_TOTAL_TOLERANCE = Decimal(
@@ -258,6 +282,7 @@ def _collect_trade_purchase_validation_errors(
         return errs
     status_l = (body.status or "").lower()
     enforce_gross = (not for_preview) and status_l in {"confirmed", "saved", "draft"}
+    seen_catalog_unit: set[tuple[uuid.UUID, str]] = set()
     for i, li in enumerate(body.lines):
         base: list[Any] = ["body", "lines", i]
         if not (li.item_name or "").strip():
@@ -269,6 +294,17 @@ def _collect_trade_purchase_validation_errors(
             errs.append({"loc": [*base, "unit"], "msg": "invalid unit"})
         if li.qty <= 0:
             errs.append({"loc": [*base, "qty"], "msg": "quantity must be greater than 0"})
+        if li.catalog_item_id is not None:
+            key = (li.catalog_item_id, u)
+            if key in seen_catalog_unit:
+                errs.append(
+                    {
+                        "loc": [*base, "catalog_item_id"],
+                        "msg": "duplicate line for the same catalog item and unit",
+                    }
+                )
+            else:
+                seen_catalog_unit.add(key)
         if enforce_gross:
             gross = _line_gross_base(li)
             if gross <= 0:
@@ -1056,6 +1092,11 @@ async def create_trade_purchase(
             )
     qty_sum, amt_sum = compute_totals(body)
     land_s, sell_s, prof = aggregate_landing_selling_profit(body)
+    supplier_key = str(body.supplier_id) if body.supplier_id else "none"
+    await _advisory_xact_lock(
+        db,
+        f"tp_create:{business_id}:{supplier_key}:{body.purchase_date}",
+    )
     if not body.force_duplicate:
         dup_p = await find_matching_duplicate_trade_purchase(
             db,
@@ -1204,10 +1245,30 @@ async def update_trade_purchase(
     tp = res.scalar_one_or_none()
     if not tp:
         return None
+    await _advisory_xact_lock(db, f"tp_update:{business_id}:{purchase_id}")
+    res = await db.execute(
+        select(TradePurchase)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.id == purchase_id,
+        )
+        .options(selectinload(TradePurchase.lines))
+    )
+    tp = res.scalar_one_or_none()
+    if not tp:
+        return None
     if (tp.status or "").lower() == "deleted":
         raise ValueError("Cannot edit a deleted purchase")
     if (tp.status or "").lower() == "cancelled":
         raise ValueError("Cannot edit a cancelled purchase")
+    if _delivery_status(tp) == "stock_committed":
+        raise TradePurchaseStateConflictError(
+            code="PURCHASE_ALREADY_COMMITTED",
+            message=(
+                "This purchase has already been committed to stock. "
+                "Revert delivery first to make edits."
+            ),
+        )
     old_lines_snapshot = list(tp.lines)
     was_delivered = bool(getattr(tp, "is_delivered", False))
     was_committed = _delivery_status(tp) == "stock_committed"
@@ -1554,6 +1615,7 @@ async def commit_trade_purchase_delivery(
     tp = await _load_trade_purchase(db, business_id, purchase_id)
     if not tp:
         return None
+    await _advisory_xact_lock(db, f"tp_commit:{business_id}:{purchase_id}")
     st = (tp.status or "").lower()
     if st in ("deleted", "cancelled"):
         raise ValueError("Cannot commit stock for a cancelled purchase")

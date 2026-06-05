@@ -6,8 +6,8 @@
 
 ## Backend
 
-- [ ] **P0-001** Run Alembic upgrade to **058** on Render (`DB-001`, `DB-013`)
-- [ ] **P0-003** Verify index 042 + 058 on prod (`DB-004`, `PERF-001`)
+- [ ] **P0-001** Run Alembic upgrade to **060** on Render (`DB-001`, `DB-013`)
+- [ ] **P0-003** Verify index 042 + 058 + 060 on prod (`DB-004`, `PERF-001`)
 - [ ] **P0-005** Confirm `version_tolerance=1` + physical-count flush deployed (`EH-002`, `EH-004`)
 - [ ] **P1-002** Optional lifecycle sync on dispatch (`BL-001`, `DB-009`)
 - [ ] **P1-003** Standardize commit-stock 409 JSON (`EH-003`, `DB-011`)
@@ -31,10 +31,10 @@
 
 ## Database / Ops
 
-- [ ] **P0-001** `alembic current` = 058 on staging + prod
+- [ ] **P0-001** `alembic current` = 060 on staging + prod
 - [ ] **P0-002** Vercel project URL typo fix (`CB-021`)
 - [ ] **P0-006** Render cron → `internal_cron` (`NT-005`)
-- [x] **P2-003** Update `MIGRATION_INDEX.md` head 058 (`DB-001`, `CB-024`)
+- [x] **P2-003** Update `MIGRATION_INDEX.md` head 060 (`DB-001`, `CB-024`)
 - [ ] **PR-017** Apply `suggested_indexes_trade_reports.sql` if needed (`DB-005`)
 - [ ] Run `scripts/verify-deploy.ps1` after each deploy (`PR smoke`)
 

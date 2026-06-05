@@ -12,6 +12,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/catalog_providers.dart';
+import '../../../core/providers/stock_providers.dart';
 import '../../../core/search/catalog_fuzzy.dart';
 import '../../../core/search/search_highlight.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -83,6 +84,15 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
     await ref.read(catalogItemsListProvider.future);
   }
 
+  void _bustWarehouseCachesForDeletedItems(Iterable<String> itemIds) {
+    final ids = itemIds.where((id) => id.isNotEmpty).toList();
+    if (ids.isEmpty) return;
+    clearStockListRowPatchesForIds(ref, ids);
+    for (final id in ids) {
+      invalidateWarehouseSurfacesLight(ref, itemId: id);
+    }
+  }
+
   Future<void> _deleteItemById(String id, String name) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -103,6 +113,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
             businessId: session.primaryBusiness.id,
             itemId: id,
           );
+      _bustWarehouseCachesForDeletedItems([id]);
       ref.invalidate(catalogItemsListProvider);
       try {
         await ref.read(catalogItemsListProvider.future);
@@ -166,6 +177,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
         break;
       }
     }
+    _bustWarehouseCachesForDeletedItems(ids);
     ref.invalidate(catalogItemsListProvider);
     try {
       await ref.read(catalogItemsListProvider.future);

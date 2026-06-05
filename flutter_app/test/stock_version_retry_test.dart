@@ -47,22 +47,20 @@ void main() {
     expect(calls, 2);
   });
 
-  test('runWithStockVersionRetry uses force on final stale attempt', () async {
+  test('runWithStockVersionRetry never forces final stale attempt', () async {
     var calls = 0;
-    final result = await runWithStockVersionRetry<int>(
-      initialVersion: 0,
-      maxAttempts: 3,
-      operation: (version, {force = false}) async {
-        calls++;
-        if (calls < 3) {
+    await expectLater(
+      runWithStockVersionRetry<int>(
+        initialVersion: 0,
+        maxAttempts: 3,
+        operation: (version, {force = false}) async {
+          calls++;
+          expect(force, isFalse);
           throw _stale409(version: calls);
-        }
-        expect(force, isTrue);
-        expect(version, 2);
-        return 42;
-      },
+        },
+      ),
+      throwsA(isA<StaleStockConflict>()),
     );
-    expect(result, 42);
     expect(calls, 3);
   });
 

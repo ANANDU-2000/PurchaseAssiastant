@@ -794,6 +794,25 @@ async def post_activity(
     user: Annotated[User, Depends(get_current_user)],
     _m: Annotated[Membership, Depends(require_membership)],
 ):
+    if body.action_type == "PURCHASE_WHATSAPP_SENT":
+        purchase_id = str((body.details or {}).get("purchase_id") or "").strip()
+        if purchase_id:
+            cutoff = datetime.now(timezone.utc) - timedelta(seconds=30)
+            recent = await db.execute(
+                select(StaffActivityLog)
+                .where(
+                    StaffActivityLog.business_id == business_id,
+                    StaffActivityLog.user_id == user.id,
+                    StaffActivityLog.action_type == "PURCHASE_WHATSAPP_SENT",
+                    StaffActivityLog.created_at >= cutoff,
+                )
+                .order_by(desc(StaffActivityLog.created_at))
+                .limit(8)
+            )
+            for existing in recent.scalars():
+                details = existing.details or {}
+                if str(details.get("purchase_id") or "").strip() == purchase_id:
+                    return ActivityLogOut.model_validate(existing)
     display = user.name or user.username
     row = StaffActivityLog(
         business_id=business_id,

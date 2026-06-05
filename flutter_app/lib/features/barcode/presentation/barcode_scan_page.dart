@@ -30,6 +30,7 @@ import '../../stock/presentation/stock_sheet_launch.dart';
 import '../../stock/presentation/stock_undo_snackbar.dart';
 import '../barcode_camera_session.dart';
 import '../barcode_lookup_cache.dart';
+import '../services/camera_permission_cache.dart';
 import 'warehouse_scan_action_sheet.dart';
 import 'barcode_scan_web_stub.dart'
     if (dart.library.html) 'barcode_scan_web.dart';
@@ -58,6 +59,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   /// Avoid re-requesting OS camera permission on every scanner page open (iOS PWA).
   static bool _cameraPermissionGrantedThisSession = false;
+  final _permCache = CameraPermissionCache.instance;
 
   MobileScannerController? _camera;
   WebLiveBarcodeScanner? _webLiveScanner;
@@ -94,6 +96,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
   bool _hadDetectThisVisit = false;
   bool _scanConfirmed = false;
   String? _lookupLabel;
+  bool _webCameraAwaitingGesture = false;
 
   @override
   void initState() {
@@ -105,7 +108,26 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
     )..repeat(reverse: true); // paused via _setBusy when camera is processing
     _manualCtrl.addListener(_onManualChanged);
     unawaited(_loadRecent());
-    unawaited(_initCamera());
+    unawaited(_bootstrapCamera());
+  }
+
+  Future<void> _bootstrapCamera() async {
+    final persisted = await _readPersistedCameraPerm();
+    _permCache.persistedGranted = persisted;
+    if (persisted) {
+      _cameraPermissionGrantedThisSession = true;
+      _permCache.grantedThisSession = true;
+    }
+    if (kIsWeb && !_permCache.canAutoStartCamera) {
+      if (mounted) setState(() => _webCameraAwaitingGesture = true);
+      return;
+    }
+    await _initCamera();
+  }
+
+  Future<void> _startCameraFromUserGesture() async {
+    if (mounted) setState(() => _webCameraAwaitingGesture = false);
+    await _initCamera();
   }
 
   void _onManualChanged() {
@@ -196,6 +218,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
 
   Future<void> _markCameraPermGranted() async {
     _cameraPermissionGrantedThisSession = true;
+    _permCache.markGranted();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kCameraPermGrantedKey, true);
   }
@@ -212,6 +235,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
       detectionTimeoutMs: kIsWeb ? 90 : 100,
       facing: CameraFacing.back,
       formats: _kWarehouseBarcodeFormats,
+      cameraResolution: const Size(1280, 720),
       autoStart: true,
       returnImage: false,
     );
@@ -864,9 +888,12 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
     final theme = Theme.of(context);
     final size = MediaQuery.sizeOf(context);
     final landscape = size.width > size.height;
-    final cameraH = (size.height * (landscape ? 0.40 : 0.48))
-        .clamp(landscape ? 180.0 : 260.0, landscape ? 280.0 : 420.0)
-        .toDouble();
+    final desktopSplit = size.width >= 900;
+    final cameraH = desktopSplit
+        ? double.infinity
+        : (size.height * (landscape ? 0.40 : 0.48))
+            .clamp(landscape ? 180.0 : 260.0, landscape ? 280.0 : 420.0)
+            .toDouble();
     final pendingSync = ref.watch(stockOfflinePendingCountProvider);
     final manualMatches = _manualMatches;
     final safariUpload = kIsWeb && preferUploadBarcodeOnWeb;
@@ -934,9 +961,68 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
           ),
         ],
       ),
-      body: Column(
+      body: desktopSplit
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 46,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: _scanTopSections(
+                        context,
+                        theme: theme,
+                        size: size,
+                        cameraH: 320,
+                        safariUpload: safariUpload,
+                        pendingSync: pendingSync,
+                      ),
+                    ),
+                  ),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(
+                  flex: 54,
+                  child: _scanManualSection(
+                    context,
+                    theme: theme,
+                    manualMatches: manualMatches,
+                  ),
+                ),
+              ],
+            )
+          : Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          ..._scanTopSections(
+            context,
+            theme: theme,
+            size: size,
+            cameraH: cameraH,
+            safariUpload: safariUpload,
+            pendingSync: pendingSync,
+          ),
+          _scanManualSection(
+            context,
+            theme: theme,
+            manualMatches: manualMatches,
+            expanded: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _scanTopSections(
+    BuildContext context, {
+    required ThemeData theme,
+    required Size size,
+    required double cameraH,
+    required bool safariUpload,
+    required int pendingSync,
+  }) {
+    return [
           if (safariUpload)
             MaterialBanner(
               content: const Text(
@@ -961,7 +1047,37 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
                 ),
               ],
             ),
-          if (_cameraDenied)
+          if (_webCameraAwaitingGesture)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Icon(Icons.touch_app_outlined,
+                      size: 48, color: theme.colorScheme.primary),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Tap to start camera',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Browsers require a tap before opening the camera.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: _busy ? null : () => unawaited(_startCameraFromUserGesture()),
+                    icon: const Icon(Icons.videocam_rounded),
+                    label: const Text('Start camera'),
+                  ),
+                ],
+              ),
+            )
+          else if (_cameraDenied)
             Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
@@ -1267,104 +1383,120 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
               ),
             ),
           ],
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                12,
-                16,
-                16 + MediaQuery.viewPaddingOf(context).bottom,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          focusNode: _manualFocus,
-                          controller: _manualCtrl,
-                          textCapitalization: TextCapitalization.characters,
-                          decoration: InputDecoration(
-                            hintText: 'Search item / barcode / item code',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            isDense: true,
-                          ),
-                          textInputAction: TextInputAction.search,
-                          onSubmitted: _lookupAndNavigate,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      FilledButton(
-                        onPressed: _busy
-                            ? null
-                            : () => _lookupAndNavigate(_manualCtrl.text),
-                        child: const Text('Search'),
-                      ),
-                    ],
-                  ),
-                  if (_manualSearching) ...[
-                    const SizedBox(height: 8),
-                    const LinearProgressIndicator(minHeight: 2),
-                  ],
-                  if (manualMatches.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Expanded(
-                      child: ListView.separated(
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        itemCount: manualMatches.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 6),
-                        itemBuilder: (context, i) {
-                          final item = manualMatches[i];
-                          final id = item['id']?.toString();
-                          final name = item['name']?.toString() ?? 'Item';
-                          final code = item['item_code']?.toString();
-                          final barcode = item['barcode']?.toString();
-                          return ListTile(
-                            dense: true,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(
-                                color: theme.colorScheme.outlineVariant,
-                              ),
-                            ),
-                            title: Text(
-                              name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            subtitle: Text(
-                              [
-                                if (code != null && code.isNotEmpty) code,
-                                if (barcode != null && barcode.isNotEmpty)
-                                  'Barcode $barcode',
-                              ].join(' · '),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            trailing: const Icon(Icons.chevron_right_rounded),
-                            onTap: id == null || id.isEmpty
-                                ? null
-                                : () => context
-                                    .push('/catalog/item/$id?source=scan'),
-                          );
-                        },
-                      ),
+    ];
+  }
+
+  Widget _scanManualSection(
+    BuildContext context, {
+    required ThemeData theme,
+    required List<Map<String, dynamic>> manualMatches,
+    bool expanded = false,
+  }) {
+    final child = Padding(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        12,
+        16,
+        16 + MediaQuery.viewPaddingOf(context).bottom,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  focusNode: _manualFocus,
+                  controller: _manualCtrl,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                    hintText: 'Search item / barcode / item code',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  ],
-                ],
+                    isDense: true,
+                  ),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: _lookupAndNavigate,
+                ),
               ),
-            ),
+              const SizedBox(width: 10),
+              FilledButton(
+                onPressed: _busy
+                    ? null
+                    : () => _lookupAndNavigate(_manualCtrl.text),
+                child: const Text('Search'),
+              ),
+            ],
           ),
+          if (_manualSearching) ...[
+            const SizedBox(height: 8),
+            const LinearProgressIndicator(minHeight: 2),
+          ],
+          if (manualMatches.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            expanded
+                ? Expanded(
+                    child: ListView.separated(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      itemCount: manualMatches.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 6),
+                      itemBuilder: (context, i) =>
+                          _manualMatchTile(context, theme, manualMatches[i]),
+                    ),
+                  )
+                : SizedBox(
+                    height: 280,
+                    child: ListView.separated(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      itemCount: manualMatches.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 6),
+                      itemBuilder: (context, i) =>
+                          _manualMatchTile(context, theme, manualMatches[i]),
+                    ),
+                  ),
+          ],
         ],
       ),
+    );
+    return expanded ? Expanded(child: child) : child;
+  }
+
+  Widget _manualMatchTile(
+    BuildContext context,
+    ThemeData theme,
+    Map<String, dynamic> item,
+  ) {
+    final id = item['id']?.toString();
+    final name = item['name']?.toString() ?? 'Item';
+    final code = item['item_code']?.toString();
+    final barcode = item['barcode']?.toString();
+    return ListTile(
+      dense: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      title: Text(
+        name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(
+        [
+          if (code != null && code.isNotEmpty) code,
+          if (barcode != null && barcode.isNotEmpty) 'Barcode $barcode',
+        ].join(' · '),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: const Icon(Icons.chevron_right_rounded),
+      onTap: id == null || id.isEmpty
+          ? null
+          : () => context.push('/catalog/item/$id?source=scan'),
     );
   }
 }

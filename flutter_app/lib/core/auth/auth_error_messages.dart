@@ -296,7 +296,7 @@ String friendlyApiError(Object error, {bool forAssistant = false}) {
             if (code == 'DUPLICATE_PURCHASE_DETECTED') {
               return 'Duplicate purchase: similar entry exists for this date.';
             }
-            if (code == 'STALE_STOCK_VERSION') {
+            if (code == 'STALE_STOCK_VERSION' || code == 'STOCK_VERSION_CONFLICT') {
               return 'Stock changed while you were editing. Refresh and try again.';
             }
             const cap = 420;

@@ -60,7 +60,49 @@ Future<void> _reportExportFailure(
   } catch (_) {}
 }
 
+final Set<String> _exportInFlightPurchaseIds = <String>{};
+
+/// Serializes PDF/share/export for one purchase id (double-tap safe).
+Future<PdfActionResult> runGuardedPurchasePdfAction({
+  required String purchaseId,
+  required Future<PdfActionResult> Function() action,
+  String busyMessage = 'Export already in progress for this purchase.',
+}) async {
+  if (_exportInFlightPurchaseIds.contains(purchaseId)) {
+    return PdfActionResult(ok: false, message: busyMessage);
+  }
+  _exportInFlightPurchaseIds.add(purchaseId);
+  try {
+    return await action();
+  } finally {
+    _exportInFlightPurchaseIds.remove(purchaseId);
+  }
+}
+
 Future<PdfActionResult> _runExport({
+  required TradePurchase p,
+  required BusinessProfile biz,
+  required Future<PdfActionResult> Function() action,
+  required String failureMessage,
+  required String operationLabel,
+  HexaApi? api,
+  String? businessId,
+}) async {
+  return runGuardedPurchasePdfAction(
+    purchaseId: p.id,
+    action: () => _runExportInner(
+      p: p,
+      biz: biz,
+      action: action,
+      failureMessage: failureMessage,
+      operationLabel: operationLabel,
+      api: api,
+      businessId: businessId,
+    ),
+  );
+}
+
+Future<PdfActionResult> _runExportInner({
   required TradePurchase p,
   required BusinessProfile biz,
   required Future<PdfActionResult> Function() action,

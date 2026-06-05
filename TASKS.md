@@ -22,8 +22,26 @@
 
 ## Live DB (Supabase MCP 2026-06-01)
 
-- [x] **Alembic head:** `050_stock_ledger_replay_current_stock` (verified `alembic_version` + `/health/ready`)
+- [x] **Alembic head:** `060_stock_list_performance_indexes` (repo chain; apply on Render via preDeploy)
+- [x] **Full audit pass (2026-06-05):** purchase race guards, duplicate line/share guards, barcode desktop split + web camera gesture, advisory locks, structured 409 stock conflicts, keepalive 8min+retry, activity WhatsApp dedupe
+
+## Manual QA handoff (post-deploy)
+
+- [ ] Resume Render API + `alembic upgrade head` to **060** + redeploy Flutter web (Vercel)
+- [ ] **Stock race:** owner + staff edit same item 1s apart — one wins, other gets 409 refresh message
+- [ ] **Duplicate purchase:** two owners save same supplier/date/lines — second gets duplicate dialog (409)
+- [ ] **Double commit:** two tabs commit same purchase — stock increases once only
+- [ ] Race: double-tap commit/export/share on purchase detail — only one request (buttons disabled while busy)
+- [ ] **Delete purchase:** row gone from history, home pending, stock changes, item history without hard refresh
+- [ ] **Delete catalog item:** item removed from Stock tab (no ghost row from patch overlay)
+- [ ] **Wizard double save:** double-tap Save — one API create; button disabled while saving
+- [ ] **Remote delete:** open purchase detail on device B; delete on device A — B pops with “deleted” message
+- [ ] Delivery commit → stock/home/reports refresh without pull-to-refresh
+- [ ] iOS PWA: second scanner open reuses camera session; web shows **Start camera** on first visit
+- [ ] Desktop: barcode split view (camera left, search right) at ≥900px; reports 3-col; settings sidebar
+- [ ] Backup/export with fresh session; WhatsApp share deduped within 30s
 - [x] **API liveness:** `GET https://my-purchases-api.onrender.com/health/ready` → 200, `db: ok`, `stock_sync_ready: true`
+- [x] **Concurrency fix pass (2026-06-05):** catalog delete stock bust, delivery banner busy, share mutex, detail 404/deleted pop, delivery tests verify→commit
 
 ## Quick categories & subcategories (2026-06-01)
 
@@ -115,7 +133,7 @@
 | **Stock backfill on every boot** | Set `AUTO_STOCK_BACKFILL_ON_START=false` on API service. Run `python -m scripts.backfill_purchase_stock_commit` once via Shell if needed. |
 | **Render cold start** (free/starter sleep) | First request after idle may 503 for ~30–60s; app retries. Wake via `/health/ready` or upgrade plan. |
 | **DB pool / Supabase timeout** | Check Supabase status; use pooler URL in `DATABASE_URL`; logs show `SQLAlchemy infrastructure` → 503. |
-| **Schema behind code** | `SELECT version_num FROM alembic_version` must be `050_stock_ledger_replay_current_stock`. Run `alembic upgrade head`. |
+| **Schema behind code** | `SELECT version_num FROM alembic_version` must match the repo Alembic head. Run `alembic upgrade head`. |
 
 **Verify after fix:** `curl https://my-purchases-api.onrender.com/health/ready` → `alembic_version` at head, `db: ok`.
 

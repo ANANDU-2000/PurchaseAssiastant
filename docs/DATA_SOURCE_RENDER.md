@@ -14,7 +14,7 @@ Verify anytime:
 GET https://my-purchases-api.onrender.com/health/ready
 ```
 
-Expect `"db":"ok"` and `alembic_version` at head (`059_staff_activity_action_types_v2` as of 2026-06-03).
+Expect `"db":"ok"` and `alembic_version` at head (`060_stock_list_performance_indexes` as of 2026-06-05).
 
 **Important:** Production migrations must run against **Render Postgres** (`harisree-db`), not the Supabase MCP project. Use Render pre-deploy `alembic upgrade head` or `RENDER_DB_EXTERNAL_URL` locally.
 

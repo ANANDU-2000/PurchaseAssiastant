@@ -1,8 +1,8 @@
-/// PDF default fonts (Helvetica / WinAnsi) cannot render rupee, en/em dash,
-/// arrows, middle dots, or emoji — they show as black boxes (tofu).
-///
-/// Run **all** user-facing and template strings through [safePdfText] before
-/// passing to `package:pdf` widgets.
+// PDF default fonts (Helvetica / WinAnsi) cannot render rupee, en/em dash,
+// arrows, middle dots, or emoji — they show as black boxes (tofu).
+//
+// Run all user-facing and template strings through [safePdfText] before
+// passing to `package:pdf` widgets.
 
 /// Empty table cell / missing value in PDFs (ASCII hyphen only).
 const String pdfEmpty = '-';

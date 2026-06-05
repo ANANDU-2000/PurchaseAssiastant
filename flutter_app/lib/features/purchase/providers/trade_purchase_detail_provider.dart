@@ -1,9 +1,22 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/models/trade_purchase_models.dart';
+
+/// Purchase soft-deleted or missing — detail UI should pop and bust caches.
+class TradePurchaseUnavailableError implements Exception {
+  const TradePurchaseUnavailableError([
+    this.message = 'This purchase was deleted.',
+  ]);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
 
 /// While [markPurchaseDelivered] round-trips, holds target [TradePurchase.isDelivered].
 final tradePurchaseDeliveryOptimisticProvider =
@@ -27,7 +40,18 @@ final tradePurchaseDetailProvider =
           purchaseId: purchaseId,
         )
         .timeout(kTradePurchaseDetailFetchTimeout);
-    return TradePurchase.fromJson(m);
+    final purchase = TradePurchase.fromJson(m);
+    if (purchase.statusEnum == PurchaseStatus.deleted) {
+      throw const TradePurchaseUnavailableError();
+    }
+    return purchase;
+  } on TradePurchaseUnavailableError {
+    rethrow;
+  } on DioException catch (e) {
+    if (e.response?.statusCode == 404) {
+      throw const TradePurchaseUnavailableError();
+    }
+    rethrow;
   } on TimeoutException {
     throw Exception(
       'Could not load purchase in time — check your connection and try again.',

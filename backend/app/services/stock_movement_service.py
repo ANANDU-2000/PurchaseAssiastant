@@ -318,10 +318,10 @@ async def apply_stock_movement_with_retry(
             return await apply_stock_movement(db, **kwargs)
         except StaleStockVersionError as e:
             last_err = e
+            if kwargs.get("last_seen_stock_version") is not None:
+                raise
             if attempt + 1 >= max_attempts:
                 raise
-            kwargs = dict(kwargs)
-            kwargs["last_seen_stock_version"] = None
             await asyncio.sleep(0.1)
     assert last_err is not None
     raise last_err

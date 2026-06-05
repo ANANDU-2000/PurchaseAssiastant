@@ -25,7 +25,7 @@ int? stockVersionFromItem(Map<String, dynamic> item) {
   return int.tryParse(v?.toString() ?? '');
 }
 
-/// Parses 409 `STALE_STOCK_VERSION` from API error body.
+/// Parses 409 stock-version conflicts from API error body.
 StaleStockConflict? parseStaleStockConflict(Object error) {
   if (error is StaleStockConflict) return error;
   if (error is! DioException || error.response?.statusCode != 409) {
@@ -35,8 +35,11 @@ StaleStockConflict? parseStaleStockConflict(Object error) {
   if (data is! Map) return null;
   final detail = data['detail'];
   if (detail is! Map) return null;
-  if (detail['code']?.toString() != 'STALE_STOCK_VERSION') return null;
-  final ver = detail['stock_version'];
+  final code = detail['code']?.toString();
+  if (code != 'STALE_STOCK_VERSION' && code != 'STOCK_VERSION_CONFLICT') {
+    return null;
+  }
+  final ver = detail['stock_version'] ?? detail['current_version'];
   final version = ver is int
       ? ver
       : ver is num
@@ -45,7 +48,8 @@ StaleStockConflict? parseStaleStockConflict(Object error) {
   if (version == null) return null;
   return StaleStockConflict(
     currentVersion: version,
-    currentStock: detail['current_stock']?.toString(),
+    currentStock:
+        (detail['current_stock'] ?? detail['current_qty'])?.toString(),
   );
 }
 
@@ -61,28 +65,26 @@ typedef StockVersionOperation<T> = Future<T> Function(
 /// Runs [operation] with optimistic version.
 Future<T> runWithStockVersionRetry<T>({
   required StockVersionOperation<T> operation,
+  Future<int?> Function()? refreshVersion,
   int? initialVersion,
   int maxAttempts = 3,
 }) async {
   var version = initialVersion;
-  var sawStale = false;
   Object? lastError;
   for (var attempt = 0; attempt < maxAttempts; attempt++) {
     final isLast = attempt >= maxAttempts - 1;
-    final useForce = sawStale && isLast;
     try {
-      return await operation(version, force: useForce);
+      return await operation(version, force: false);
     } catch (e) {
       lastError = e;
       final stale = parseStaleStockConflict(e);
       if (stale == null) {
         rethrow;
       }
-      sawStale = true;
-      version = stale.currentVersion;
       if (isLast) {
         throw stale;
       }
+      version = await refreshVersion?.call() ?? stale.currentVersion;
     }
   }
   if (lastError != null) {

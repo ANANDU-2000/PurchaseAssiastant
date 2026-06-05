@@ -60,6 +60,9 @@ Map<String, bool> sessionPermissions(Session session) {
 bool sessionCanStockEdit(Session session) =>
     sessionPermissions(session)['stock_edit'] == true;
 
+/// Staff and owners may open stock list/detail when stock_edit is granted.
+bool sessionCanStockView(Session session) => sessionCanStockEdit(session);
+
 bool sessionCanBarcodePrint(Session session) =>
     sessionPermissions(session)['barcode_print'] == true;
 

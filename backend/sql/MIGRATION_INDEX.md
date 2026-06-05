@@ -68,7 +68,8 @@ Revisions **026** and **027** are absent in git (jump **025** → **028**). Do n
 | 056 | `purchase_damage_reports` | Damage reports table |
 | 057 | `purchase_damage_reports_v2` | Damage report workflow columns |
 | 058 | `barcode_lookup_indexes` | Barcode lookup performance indexes |
-| 059 | `staff_activity_action_types_v2` | Extend `staff_activity_log` action_type CHECK (**head**) |
+| 059 | `staff_activity_action_types_v2` | Extend `staff_activity_log` action_type CHECK |
+| 060 | `stock_list_performance_indexes` | Stock list / low-stock / movement performance indexes (**head**) |
 
 Inspect live chain: `cd backend && python -m alembic heads` (production target: Render `harisree-db`, not Supabase)
 
@@ -119,6 +120,7 @@ Inspect live chain: `cd backend && python -m alembic heads` (production target: 
 | `057_purchase_damage_reports_v2.sql` | **057** | Damage reports v2 |
 | `058_barcode_lookup_perf.sql` | **058** | Barcode / item_code lookup indexes |
 | `059_staff_activity_action_types_v2.sql` | **059** | Staff activity action_type CHECK v2 |
+| `060_stock_list_performance_indexes.sql` | **060** | Stock list / low-stock / movement performance indexes |
 
 **Note:** `033_catalog_public_qr` is the Alembic **033** revision. `033b_*` is a sibling supplemental script — do not rename to `033_` (avoids runner sort confusion).
 
