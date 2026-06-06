@@ -32,6 +32,8 @@ class CatalogItemDefaultsEditForm extends StatefulWidget {
     this.canSetOpeningStock = false,
     this.onSetOpeningStock,
     this.nameError,
+    this.kgError,
+    this.ipbError,
   });
 
   final BuildContext pickerContext;
@@ -52,6 +54,8 @@ class CatalogItemDefaultsEditForm extends StatefulWidget {
   final bool canSetOpeningStock;
   final VoidCallback? onSetOpeningStock;
   final String? nameError;
+  final String? kgError;
+  final String? ipbError;
 
   @override
   State<CatalogItemDefaultsEditForm> createState() =>
@@ -75,6 +79,9 @@ class CatalogItemDefaultsEditFormState
   void initState() {
     super.initState();
     _unit = widget.initialUnit;
+    if (_unit == 'box' && widget.ipbCtrl.text.trim().isEmpty) {
+      widget.ipbCtrl.text = '1';
+    }
     _nameFocus = FocusNode();
     _codeFocus = FocusNode();
     _hsnFocus = FocusNode();
@@ -206,7 +213,12 @@ class CatalogItemDefaultsEditFormState
             );
             if (!mounted) return;
             if (id != null) {
-              setState(() => _unit = id == none ? null : id);
+              setState(() {
+                _unit = id == none ? null : id;
+                if (_unit == 'box' && widget.ipbCtrl.text.trim().isEmpty) {
+                  widget.ipbCtrl.text = '1';
+                }
+              });
             }
           },
           child: Align(
@@ -227,6 +239,7 @@ class CatalogItemDefaultsEditFormState
                   ? 'Kg per bag *'
                   : 'Kg per bag (optional)',
               hintText: 'e.g. 50',
+              errorText: widget.kgError,
               helperText: _unit == 'bag'
                   ? 'Required when stock unit is bag'
                   : 'Set unit to bag if this item is stocked in bags',
@@ -251,10 +264,14 @@ class CatalogItemDefaultsEditFormState
             scrollPadding: sp,
             keyboardType:
                 const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Items per box *',
               hintText: 'How many pieces per box',
+              errorText: widget.ipbError,
+              helperText:
+                  'Use 1 for single retail boxes (e.g. 400GM BOX). Required for owner commit-stock.',
             ),
+            onChanged: (_) => setState(() {}),
           ),
         ],
         if (_unit == 'tin') ...[
@@ -357,6 +374,64 @@ class CatalogItemDefaultsEditFormState
   String? get selectedUnit => _unit;
 }
 
+class CatalogItemDefaultsValidation {
+  const CatalogItemDefaultsValidation({
+    this.nameError,
+    this.kgError,
+    this.ipbError,
+  });
+
+  final String? nameError;
+  final String? kgError;
+  final String? ipbError;
+
+  bool get ok =>
+      nameError == null && kgError == null && ipbError == null;
+}
+
+CatalogItemDefaultsValidation validateCatalogItemDefaults({
+  required String? unit,
+  required TextEditingController nameCtrl,
+  required TextEditingController codeCtrl,
+  required TextEditingController kgCtrl,
+  required TextEditingController ipbCtrl,
+}) {
+  String? nameError;
+  String? kgError;
+  String? ipbError;
+
+  if (nameCtrl.text.trim().isEmpty) {
+    nameError = 'Item name is required';
+  }
+
+  final codeRaw = normalizeItemCode(codeCtrl.text);
+  if (codeRaw.isNotEmpty && !isValidItemCode(codeRaw)) {
+    nameError ??=
+        'Use A-Z, 0-9, hyphen, underscore only for item code';
+  }
+
+  if (unit == 'bag') {
+    final kgParsed = parseOptionalKgPerBag(kgCtrl.text);
+    if (kgParsed == null || kgParsed <= 0) {
+      kgError = 'Kg per bag is required when unit is bag';
+    }
+  }
+
+  if (unit == 'box') {
+    final ipb = double.tryParse(ipbCtrl.text.trim());
+    if (ipb == null || ipb <= 0) {
+      ipbError =
+          'Enter items per box (use 1 if each box is one unit)';
+    }
+  }
+
+  return CatalogItemDefaultsValidation(
+    nameError: nameError,
+    kgError: kgError,
+    ipbError: ipbError,
+  );
+}
+
 /// Persists catalog defaults from controllers. Returns true on success.
 Future<bool> saveCatalogItemDefaults({
   required WidgetRef ref,
@@ -375,22 +450,26 @@ Future<bool> saveCatalogItemDefaults({
   final session = ref.read(sessionProvider);
   if (session == null) return false;
 
-  final codeRaw = normalizeItemCode(codeCtrl.text);
-  if (codeRaw.isNotEmpty && !isValidItemCode(codeRaw)) {
+  final validation = validateCatalogItemDefaults(
+    unit: unit,
+    nameCtrl: nameCtrl,
+    codeCtrl: codeCtrl,
+    kgCtrl: kgCtrl,
+    ipbCtrl: ipbCtrl,
+  );
+  if (!validation.ok) {
     throw DioException(
       requestOptions: RequestOptions(path: ''),
-      error: 'Use A-Z, 0-9, hyphen, underscore only for item code',
+      error: validation.ipbError ??
+          validation.kgError ??
+          validation.nameError ??
+          'Please check your input',
     );
   }
+
+  final codeRaw = normalizeItemCode(codeCtrl.text);
 
   final kgParsed = unit == 'bag' ? parseOptionalKgPerBag(kgCtrl.text) : null;
-  if (unit == 'bag' && (kgParsed == null || kgParsed <= 0)) {
-    throw DioException(
-      requestOptions: RequestOptions(path: ''),
-      error: 'Kg per bag is required when unit is bag',
-    );
-  }
-
   final tax = double.tryParse(taxCtrl.text.trim());
   final ipb = double.tryParse(ipbCtrl.text.trim());
   final wpt = double.tryParse(wptCtrl.text.trim());

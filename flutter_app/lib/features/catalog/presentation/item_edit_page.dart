@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/api/fastapi_error.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/dashboard_role.dart';
 import '../../../core/auth/session_notifier.dart';
@@ -38,6 +39,8 @@ class _ItemEditPageState extends ConsumerState<ItemEditPage> {
   bool _saving = false;
   bool _controllersBound = false;
   String? _nameError;
+  String? _kgError;
+  String? _ipbError;
 
   @override
   void initState() {
@@ -133,12 +136,27 @@ class _ItemEditPageState extends ConsumerState<ItemEditPage> {
   Future<void> _save() async {
     final form = _formKey.currentState;
     if (form == null) return;
-    if (_nameCtrl.text.trim().isEmpty) {
-      setState(() => _nameError = 'Item name is required');
+
+    final validation = validateCatalogItemDefaults(
+      unit: form.selectedUnit,
+      nameCtrl: _nameCtrl,
+      codeCtrl: _codeCtrl,
+      kgCtrl: _kgCtrl,
+      ipbCtrl: _ipbCtrl,
+    );
+    if (!validation.ok) {
+      setState(() {
+        _nameError = validation.nameError;
+        _kgError = validation.kgError;
+        _ipbError = validation.ipbError;
+      });
       return;
     }
+
     setState(() {
       _nameError = null;
+      _kgError = null;
+      _ipbError = null;
       _saving = true;
     });
     try {
@@ -165,9 +183,37 @@ class _ItemEditPageState extends ConsumerState<ItemEditPage> {
       }
     } on DioException catch (e) {
       if (!mounted) return;
-      final msg = e.error is String ? e.error as String : friendlyApiError(e);
+      final inline = e.error is String ? e.error as String : null;
+      if (inline != null) {
+        if (inline.toLowerCase().contains('items per box') ||
+            inline.toLowerCase().contains('default_items_per_box')) {
+          setState(() => _ipbError = inline);
+          return;
+        }
+        if (inline.toLowerCase().contains('kg per bag') ||
+            inline.toLowerCase().contains('default_kg_per_bag')) {
+          setState(() => _kgError = inline);
+          return;
+        }
+        if (inline.toLowerCase().contains('item name') ||
+            inline.toLowerCase().contains('item code')) {
+          setState(() => _nameError = inline);
+          return;
+        }
+      }
+      final apiMsg = fastApiDetailString(e.response?.data) ?? friendlyApiError(e);
+      if (apiMsg.toLowerCase().contains('default_items_per_box') ||
+          apiMsg.toLowerCase().contains('items per box')) {
+        setState(() => _ipbError = apiMsg);
+        return;
+      }
+      if (apiMsg.toLowerCase().contains('default_kg_per_bag') ||
+          apiMsg.toLowerCase().contains('kg per bag')) {
+        setState(() => _kgError = apiMsg);
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg)),
+        SnackBar(content: Text(apiMsg)),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -268,6 +314,8 @@ class _ItemEditPageState extends ConsumerState<ItemEditPage> {
             key: _formKey,
             pickerContext: context,
             nameError: _nameError,
+            kgError: _kgError,
+            ipbError: _ipbError,
             nameCtrl: _nameCtrl,
             codeCtrl: _codeCtrl,
             hsnCtrl: _hsnCtrl,

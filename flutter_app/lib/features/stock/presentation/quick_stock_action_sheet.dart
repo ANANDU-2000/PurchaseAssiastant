@@ -15,6 +15,8 @@ import '../../../core/providers/business_aggregates_invalidation.dart'
 import '../../../core/providers/deferred_invalidation.dart';
 import '../../../core/providers/item_detail_providers.dart';
 import '../../../core/notifications/local_notifications_service.dart';
+import '../../../core/providers/home_owner_dashboard_providers.dart'
+    show stockAuditPeriodProvider;
 import '../../../core/providers/staff_home_providers.dart';
 import '../../../core/providers/stock_providers.dart'
     show
