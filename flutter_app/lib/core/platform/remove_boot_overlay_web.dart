@@ -3,9 +3,25 @@ import 'dart:html' as html;
 
 bool _removed = false;
 
-/// Hides the static `#boot` label from [web/index.html] once Flutter has painted.
+/// Hides the static `#boot` / `#splash` overlays from [web/index.html] once Flutter
+/// has painted bootstrap UI (not on the engine's empty first frame).
 void removeBootOverlayIfPresent() {
   if (_removed) return;
   _removed = true;
-  html.document.getElementById('boot')?.remove();
+  void hide() {
+    html.document.getElementById('boot')?.remove();
+    final splash = html.document.getElementById('splash');
+    if (splash == null) return;
+    if (splash.dataset['dismissed'] == '1') return;
+    splash.dataset['dismissed'] = '1';
+    splash.classes.add('removing');
+    Future<void>.delayed(const Duration(milliseconds: 280), () {
+      splash.remove();
+    });
+  }
+
+  // One animation frame after Dart build so the canvas shows spinner/login shell.
+  html.window.requestAnimationFrame((_) {
+    hide();
+  });
 }

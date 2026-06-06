@@ -53,6 +53,7 @@ GOOGLE_ID="${GOOGLE_OAUTH_CLIENT_ID:-}"
 echo "Building web (API=${API_URL})..."
 flutter build web --release \
   -O2 \
+  --pwa-strategy=none \
   --no-web-resources-cdn \
   --no-source-maps \
   --no-wasm-dry-run \

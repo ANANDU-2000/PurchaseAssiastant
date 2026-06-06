@@ -24,7 +24,7 @@ _flutter.loader.load({
       // Do not await runApp before removing #boot: async main() keeps the promise pending
       // until heavy init finishes, so "Starting…" looked like a frozen white screen.
       const finished = appRunner.runApp();
-      boot?.remove();
+      // Keep #boot / #splash until Dart paints bootstrap UI (removeBootOverlayIfPresent).
       await finished;
     } catch (e) {
       console.error(e);

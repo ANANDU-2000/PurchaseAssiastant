@@ -111,6 +111,26 @@ if (-not $shell.Ok) {
   $ok = $false
 }
 
+Write-Host ""
+Write-Host "=== Vercel service worker (must not reload-loop) ===" -ForegroundColor Cyan
+try {
+  $swUrl = "$vercelCanonical/flutter_service_worker.js"
+  $sw = Invoke-WebRequest -Uri $swUrl -UseBasicParsing -TimeoutSec 30
+  if ($sw.StatusCode -eq 200 -and $sw.Content -match 'client\.navigate|unregister\(\)') {
+    Write-Host "WARN: $swUrl looks like a reload-loop SW — redeploy with --pwa-strategy=none and no SW register." -ForegroundColor Yellow
+  } elseif ($sw.StatusCode -eq 404) {
+    Write-Host "OK: no service worker file (expected with --pwa-strategy=none)." -ForegroundColor Green
+  } else {
+    Write-Host "OK: $swUrl present (review if caching is intentional)." -ForegroundColor Green
+  }
+} catch {
+  if ($_.Exception.Response.StatusCode.value__ -eq 404) {
+    Write-Host "OK: no service worker file (expected)." -ForegroundColor Green
+  } else {
+    Write-Host "WARN: could not fetch service worker: $($_.Exception.Message)" -ForegroundColor Yellow
+  }
+}
+
 if (-not $ok) {
   Write-Host ""
   Write-Host "Deploy smoke FAILED." -ForegroundColor Red

@@ -155,21 +155,9 @@
       function setBoot(msg) {
         if (boot && !boot.classList.contains('boot-error')) boot.textContent = msg;
       }
-      function hideSplash() {
-        var el = document.getElementById('splash');
-        if (!el || el.dataset.dismissed === '1') return;
-        el.dataset.dismissed = '1';
-        el.classList.add('removing');
-        window.setTimeout(function () {
-          try {
-            el.remove();
-          } catch (_) {}
-        }, 280);
-        if (boot) boot.style.display = 'none';
-      }
-      // Only hide splash once Flutter paints — do NOT auto-hide at 15s (caused blank
-      // gray screen on desktop while main.dart.js still loads / API wakes up).
-      window.addEventListener('flutter-first-frame', hideSplash);
+      // Do NOT hide splash on flutter-first-frame — the engine's first frame can be
+      // empty/transparent, which left a blank gray body on desktop. Dart removes
+      // #splash via removeBootOverlayIfPresent() once bootstrap UI is painted.
       window.setTimeout(function () {
         setBoot('Loading app (large download on first visit)…');
       }, 12000);
@@ -205,15 +193,27 @@
     })();
   </script>
   <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function () {
-        navigator.serviceWorker
-          .register('flutter_service_worker.js', { scope: '/' })
-          .catch(function (err) {
-            console.warn('Service worker registration failed:', err);
-          });
+    // Harisree on Vercel: do NOT register a service worker. Older deploys shipped a
+    // self-unregistering SW that reloads the tab in a loop → permanent blank screen.
+    (function () {
+      if (!('serviceWorker' in navigator)) return;
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        return Promise.all(
+          regs.map(function (r) {
+            return r.unregister();
+          }),
+        );
+      }).then(function () {
+        if (!navigator.serviceWorker.controller) return;
+        try {
+          var k = 'harisree_sw_purged_v2';
+          if (!sessionStorage.getItem(k)) {
+            sessionStorage.setItem(k, '1');
+            location.reload();
+          }
+        } catch (_) {}
       });
-    }
+    })();
   </script>
   <script src="flutter_bootstrap.js" defer></script>
 </body>
