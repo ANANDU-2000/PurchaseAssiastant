@@ -136,6 +136,14 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
   ProviderContainer? _container;
   Object? _error;
   String? _errorStackTrace;
+  String _splashStatus = 'Connecting to server…';
+  Timer? _splashSlowTimer;
+
+  @override
+  void dispose() {
+    _splashSlowTimer?.cancel();
+    super.dispose();
+  }
 
   void _bootstrapLog(String message) {
     if (kDebugMode) {
@@ -146,6 +154,12 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
   @override
   void initState() {
     super.initState();
+    _splashSlowTimer = Timer(const Duration(seconds: 10), () {
+      if (!mounted || _container != null) return;
+      setState(() {
+        _splashStatus = 'Server waking up, please wait…';
+      });
+    });
     unawaited(_prepare());
   }
 
@@ -184,6 +198,18 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
       } catch (_) {
         // Offline / timeout — splash/login handle retry.
         _bootstrapLog('session.restore skipped or failed (non-fatal)');
+      }
+
+      if (kIsWeb && kReleaseMode) {
+        try {
+          final api = container.read(hexaApiProvider);
+          await ApiWarmupService.pingHealth(api).timeout(
+            const Duration(seconds: 60),
+          );
+          _bootstrapLog('health/ready OK (web release)');
+        } catch (_) {
+          _bootstrapLog('health ping skipped or timed out (non-fatal)');
+        }
       }
 
       unawaited(() async {
@@ -233,6 +259,7 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
       OfflineSyncService.start(container);
 
       if (!mounted) return;
+      _splashSlowTimer?.cancel();
       _bootstrapLog('starting HexaApp');
       setState(() => _container = container);
       // Defer PDF locale setup: avoids blocking cold start path.
@@ -358,13 +385,39 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
 
     if (_container == null) {
       return _bootstrapChrome(
-        const Scaffold(
+        Scaffold(
           backgroundColor: Colors.transparent,
-          body: Center(
-            child: SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(strokeWidth: 2),
+          body: SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Harisree',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: HexaColors.brandPrimary,
+                          ),
+                    ),
+                    const SizedBox(height: 24),
+                    const SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      _splashStatus,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: const Color(0xFF64748B),
+                          ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),

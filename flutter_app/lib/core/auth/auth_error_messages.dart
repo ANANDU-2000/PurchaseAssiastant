@@ -141,7 +141,7 @@ String friendlyAuthError(
 }) {
   if (error is DioException) {
     // Reachability first: no HTTP body / wrong host / API stopped — not "wrong password".
-    if (_isNetworkError(error)) {
+    if (dioIsNetworkError(error)) {
       final hint = _connectionUnreachableHint(error);
       if (hint != null) return hint;
       if (kIsWeb) {
@@ -181,7 +181,7 @@ String friendlyAuthError(
 
 String friendlyGoogleSignInError(Object error) {
   if (error is DioException) {
-    if (_isNetworkError(error)) {
+    if (dioIsNetworkError(error)) {
       final hint = _connectionUnreachableHint(error);
       if (hint != null) {
         return '$hint You can use email sign-in instead.';
@@ -210,7 +210,7 @@ String friendlyGoogleSignInError(Object error) {
   return 'Google sign-in did not work. Try again or use email sign-in.';
 }
 
-bool _isNetworkError(DioException e) {
+bool dioIsNetworkError(DioException e) {
   // badResponse = HTTP error status; never treat as "offline" (even if body is empty).
   if (e.type == DioExceptionType.badResponse) return false;
   if (e.response != null) return false;
@@ -332,7 +332,7 @@ String friendlyApiError(Object error, {bool forAssistant = false}) {
           ? 'Assistant hit a server error. Please try again in a moment.'
           : 'Something went wrong on our side. Please try again.';
     }
-    if (_isNetworkError(error)) {
+    if (dioIsNetworkError(error)) {
       final hint = _connectionUnreachableHint(error);
       if (hint != null) {
         return forAssistant

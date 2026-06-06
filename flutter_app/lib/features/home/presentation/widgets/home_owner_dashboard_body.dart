@@ -6,6 +6,7 @@ import '../../../../core/router/shell_navigation.dart';
 import '../../../../features/shell/shell_branch_provider.dart';
 
 import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../../core/design_system/hexa_responsive.dart';
 import '../../../../core/json_coerce.dart';
 import '../../../../core/providers/delivery_pipeline_provider.dart';
@@ -17,6 +18,7 @@ import 'home_analytics_helpers.dart';
 import 'home_owner_quick_actions.dart';
 import 'home_purchase_control_center.dart';
 import 'home_warehouse_activity_feed.dart';
+import 'home_recent_changes_section.dart' show HomeSectionSkeleton;
 import '../../../../shared/widgets/warehouse_units_breakdown_line.dart';
 
 /// Owner dashboard: alert strip → KPI grid → purchases → activity (compact).
@@ -26,6 +28,32 @@ class HomeOwnerDashboardBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final gap = HexaResponsive.sectionGap(context);
+    final dashState = ref.watch(homeDashboardDataProvider);
+    if (dashState.refreshing &&
+        dashState.snapshot.data == HomeDashboardData.empty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(HexaOp.cardPadding),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const HomeSectionSkeleton(rows: 4),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Loading dashboard…',
+                    style: HexaOp.caption(context),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     final status = ref.watch(stockStatusCountsProvider).valueOrNull ?? const {};
     final low = coerceToInt(status['low']) + coerceToInt(status['critical']);
     final out = coerceToInt(status['out']);
@@ -34,9 +62,9 @@ class HomeOwnerDashboardBody extends ConsumerWidget {
     final pipeline = ref.watch(deliveryPipelineProvider).valueOrNull;
     var pending = deliveryPipelinePendingCount(pipeline);
     if (pending == 0) {
-      pending = ref.watch(homeDashboardDataProvider).snapshot.data.pendingDeliveryCount;
+      pending = dashState.snapshot.data.pendingDeliveryCount;
     }
-    final dash = ref.watch(homeDashboardDataProvider).snapshot.data;
+    final dash = dashState.snapshot.data;
     final sh = dash.stockInHand;
     final HomeInventorySummary? invSummary = sh != null
         ? HomeInventorySummary(

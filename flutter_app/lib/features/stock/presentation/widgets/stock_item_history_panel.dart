@@ -90,11 +90,22 @@ class _StockItemHistoryPanelState extends ConsumerState<StockItemHistoryPanel> {
   ) {
     return auditAsync.when(
       loading: () => const ListSkeleton(rowCount: 8),
-      error: (e, _) => FriendlyLoadError(
-        message: 'Could not load stock history',
-        subtitle: 'Please check your connection and try again.',
-        onRetry: () => ref.invalidate(stockItemAuditProvider(widget.itemId)),
-      ),
+      error: (e, _) {
+        if (widget.compact) {
+          return Center(
+            child: TextButton(
+              onPressed: () =>
+                  ref.invalidate(stockItemAuditProvider(widget.itemId)),
+              child: const Text('Could not load history — tap to retry'),
+            ),
+          );
+        }
+        return FriendlyLoadError(
+          message: 'Could not load stock history',
+          subtitle: 'Please check your connection and try again.',
+          onRetry: () => ref.invalidate(stockItemAuditProvider(widget.itemId)),
+        );
+      },
       data: (rows) {
         final filtered = [
           for (final r in rows)

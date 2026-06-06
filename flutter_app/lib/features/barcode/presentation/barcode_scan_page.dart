@@ -93,6 +93,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
   bool _cameraPermanent = false;
   Timer? _safariNoDetectTimer;
   bool _safariUploadNudgeShown = false;
+  bool _uploadBannerDismissed = false;
   bool _hadDetectThisVisit = false;
   bool _scanConfirmed = false;
   String? _lookupLabel;
@@ -1023,18 +1024,63 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
     required int pendingSync,
   }) {
     return [
-          if (safariUpload)
-            MaterialBanner(
-              content: const Text(
-                'Live camera scan needs iOS 17 or newer in Safari. '
-                'Upload a barcode photo or use manual search below.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: _busy ? null : _scanFromImage,
-                  child: const Text('Upload photo'),
+          if (safariUpload && !_uploadBannerDismissed)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: Material(
+                color: const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFCD34D)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.info_outline_rounded,
+                        size: 20,
+                        color: Color(0xFFCA8A04),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'Live camera scanner requires iOS 17+ or Chrome browser. '
+                              'Tap below to photograph the barcode instead.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF92400E),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton(
+                                onPressed: _busy ? null : _scanFromImage,
+                                child: const Text('Upload barcode photo'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Dismiss',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () =>
+                            setState(() => _uploadBannerDismissed = true),
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
           if (pendingSync > 0)
             MaterialBanner(

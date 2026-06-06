@@ -7,7 +7,7 @@ import '../auth/auth_error_messages.dart' show dioIsAutoRetryableTransport;
 /// Retries safe, idempotent requests up to [maxAttempts] on transient failures.
 /// Register on the main [Dio] after other interceptors; [onError] order is last-registered first.
 class DioAutoRetryInterceptor extends Interceptor {
-  DioAutoRetryInterceptor(this._dio, {this.maxAttempts = 4});
+  DioAutoRetryInterceptor(this._dio, {this.maxAttempts = 3});
 
   final Dio _dio;
   /// Counts automatic refetches after the first failure (bounded by [maxAttempts]).
@@ -20,7 +20,7 @@ class DioAutoRetryInterceptor extends Interceptor {
     if (dioIsAutoRetryableTransport(err)) return true;
     final sc = err.response?.statusCode;
     // 503: short backoff only (local DB cold start / transient outage).
-    return sc == 502 || sc == 503 || sc == 504 || sc == 500;
+    return sc == 502 || sc == 503 || sc == 504;
   }
 
   int _delayMs(DioException err, int attempt) {

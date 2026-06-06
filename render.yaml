@@ -16,6 +16,7 @@ services:
     branch: main
     buildCommand: pip install -r requirements.txt
     # Run migrations BEFORE the new instance binds $PORT (avoids 503 / port-scan timeout).
+    # Applies all pending revisions in backend/alembic/versions/ (e.g. 060_stock_list_performance_indexes).
     preDeployCommand: alembic upgrade head
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --log-level info
     healthCheckPath: /health/live

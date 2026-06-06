@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/auth_failure_policy.dart';
 import '../../../core/auth/provider_api_guard.dart';
 import '../../../core/auth/session_notifier.dart';
@@ -784,8 +785,17 @@ class _StockPageState extends ConsumerState<StockPage>
           : null;
       final isAuth = isStockListAuthFailure(err) ||
           (err is DioException && err.response?.statusCode == 401);
+      final dio = err is DioException ? err : null;
+      final serverError = !isAuth &&
+          dio != null &&
+          dio.response != null &&
+          !dioIsNetworkError(dio);
       body = FriendlyLoadError(
-        message: isAuth ? 'Sign in to load stock' : 'Unable to load stock',
+        message: isAuth
+            ? 'Sign in to load stock'
+            : serverError
+                ? 'Could not load stock. Server error — tap to retry.'
+                : 'Unable to load stock',
         subtitle: isAuth
             ? 'Warehouse list needs a valid session. Sign in and try again.'
             : blocked == 'tab_not_visible'

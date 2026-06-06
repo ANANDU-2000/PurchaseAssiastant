@@ -1,6 +1,8 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/providers/operations_providers.dart';
 import '../../../core/widgets/friendly_load_error.dart';
@@ -38,12 +40,18 @@ class _ReportsStockTabState extends ConsumerState<ReportsStockTab> {
 
     return ops.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(
-        child: FriendlyLoadError(
-          message: 'Could not load stock intel',
-          onRetry: () => ref.invalidate(operationalReportsProvider),
-        ),
-      ),
+      error: (e, _) {
+        final dio = e is DioException ? e : null;
+        final offline = dio != null && dioIsNetworkError(dio);
+        return Center(
+          child: FriendlyLoadError(
+            message: offline
+                ? 'Could not load stock intel — check connection'
+                : 'Could not load stock intel. Server error — tap to retry.',
+            onRetry: () => ref.invalidate(operationalReportsProvider),
+          ),
+        );
+      },
       data: (_) {
         final items = ref.watch(filteredReportsStockItemsProvider);
         final chip = ref.watch(reportsStockChipFilterProvider);

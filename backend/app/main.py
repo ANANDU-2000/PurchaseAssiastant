@@ -530,7 +530,8 @@ if settings.trusted_hosts:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
 
 app.include_router(health.router)
-app.include_router(internal_cron.router)
+if (settings.whatsapp_reports_cron_secret or "").strip():
+    app.include_router(internal_cron.router)
 app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(entries.router)
@@ -542,10 +543,12 @@ app.include_router(report_views.router)
 app.include_router(search.router)
 app.include_router(analytics.router)
 app.include_router(dashboard.router)
-app.include_router(price_intelligence.router)
+if settings.enable_ai:
+    app.include_router(price_intelligence.router)
 app.include_router(catalog.router)
 app.include_router(contacts.router)
-app.include_router(media.router)
+if settings.s3_bucket:
+    app.include_router(media.router)
 app.include_router(public_items.router)
 app.include_router(public_barcode.router)
 app.include_router(realtime.router)

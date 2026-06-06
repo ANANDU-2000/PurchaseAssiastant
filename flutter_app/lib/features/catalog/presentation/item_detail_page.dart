@@ -56,7 +56,7 @@ class ItemDetailPage extends ConsumerWidget {
         child: bundleAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, __) => FriendlyLoadError(
-            message: 'Could not load item detail',
+            message: 'Could not load item. Tap to retry.',
             onRetry: () => ref.invalidate(itemDetailBundleProvider(itemId)),
           ),
           data: (bundle) {
@@ -110,12 +110,12 @@ class ItemDetailPage extends ConsumerWidget {
           },
         ),
       ),
-      bottomNavigationBar: desktop
-          ? null
-          : _ItemStickyActions(
+      bottomNavigationBar: bundleAsync.hasValue && !bundleAsync.hasError && !desktop
+          ? _ItemStickyActions(
               itemId: itemId,
               itemName: (bundleAsync.valueOrNull?.catalogItem['name']?.toString() ?? '').trim(),
-            ),
+            )
+          : null,
     );
   }
 

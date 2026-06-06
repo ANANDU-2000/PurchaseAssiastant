@@ -1297,11 +1297,18 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
               skipLoadingOnReload: false,
               skipLoadingOnRefresh: true,
               loading: () => const ListSkeleton(),
-              error: (_, __) => FriendlyLoadError(
-                onRetry: () => unawaited(_refreshHistory()),
-                message: 'Showing saved purchases — reconnecting…',
-                subtitle: kFriendlyLoadNetworkSubtitle,
-              ),
+              error: (e, _) {
+                final dio = e is DioException ? e : null;
+                final offline =
+                    dio != null && dioIsNetworkError(dio);
+                return FriendlyLoadError(
+                  onRetry: () => unawaited(_refreshHistory()),
+                  message: offline
+                      ? 'Showing saved purchases — reconnecting…'
+                      : 'Could not load purchases. Server error — tap to retry.',
+                  subtitle: offline ? kFriendlyLoadNetworkSubtitle : null,
+                );
+              },
               data: (List<TradePurchase> items) {
                 final visible = _buildVisibleSorted(items, searchQ);
                 final showLocalWipRow = localWip != null &&

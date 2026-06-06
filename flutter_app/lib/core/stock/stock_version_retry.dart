@@ -1,5 +1,16 @@
 import 'package:dio/dio.dart';
 
+/// Thrown when a stock write hits a DB constraint (409 integrity_error) — not a version conflict.
+class StockIntegrityError implements Exception {
+  StockIntegrityError();
+
+  static const userMessage =
+      'Database schema not up to date. Ask owner to update the server.';
+
+  @override
+  String toString() => userMessage;
+}
+
 /// Thrown after stock save retries are exhausted (409 [STALE_STOCK_VERSION]).
 class StaleStockConflict implements Exception {
   StaleStockConflict({
@@ -23,6 +34,27 @@ int? stockVersionFromItem(Map<String, dynamic> item) {
   if (v is int) return v;
   if (v is num) return v.toInt();
   return int.tryParse(v?.toString() ?? '');
+}
+
+/// Parses 409 integrity_error (missing migration / CHECK constraint) — do not retry.
+StockIntegrityError? parseStockIntegrityError(Object error) {
+  if (error is StockIntegrityError) return error;
+  if (error is! DioException || error.response?.statusCode != 409) {
+    return null;
+  }
+  final data = error.response?.data;
+  if (data is! Map) return null;
+  final detail = data['detail'];
+  if (detail is String && detail.trim() == 'integrity_error') {
+    return StockIntegrityError();
+  }
+  if (detail is Map) {
+    final code = detail['code']?.toString() ?? '';
+    if (code == 'integrity_error') {
+      return StockIntegrityError();
+    }
+  }
+  return null;
 }
 
 /// Parses 409 stock-version conflicts from API error body.
@@ -77,6 +109,25 @@ Future<T> runWithStockVersionRetry<T>({
       return await operation(version, force: false);
     } catch (e) {
       lastError = e;
+      final integrity = parseStockIntegrityError(e);
+      if (integrity != null) {
+        throw integrity;
+      }
+      if (e is DioException && e.response?.statusCode == 409) {
+        final data = e.response?.data;
+        if (data is Map) {
+          final detail = data['detail'];
+          if (detail is Map) {
+            final code = detail['code']?.toString() ?? '';
+            if (code != 'STALE_STOCK_VERSION' &&
+                code != 'STOCK_VERSION_CONFLICT') {
+              rethrow;
+            }
+          } else if (detail is! String || detail.trim() != 'integrity_error') {
+            rethrow;
+          }
+        }
+      }
       final stale = parseStaleStockConflict(e);
       if (stale == null) {
         rethrow;
