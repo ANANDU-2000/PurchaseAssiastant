@@ -67,7 +67,6 @@ class _AppForegroundListenerState extends ConsumerState<AppForegroundListener>
       }
       // Hold API until JWT refresh completes — prevents 401 storms on web tab resume.
       ref.read(authResumeGateProvider.notifier).state = true;
-      ref.read(authRefreshInFlightProvider.notifier).state = true;
       ref.read(appForegroundProvider.notifier).state = true;
       ref.read(appLastForegroundAtProvider.notifier).state = DateTime.now();
       _resumeDebounce?.cancel();
@@ -79,41 +78,41 @@ class _AppForegroundListenerState extends ConsumerState<AppForegroundListener>
   }
 
   Future<void> _onReturnedToForeground() async {
-    final session = ref.read(sessionProvider);
-    if (session == null) {
+    try {
+      final session = ref.read(sessionProvider);
+      if (session == null) return;
+      try {
+        await ref.read(sessionProvider.notifier).silentRefreshIfNeeded();
+      } catch (_) {
+        // Keep session; Dio interceptor will refresh on next call.
+      }
+      if (!mounted) return;
+      try {
+        ref.read(authApiGateProvider.notifier).clearSuspend();
+      } catch (_) {}
+      final now = DateTime.now();
+      if (_lastForegroundRefreshAt != null &&
+          now.difference(_lastForegroundRefreshAt!) <
+              const Duration(seconds: 2)) {
+        return;
+      }
+      _lastForegroundRefreshAt = now;
+      if (_lastWarehouseInvalidateAt != null &&
+          now.difference(_lastWarehouseInvalidateAt!) <
+              const Duration(seconds: 30)) {
+        ref.invalidate(realtimeInvalidationProvider);
+        return;
+      }
+      _lastWarehouseInvalidateAt = now;
+      invalidateStaffDeliverySurfacesLight(ref);
+      invalidateWarehouseSurfacesLight(ref);
+      ref.invalidate(realtimeInvalidationProvider);
+    } finally {
       if (mounted) {
         ref.read(authResumeGateProvider.notifier).state = false;
         ref.read(authRefreshInFlightProvider.notifier).state = false;
       }
-      return;
     }
-    try {
-      await ref.read(sessionProvider.notifier).silentRefreshIfNeeded();
-    } catch (_) {
-      // Keep session; Dio interceptor will refresh on next call.
-    }
-    if (!mounted) return;
-    ref.read(authResumeGateProvider.notifier).state = false;
-    try {
-      ref.read(authApiGateProvider.notifier).clearSuspend();
-    } catch (_) {}
-    final now = DateTime.now();
-    if (_lastForegroundRefreshAt != null &&
-        now.difference(_lastForegroundRefreshAt!) <
-            const Duration(seconds: 2)) {
-      return;
-    }
-    _lastForegroundRefreshAt = now;
-    if (_lastWarehouseInvalidateAt != null &&
-        now.difference(_lastWarehouseInvalidateAt!) <
-            const Duration(seconds: 30)) {
-      ref.invalidate(realtimeInvalidationProvider);
-      return;
-    }
-    _lastWarehouseInvalidateAt = now;
-    invalidateStaffDeliverySurfacesLight(ref);
-    invalidateWarehouseSurfacesLight(ref);
-    ref.invalidate(realtimeInvalidationProvider);
   }
 
   @override

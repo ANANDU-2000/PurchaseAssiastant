@@ -12,12 +12,18 @@ bool isStockListAuthFailure(Object? error) {
   if (error is! StockListFetchBlockedException) return false;
   switch (error.reason) {
     case 'no_session':
-    case 'api_gate':
     case 'business_mismatch':
       return true;
+    case 'api_gate':
     case 'tab_not_visible':
       return false;
     default:
       return false;
   }
+}
+
+/// Transient pause (auth refresh, tab hidden) — not a sign-in failure.
+bool isStockListTransientBlock(Object? error) {
+  if (error is! StockListFetchBlockedException) return false;
+  return error.reason == 'api_gate' || error.reason == 'tab_not_visible';
 }

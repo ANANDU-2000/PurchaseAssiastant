@@ -174,6 +174,8 @@ class _StockPageState extends ConsumerState<StockPage>
   Future<void> _retryStockAfterAuthOrApiBlock() async {
     ref.read(authApiGateProvider.notifier).reset();
     ref.read(authSessionExpiredProvider.notifier).clear();
+    ref.read(authRefreshInFlightProvider.notifier).state = false;
+    ref.read(authResumeGateProvider.notifier).state = false;
     final session = ref.read(sessionProvider);
     try {
       await ref
@@ -697,11 +699,13 @@ class _StockPageState extends ConsumerState<StockPage>
       }
     });
 
-    ref.listen<bool>(auth401CircuitOpenProvider, (prev, next) {
-      if (next && mounted) {
+    ref.listen<bool>(authBlockApiRequestsProvider, (prev, blocked) {
+      if (prev == true && blocked == false && mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          context.go('/login');
+          _resetMerged();
+          ref.invalidate(stockListProvider);
+          ref.invalidate(stockStatusCountsProvider);
         });
       }
     });
@@ -752,28 +756,51 @@ class _StockPageState extends ConsumerState<StockPage>
     final showDebounceProgress = _debounce?.isActive ?? false;
 
     final authExpired = ref.watch(authSessionExpiredProvider);
-    final authCircuit = ref.watch(auth401CircuitOpenProvider);
+    final authGate = ref.watch(authApiGateProvider);
+    final authCircuit = authGate.circuitOpen;
+    final authRefreshBusy = ref.watch(authRefreshInFlightProvider);
+    final authResumeBusy = ref.watch(authResumeGateProvider);
+    final authRestoring = (authGate.suspended || authRefreshBusy || authResumeBusy) &&
+        !authExpired &&
+        !authCircuit;
     final sessionForAuth = ref.watch(sessionProvider);
     final apiDegraded = ref.watch(apiDegradedProvider);
-    final authBlocked = authExpired ||
-        authCircuit ||
-        (sessionForAuth == null && !listAsync.isLoading);
+    final authBlocked = authExpired || (authCircuit && sessionForAuth == null);
+    final authRecovery = authCircuit && sessionForAuth != null;
     final apiLikelyDown = apiDegraded != null &&
         !apiDegraded.toLowerCase().contains('session');
 
     Widget body;
-    if (authBlocked) {
-      final stillSignedIn = sessionForAuth != null;
+    if (authRestoring && sessionForAuth != null) {
+      body = Column(
+        children: [
+          const LinearProgressIndicator(minHeight: 2),
+          Expanded(
+            child: Center(
+              child: Text(
+                'Restoring your session…',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF64748B),
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (authBlocked) {
       body = FriendlyLoadError(
-        message: apiLikelyDown && stillSignedIn
-            ? 'Cloud API unavailable'
-            : 'Sign in to load stock',
-        subtitle: apiLikelyDown && stillSignedIn
+        message: 'Session expired',
+        subtitle:
+            'Your sign-in is no longer valid. Tap Retry to sign in again and load stock.',
+        onRetry: () => unawaited(_retryStockAfterAuthOrApiBlock()),
+      );
+    } else if (authRecovery) {
+      body = FriendlyLoadError(
+        message: apiLikelyDown ? 'Cloud API unavailable' : 'Connection paused',
+        subtitle: apiLikelyDown
             ? apiDegraded
-            : stillSignedIn
-                ? 'Requests were blocked after auth errors. Tap Retry — '
-                    'sign in again only if Retry does not load stock.'
-                : 'Warehouse list needs a valid session. Sign in and try again.',
+            : 'Auth was interrupted. Tap Retry to reload stock.',
         onRetry: () => unawaited(_retryStockAfterAuthOrApiBlock()),
       );
     } else if (data == null && listAsync.isLoading) {
@@ -783,33 +810,47 @@ class _StockPageState extends ConsumerState<StockPage>
       final blocked = err is StockListFetchBlockedException
           ? err.reason
           : null;
-      final isAuth = isStockListAuthFailure(err) ||
-          (err is DioException && err.response?.statusCode == 401);
-      final dio = err is DioException ? err : null;
-      final serverError = !isAuth &&
-          dio != null &&
-          dio.response != null &&
-          !dioIsNetworkError(dio);
-      body = FriendlyLoadError(
-        message: isAuth
-            ? 'Sign in to load stock'
-            : serverError
-                ? 'Could not load stock. Server error — tap to retry.'
-                : 'Unable to load stock',
-        subtitle: isAuth
-            ? 'Warehouse list needs a valid session. Sign in and try again.'
-            : blocked == 'tab_not_visible'
-                ? 'Stock list paused while another tab is open. Switch back to Stock and tap Retry.'
-                : null,
-        onRetry: () {
-          if (isAuth) {
-            ref.read(authApiGateProvider.notifier).reset();
-          }
-          _resetMerged();
-          ref.invalidate(stockListProvider);
-          ref.invalidate(stockStatusCountsProvider);
-        },
-      );
+      if (isStockListTransientBlock(err) && sessionForAuth != null) {
+        body = Column(
+          children: [
+            const LinearProgressIndicator(minHeight: 2),
+            Expanded(
+              child: Center(
+                child: Text(
+                  blocked == 'tab_not_visible'
+                      ? 'Stock list paused — switch back to this tab…'
+                      : 'Connecting to cloud…',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFF64748B),
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ),
+            ),
+          ],
+        );
+      } else {
+        final isAuth = isStockListAuthFailure(err) ||
+            (err is DioException && err.response?.statusCode == 401);
+        final dio = err is DioException ? err : null;
+        final serverError = !isAuth &&
+            dio != null &&
+            dio.response != null &&
+            !dioIsNetworkError(dio);
+        body = FriendlyLoadError(
+          message: isAuth
+              ? 'Sign in to load stock'
+              : serverError
+                  ? 'Could not load stock. Server error — tap to retry.'
+                  : 'Unable to load stock',
+          subtitle: isAuth
+              ? 'Warehouse list needs a valid session. Sign in and try again.'
+              : blocked == 'tab_not_visible'
+                  ? 'Stock list paused while another tab is open. Switch back to Stock and tap Retry.'
+                  : null,
+          onRetry: () => unawaited(_retryStockAfterAuthOrApiBlock()),
+        );
+      }
     } else if (data != null) {
       body = _buildListBody(data: data, isReloading: isReloading);
     } else {

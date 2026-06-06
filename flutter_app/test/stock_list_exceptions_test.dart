@@ -19,4 +19,19 @@ void main() {
       isTrue,
     );
   });
+
+  test('api_gate is transient not auth failure', () {
+    expect(
+      isStockListAuthFailure(
+        const StockListFetchBlockedException('api_gate'),
+      ),
+      isFalse,
+    );
+    expect(
+      isStockListTransientBlock(
+        const StockListFetchBlockedException('api_gate'),
+      ),
+      isTrue,
+    );
+  });
 }
