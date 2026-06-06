@@ -11,7 +11,7 @@ import '../../../core/stock/stock_version_retry.dart';
 import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/json_coerce.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
-    show invalidateWarehouseSurfaces;
+    show invalidateWarehouseSurfacesLight;
 import '../../../core/providers/deferred_invalidation.dart';
 import '../../../core/providers/item_detail_providers.dart';
 import '../../../core/notifications/local_notifications_service.dart';
@@ -85,6 +85,7 @@ class _QuickStockActionBody extends ConsumerStatefulWidget {
 
 class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
   bool _saving = false;
+  int _refreshGeneration = 0;
   late Map<String, dynamic> _item;
   late final TextEditingController _qtyCtrl;
   late final TextEditingController _notesCtrl;
@@ -137,12 +138,13 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
   Future<bool> _refreshItemFromServer() async {
     final session = ref.read(sessionProvider);
     if (session == null) return false;
+    final gen = ++_refreshGeneration;
     try {
       final fresh = await ref.read(hexaApiProvider).getStockItem(
             businessId: session.primaryBusiness.id,
             itemId: _itemId,
           );
-      if (!mounted) return false;
+      if (!mounted || gen != _refreshGeneration || _saving) return false;
       await _applyFreshItem(fresh);
       return true;
     } catch (_) {
@@ -199,16 +201,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
   void _onSavePressed() {
     if (_saving) return;
     FocusScope.of(context).unfocus();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      unawaited(
-        _save().catchError((Object e, StackTrace st) {
-          if (!mounted) return;
-          setState(() => _saving = false);
-          _showSaveError(e);
-        }),
-      );
-    });
+    unawaited(_save());
   }
 
   @override
@@ -305,35 +298,64 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     }
   }
 
+  bool _persistLooksSuccessful(Map<String, dynamic>? saved, num parsed) {
+    if (saved == null) return false;
+    if (_mode == StockUpdateMode.physical) {
+      if (saved['id'] != null) return true;
+      if (saved['counted_qty'] != null) return true;
+      return false;
+    }
+    return saved['current_stock'] != null || saved.isNotEmpty;
+  }
+
+  Future<bool> _tryRecoverPhysicalSave(num parsed, Object error) async {
+    if (_mode != StockUpdateMode.physical) return false;
+    final session = ref.read(sessionProvider);
+    if (session == null) return false;
+    final isTimeout = error is DioException &&
+        (error.type == DioExceptionType.receiveTimeout ||
+            error.type == DioExceptionType.sendTimeout ||
+            error.type == DioExceptionType.connectionError);
+    if (!isTimeout) return false;
+    try {
+      final fresh = await ref.read(hexaApiProvider).getStockItem(
+            businessId: session.primaryBusiness.id,
+            itemId: _itemId,
+          );
+      final phys = coerceToDoubleNullable(fresh['physical_stock_qty']);
+      if (phys == null || !phys.isFinite) return false;
+      if ((phys - parsed.toDouble()).abs() > 0.001) return false;
+      _applyOptimisticListPatch(fresh, parsed);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _completeSaveSuccess(
-    Map<String, dynamic>? saved,
+    Map<String, dynamic> saved,
     num parsed, {
     required DateTime saveStarted,
   }) async {
-    if (saved == null) {
-      throw StateError('Could not save — session expired. Sign in and retry.');
-    }
     final elapsed = DateTime.now().difference(saveStarted);
     const minLoading = Duration(milliseconds: 300);
     if (elapsed < minLoading) {
       await Future<void>.delayed(minLoading - elapsed);
     }
     if (!mounted) return;
-    _applyOptimisticListPatch(saved, parsed);
-    unawaited(_afterSaveBackground(parsed));
-    if (!context.mounted) return;
     try {
       await HapticFeedback.mediumImpact();
     } catch (_) {}
-    if (!context.mounted) return;
+    if (!mounted) return;
     Navigator.of(context).pop(true);
-    if (widget.parentContext.mounted) {
-      showTopSnack(
-        widget.parentContext,
-        _mode == StockUpdateMode.system
-            ? 'System stock saved — $_name'
-            : 'Physical count saved — $_name',
-      );
+    if (!widget.parentContext.mounted) return;
+    showTopSnack(
+      widget.parentContext,
+      _mode == StockUpdateMode.system
+          ? 'System stock saved — $_name'
+          : 'Physical count saved — $_name',
+    );
+    if (_mode == StockUpdateMode.system) {
       showStockUndoSnackBar(
         context: widget.parentContext,
         ref: widget.parentRef,
@@ -365,13 +387,13 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
   }
 
   void _refreshListInBackground() {
-    invalidateWarehouseSurfaces(widget.parentRef, itemId: _itemId);
+    invalidateWarehouseSurfacesLight(widget.parentRef, itemId: _itemId);
     deferInvalidate(
       widget.parentRef,
       itemDetailBundleProvider(_itemId),
     );
     widget.parentRef.invalidate(stockAuditPeriodProvider);
-    widget.parentRef.invalidate(stockChangesFeedProvider);
+    deferInvalidate(widget.parentRef, stockChangesFeedProvider);
     widget.parentRef.invalidate(staffTodayActivityProvider);
     widget.parentRef.invalidate(staffTodaySummaryProvider);
   }
@@ -417,25 +439,76 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
       _saving = true;
       _saveError = null;
     });
+
+    Map<String, dynamic>? saved;
     try {
       try {
-        final saved = await _persistStock(
+        saved = await _persistStock(
           parsed,
           idempotencyKey: idempotencyKey,
         );
-        await _completeSaveSuccess(saved, parsed, saveStarted: saveStarted);
       } on StaleStockConflict {
         if (!mounted) return;
         await _refreshItemFromServer();
         if (!mounted) return;
-        final saved = await _persistStock(
+        saved = await _persistStock(
           parsed,
           idempotencyKey: idempotencyKey,
           force: true,
         );
-        await _completeSaveSuccess(saved, parsed, saveStarted: saveStarted);
       }
-    } catch (e) {
+
+      if (!mounted) return;
+      if (!_persistLooksSuccessful(saved, parsed)) {
+        _showSaveError(
+          StateError('Could not save — session expired. Sign in and retry.'),
+        );
+        return;
+      }
+
+      _applyOptimisticListPatch(saved, parsed);
+      unawaited(_afterSaveBackground(parsed));
+
+      try {
+        await _completeSaveSuccess(
+          saved!,
+          parsed,
+          saveStarted: saveStarted,
+        );
+      } catch (e, st) {
+        logSilencedApiError(e, st);
+        if (mounted) Navigator.of(context).pop(true);
+        if (widget.parentContext.mounted) {
+          showTopSnack(
+            widget.parentContext,
+            _mode == StockUpdateMode.system
+                ? 'System stock saved — $_name'
+                : 'Physical count saved — $_name',
+          );
+        }
+      }
+    } catch (e, st) {
+      if (await _tryRecoverPhysicalSave(parsed, e)) {
+        unawaited(_afterSaveBackground(parsed));
+        try {
+          await _completeSaveSuccess(
+            const {},
+            parsed,
+            saveStarted: saveStarted,
+          );
+        } catch (uiErr, uiSt) {
+          logSilencedApiError(uiErr, uiSt);
+          if (mounted) Navigator.of(context).pop(true);
+          if (widget.parentContext.mounted) {
+            showTopSnack(
+              widget.parentContext,
+              'Physical count saved — $_name',
+            );
+          }
+        }
+        return;
+      }
+      logSilencedApiError(e, st);
       _showSaveError(e);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -446,6 +519,10 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
   Widget build(BuildContext context) {
     final canSave = _canSave;
     final stockLabel = stockDisplayPrimary(_current, _unit);
+    final enteredQty = _parseEnteredQty();
+    final editingLabel = enteredQty != null
+        ? stockDisplayPrimary(enteredQty, _unit)
+        : stockLabel;
     final lastPhysical = _lastPhysicalLabel;
     final systemQty = coerceToDouble(_item['current_stock']);
 
@@ -486,7 +563,9 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
                       : 'System now: ',
                 ),
                 TextSpan(
-                  text: stockLabel,
+                  text: _mode == StockUpdateMode.physical
+                      ? editingLabel
+                      : stockLabel,
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
                     color: _mode == StockUpdateMode.physical
