@@ -205,7 +205,6 @@ class StaffHomePage extends ConsumerWidget {
           onRefresh: () async => _invalidateStaffHomeRefresh(ref),
           child: DesktopPageShell(
             maxContentWidth: 560,
-            minWidth: 900,
             child: ListView(
             padding: const EdgeInsets.fromLTRB(
               HexaOp.pageGutter,

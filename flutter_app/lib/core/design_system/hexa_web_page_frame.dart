@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'hexa_responsive.dart';
@@ -24,6 +26,7 @@ class HexaWebPageFrame extends StatelessWidget {
     if (fullWidth || !context.isDesktopLayout) {
       return child;
     }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < 200) {
@@ -34,14 +37,29 @@ class HexaWebPageFrame extends StatelessWidget {
             ),
           );
         }
+
+        final width = math.min(constraints.maxWidth, maxWidth);
+        final framed = Padding(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+          child: child,
+        );
+
+        if (constraints.hasBoundedHeight) {
+          return Align(
+            alignment: Alignment.topCenter,
+            child: SizedBox(
+              width: width,
+              height: constraints.maxHeight,
+              child: framed,
+            ),
+          );
+        }
+
         return Align(
           alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: maxWidth),
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-              child: child,
-            ),
+          child: SizedBox(
+            width: width,
+            child: framed,
           ),
         );
       },

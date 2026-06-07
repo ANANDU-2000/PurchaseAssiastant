@@ -1262,6 +1262,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
         ],
       ),
       body: HexaWebPageFrame(
+        fullWidth: true,
         maxWidth: 800,
         child: session == null
           ? _SignInPrompt(onTap: () => context.go('/login'))

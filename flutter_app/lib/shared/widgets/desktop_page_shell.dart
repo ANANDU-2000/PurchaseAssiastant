@@ -1,10 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../core/design_system/hexa_responsive.dart';
 
 /// Centers page content on wide screens with a max readable width.
 ///
-/// On phone/tablet (< [minWidth]), [child] is full width. Use [fullWidth] for
+/// On narrow widths (< [minWidth]), [child] is full width. Use [fullWidth] for
 /// pages that already implement their own master-detail layout on desktop.
 class DesktopPageShell extends StatelessWidget {
   const DesktopPageShell({
@@ -38,10 +40,25 @@ class DesktopPageShell extends StatelessWidget {
         if (constraints.maxWidth < minWidth) {
           return content;
         }
+
+        final width = math.min(constraints.maxWidth, maxContentWidth);
+
+        // Align-only wrapping gives scrollables / Expanded unbounded height → blank UI.
+        if (constraints.hasBoundedHeight) {
+          return Align(
+            alignment: Alignment.topCenter,
+            child: SizedBox(
+              width: width,
+              height: constraints.maxHeight,
+              child: content,
+            ),
+          );
+        }
+
         return Align(
           alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: maxContentWidth),
+          child: SizedBox(
+            width: width,
             child: content,
           ),
         );
