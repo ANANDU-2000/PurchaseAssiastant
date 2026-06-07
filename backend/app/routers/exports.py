@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import re
 import uuid
 import zipfile
 from collections import defaultdict
-from datetime import date
-from typing import Annotated, Literal
+from datetime import date, timedelta
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -20,7 +21,7 @@ from starlette.responses import Response
 
 from app.database import get_db
 from app.deps import require_permission
-from app.models import Business, Membership, TradePurchase, TradePurchaseLine
+from app.models import Business, CatalogItem, Membership, StockAudit, Supplier, TradePurchase, TradePurchaseLine
 from app.services import trade_query as tq
 from app.services.export_files import (
     build_purchase_order_pdf,
@@ -278,5 +279,137 @@ async def get_purchases_month_pdf(
     return Response(
         content=content,
         media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@router.get("/backup/export")
+async def get_backup_export_json(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_permission("export_access"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Owner JSON bundle: catalog, suppliers, 90-day purchases, recent stock audits."""
+    del _m
+    today = date.today()
+    d_from = today - timedelta(days=89)
+
+    catalog_rows = (
+        await db.execute(
+            select(CatalogItem).where(
+                CatalogItem.business_id == business_id,
+                CatalogItem.deleted_at.is_(None),
+            )
+        )
+    ).scalars().all()
+    supplier_rows = (
+        await db.execute(
+            select(Supplier).where(Supplier.business_id == business_id)
+        )
+    ).scalars().all()
+
+    conds = [
+        TradePurchase.business_id == business_id,
+        tq.trade_purchase_status_in_reports(),
+        TradePurchase.purchase_date >= d_from,
+        TradePurchase.purchase_date <= today,
+    ]
+    pr = await db.execute(
+        select(TradePurchase)
+        .where(*conds)
+        .options(selectinload(TradePurchase.supplier_row))
+        .order_by(TradePurchase.purchase_date.desc())
+        .limit(2000)
+    )
+    purchases = list(pr.scalars().all())
+    purchase_ids = [p.id for p in purchases]
+    lines_by_purchase: dict[uuid.UUID, list[TradePurchaseLine]] = defaultdict(list)
+    if purchase_ids:
+        lr = await db.execute(
+            select(TradePurchaseLine).where(
+                TradePurchaseLine.trade_purchase_id.in_(purchase_ids)
+            )
+        )
+        for ln in lr.scalars().all():
+            lines_by_purchase[ln.trade_purchase_id].append(ln)
+
+    audit_rows = (
+        await db.execute(
+            select(StockAudit)
+            .where(
+                StockAudit.business_id == business_id,
+                StockAudit.created_at >= d_from,
+            )
+            .order_by(StockAudit.created_at.desc())
+            .limit(500)
+        )
+    ).scalars().all()
+
+    def _catalog_item_row(i: CatalogItem) -> dict[str, Any]:
+        return {
+            "id": str(i.id),
+            "name": i.name,
+            "item_code": i.item_code,
+            "barcode": i.barcode,
+            "default_unit": i.default_unit,
+            "default_kg_per_bag": float(i.default_kg_per_bag or 0) or None,
+            "default_items_per_box": float(i.default_items_per_box or 0) or None,
+        }
+
+    payload: dict[str, Any] = {
+        "exported_at": today.isoformat(),
+        "business_id": str(business_id),
+        "range_days": 90,
+        "catalog_items": [_catalog_item_row(i) for i in catalog_rows],
+        "suppliers": [
+            {
+                "id": str(s.id),
+                "name": s.name,
+                "phone": s.phone,
+                "gstin": s.gst_number,
+            }
+            for s in supplier_rows
+        ],
+        "purchases": [
+            {
+                "id": str(p.id),
+                "human_id": p.human_id,
+                "purchase_date": p.purchase_date.isoformat() if p.purchase_date else None,
+                "supplier_name": getattr(p.supplier_row, "name", None)
+                if p.supplier_row
+                else None,
+                "total_amount": float(p.total_amount or 0),
+                "lines": [
+                    {
+                        "catalog_item_id": str(ln.catalog_item_id)
+                        if ln.catalog_item_id
+                        else None,
+                        "item_name": ln.item_name,
+                        "qty": float(ln.qty or 0),
+                        "received_qty": float(ln.received_qty or 0)
+                        if ln.received_qty is not None
+                        else None,
+                    }
+                    for ln in lines_by_purchase.get(p.id, [])
+                ],
+            }
+            for p in purchases
+        ],
+        "stock_movements": [
+            {
+                "id": str(a.id),
+                "status": a.status,
+                "audit_date": a.audit_date.isoformat() if a.audit_date else None,
+                "notes": a.notes,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+            }
+            for a in audit_rows
+        ],
+    }
+    content = json.dumps(payload, default=str).encode("utf-8")
+    fname = f"harisree_backup_{today.strftime('%Y%m%d')}.json"
+    return Response(
+        content=content,
+        media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )

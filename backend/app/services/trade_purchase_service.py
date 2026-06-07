@@ -1724,12 +1724,52 @@ async def commit_trade_purchase_delivery(
         priority=PRIORITY_INFO,
         dedupe_key=f"delivery_received:{purchase_id}",
     )
+    stock_lines = [
+        u
+        for u in stock_updates
+        if not u.get("needs_unit_setup") and _dec(u.get("delta", 0)) > 0
+    ]
+    if stock_lines:
+        parts: list[str] = []
+        for u in stock_lines[:6]:
+            name = str(u.get("item_name") or u.get("name") or "Item")
+            delta = u.get("delta")
+            total = u.get("new_stock")
+            parts.append(f"{name} +{delta} (now {total})")
+        await _emit_delivery_notification(
+            db,
+            business_id=business_id,
+            tp=tp,
+            kind="stock_committed",
+            title=f"Stock added: {tp.human_id}",
+            body=" · ".join(parts),
+            priority=PRIORITY_INFO,
+            dedupe_key=f"stock_committed:{purchase_id}",
+            target_roles=["owner", "admin", "manager", "staff"],
+        )
     res2 = await db.execute(
         select(TradePurchase)
         .where(TradePurchase.id == purchase_id)
         .options(*_trade_purchase_load_opts())
     )
     return trade_purchase_to_out(res2.scalar_one(), stock_updates=stock_updates)
+
+
+async def try_auto_commit_trade_purchase_delivery(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    purchase_id: uuid.UUID,
+    user: User,
+) -> TradePurchaseOut | None:
+    """Idempotent auto-commit after verify when catalog units are ready."""
+    try:
+        return await commit_trade_purchase_delivery(
+            db, business_id, purchase_id, user
+        )
+    except UnitSetupRequiredError:
+        return None
+    except ValueError:
+        return None
 
 
 async def get_trade_purchase_delivery_pipeline(
@@ -1930,21 +1970,32 @@ async def verify_trade_purchase_delivery(
         business_id=business_id,
         tp=tp,
         kind="delivery_verified",
-        title=f"Verified: {tp.human_id}",
-        body=f"{tp.staff_verified_by_name} verified warehouse receipt — stock will sync when units are set",
+        title=f"{tp.human_id} verified by {tp.staff_verified_by_name}",
+        body=(
+            f"{tp.staff_verified_by_name} verified receipt — "
+            f"{total_received} received. Tap to review."
+        ),
         priority=PRIORITY_INFO,
         dedupe_key=f"delivery_verified:{purchase_id}",
+        target_roles=["owner", "admin", "manager"],
     )
-    await _emit_delivery_notification(
-        db,
-        business_id=business_id,
-        tp=tp,
-        kind="delivery_ready_to_commit",
-        title=f"Ready to commit: {tp.human_id}",
-        body="Staff verified delivery — retry commit from purchase detail if stock did not update",
-        priority=PRIORITY_INFO,
-        dedupe_key=f"delivery_ready_to_commit:{purchase_id}",
-    )
+    if tp.delivery_status == "staff_verified":
+        auto = await try_auto_commit_trade_purchase_delivery(
+            db, business_id, purchase_id, user
+        )
+        if auto is not None:
+            return auto
+        await _emit_delivery_notification(
+            db,
+            business_id=business_id,
+            tp=tp,
+            kind="delivery_ready_to_commit",
+            title=f"Commit needed: {tp.human_id}",
+            body="Verified — set up item units or tap Commit stock on purchase detail",
+            priority=PRIORITY_INFO,
+            dedupe_key=f"delivery_ready_to_commit:{purchase_id}",
+            target_roles=["owner", "admin", "manager"],
+        )
     return await get_trade_purchase(db, business_id, purchase_id)
 
 

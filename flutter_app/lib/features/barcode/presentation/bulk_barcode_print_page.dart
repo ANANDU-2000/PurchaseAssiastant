@@ -55,6 +55,7 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
   int _labelProgressTotal = 0;
   Future<void> Function()? _lastPdfRetry;
   bool _pdfCancelled = false;
+  DateTime? _lastPdfFlowAttempt;
   BuildContext? _pdfProgressDialogContext;
 
   @override
@@ -178,6 +179,13 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
     bool previewMode = false,
   }) async {
     if (_busy) return;
+    final now = DateTime.now();
+    if (_lastPdfFlowAttempt != null &&
+        now.difference(_lastPdfFlowAttempt!) <
+            const Duration(seconds: 2)) {
+      return;
+    }
+    _lastPdfFlowAttempt = now;
     if (_selected.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1291,11 +1299,11 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
                   'piece';
               final hasPending = it['has_pending_order'] == true;
               final pendingDays = (it['pending_order_days'] as num?)?.toInt();
-              final sub = barcode.isEmpty
-                  ? (code.isEmpty ? 'No barcode · $st' : '$code · $st')
-                  : (code.isEmpty
-                      ? '$barcode · $st'
-                      : '$code · $barcode · $st');
+              final labelCode =
+                  barcode.isNotEmpty ? barcode : code;
+              final sub = labelCode.isEmpty
+                  ? 'No barcode · $st'
+                  : '$labelCode · $st';
               return _BulkPrintRow(
                 selected: selected.contains(id),
                 isFirstRow: i == 0,

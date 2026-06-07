@@ -7,7 +7,11 @@ import '../api/fastapi_error.dart';
 import '../auth/auth_error_messages.dart';
 import '../auth/session_notifier.dart';
 import '../models/trade_purchase_models.dart';
-import '../providers/business_aggregates_invalidation.dart';
+import '../providers/business_aggregates_invalidation.dart'
+    show
+        invalidateNotificationSurfaces,
+        invalidateStaffDeliverySurfacesLight,
+        syncPurchaseStockFromPurchaseJson;
 import '../providers/catalog_providers.dart';
 import '../providers/trade_purchases_provider.dart';
 import '../utils/snack.dart';
@@ -149,6 +153,8 @@ Future<void> commitPurchaseStockFromList(
       purchaseId: purchase.id,
       body: updated,
     );
+    invalidateNotificationSurfaces(ref);
+    invalidateStaffDeliverySurfacesLight(ref);
     try {
       await ref.read(tradePurchasesListProvider.future);
     } catch (_) {}

@@ -15,6 +15,7 @@ import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
     show
         invalidateAfterPurchaseDelete,
+        invalidateNotificationSurfaces,
         invalidatePurchaseMetadataLight,
         invalidateStaffDeliverySurfacesLight,
         syncPurchaseStockFromPurchaseJson;
@@ -808,6 +809,7 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
       body: apiBody,
     );
     ref.invalidate(deliveryPipelineProvider);
+    invalidateNotificationSurfaces(ref);
     if (context.mounted) showTopSnack(context, message);
   }
 
@@ -988,7 +990,7 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
     if (changed && context.mounted) {
       showTopSnack(
         context,
-        'Verification saved. Stock updates apply after commit.',
+        'Verification saved. Stock is added automatically when item units are set up.',
       );
     }
   }

@@ -32,6 +32,7 @@ void invalidateStaffHomeCaches(Ref ref) {
   ref.invalidate(staffStockMismatchCountProvider);
   ref.invalidate(missingCodeItemsProvider);
   ref.invalidate(staffTradePurchasesHistoryProvider);
+  ref.invalidate(staffTradePurchasesForAlertsProvider);
   ref.invalidate(deliveryPipelineProvider);
   ref.invalidate(openingStockMissingProvider);
   ref.invalidate(stockStatusCountsProvider);
@@ -53,7 +54,16 @@ void invalidateStaffHomeSurfacesLight(dynamic ref) {
 bool _staffSessionActive(Ref ref) {
   final session = ref.watch(sessionProvider);
   final authExpired = ref.watch(authSessionExpiredProvider);
-  return session != null && !authExpired;
+  return session != null &&
+      !authExpired &&
+      session.primaryBusiness.role.toLowerCase() == 'staff';
+}
+
+void _assertStaffProviderRole(Ref ref) {
+  final role = ref.read(sessionProvider)?.primaryBusiness.role.toLowerCase();
+  if (role != 'staff') {
+    throw StateError('Staff provider called for non-staff session');
+  }
 }
 
 /// Floor role hint for staff home layout (client preference until API has staff_focus).
@@ -142,6 +152,8 @@ Future<Session?> _waitForSession(Ref ref, {int attempts = 40}) async {
 final staffTodayActivityProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   _providerKeepAlive(ref, const Duration(minutes: 2));
+  if (!_staffSessionActive(ref)) return [];
+  _assertStaffProviderRole(ref);
   final session = await _waitForSession(ref);
   if (session == null) return [];
   try {
@@ -200,29 +212,15 @@ final staffLowStockAlertsProvider =
   }
 });
 
-/// Low + out count for staff home attention (fallback when low list is empty).
+/// Low + out count for staff home attention (from staff-scoped low list only).
 final staffLowStockAttentionCountProvider = Provider.autoDispose<int>((ref) {
+  if (!_staffSessionActive(ref)) return 0;
+  _assertStaffProviderRole(ref);
   final alerts = ref.watch(staffLowStockAlertsProvider);
-  final counts = ref.watch(stockStatusCountsProvider);
   return alerts.when(
-    data: (rows) {
-      if (rows.isNotEmpty) return rows.length;
-      return counts.when(
-        data: (c) => (c['low'] ?? 0) + (c['out'] ?? 0),
-        loading: () => 0,
-        error: (_, __) => 0,
-      );
-    },
-    loading: () => counts.when(
-      data: (c) => (c['low'] ?? 0) + (c['out'] ?? 0),
-      loading: () => 0,
-      error: (_, __) => 0,
-    ),
-    error: (_, __) => counts.when(
-      data: (c) => (c['low'] ?? 0) + (c['out'] ?? 0),
-      loading: () => 0,
-      error: (_, __) => 0,
-    ),
+    data: (rows) => rows.length,
+    loading: () => 0,
+    error: (_, __) => 0,
   );
 });
 
@@ -343,7 +341,11 @@ StaffDeliverySections groupStaffDeliverySections(List<TradePurchase> purchases) 
 
 final staffDeliverySectionsProvider =
     Provider.autoDispose<AsyncValue<StaffDeliverySections>>((ref) {
-  final list = ref.watch(tradePurchasesForAlertsParsedProvider);
+  if (!_staffSessionActive(ref)) {
+    return const AsyncData(StaffDeliverySections());
+  }
+  _assertStaffProviderRole(ref);
+  final list = ref.watch(staffTradePurchasesForAlertsParsedProvider);
   return list.whenData(groupStaffDeliverySections);
 });
 
@@ -427,6 +429,10 @@ StaffTodayActivitySummary summarizeStaffToday({
 
 final staffTodaySummaryProvider =
     Provider.autoDispose<AsyncValue<StaffTodayActivitySummary>>((ref) {
+  if (!_staffSessionActive(ref)) {
+    return const AsyncData(StaffTodayActivitySummary());
+  }
+  _assertStaffProviderRole(ref);
   final activity = ref.watch(staffTodayActivityProvider);
   final audits = ref.watch(staffTodayStockWorkProvider);
   if (activity.isLoading || audits.isLoading) {

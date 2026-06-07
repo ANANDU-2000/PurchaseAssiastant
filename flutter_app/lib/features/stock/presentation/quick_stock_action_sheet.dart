@@ -12,13 +12,13 @@ import '../../../core/stock/stock_version_retry.dart';
 import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/json_coerce.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
-    show invalidateWarehouseSurfacesLight;
-import '../../../core/providers/deferred_invalidation.dart';
+    show invalidateWarehouseSurfacesAfterStockWrite;
+import '../../../core/providers/deferred_invalidation.dart'
+    show deferInvalidateDelayed;
 import '../../../core/providers/item_detail_providers.dart';
 import '../../../core/notifications/local_notifications_service.dart';
 import '../../../core/providers/home_owner_dashboard_providers.dart'
     show stockAuditPeriodProvider;
-import '../../../core/providers/staff_home_providers.dart';
 import '../../../core/providers/stock_providers.dart'
     show
         applyStockListRowPatch,
@@ -313,7 +313,37 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     return userFacingError(e);
   }
 
-  void _showSaveError(Object e) {
+  Future<bool> _showSaveError(
+    Object e, {
+    num? parsed,
+    DateTime? saveStarted,
+  }) async {
+    if (parsed != null && saveStarted != null) {
+      final recovered = await _verifySaveOnServer(parsed);
+      if (recovered != null && mounted) {
+        _applyOptimisticListPatch(recovered, parsed);
+        unawaited(_afterSaveBackground(parsed));
+        try {
+          await _completeSaveSuccess(
+            recovered,
+            parsed,
+            saveStarted: saveStarted,
+          );
+        } catch (err, st) {
+          logSilencedApiError(err, st);
+          if (mounted) Navigator.of(context).pop(true);
+          if (widget.parentContext.mounted) {
+            showTopSnack(
+              widget.parentContext,
+              _mode == StockUpdateMode.system
+                  ? 'System stock saved — $_name'
+                  : 'Physical count saved — $_name',
+            );
+          }
+        }
+        return true;
+      }
+    }
     final msg = _messageForSaveError(e);
     if (mounted) {
       setState(() => _saveError = msg);
@@ -321,14 +351,13 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     if (widget.parentContext.mounted) {
       showTopSnack(widget.parentContext, msg, isError: true);
     }
+    return false;
   }
 
   bool _persistLooksSuccessful(Map<String, dynamic>? saved, num parsed) {
     if (saved == null) return false;
     if (_mode == StockUpdateMode.physical) {
-      if (saved['id'] != null) return true;
-      if (saved['counted_qty'] != null) return true;
-      return false;
+      return saved.isNotEmpty;
     }
     return saved['current_stock'] != null || saved.isNotEmpty;
   }
@@ -417,14 +446,18 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
 
   void _applyOptimisticListPatch(Map<String, dynamic>? saved, num parsed) {
     if (_itemId.isEmpty) return;
+    final system = coerceToDouble(_item['current_stock']);
     var patch = _mode == StockUpdateMode.physical
-        ? stockListPatchFromPhysicalCount(saved ?? const {})
+        ? stockListPatchFromPhysicalCount(
+            saved ?? const {},
+            fallbackCountedQty: parsed,
+            fallbackSystemQty: system,
+          )
         : stockListPatchFromStockDetail(
             saved ?? const {},
             fallbackQty: parsed,
           );
     if (patch.isEmpty && _mode == StockUpdateMode.physical) {
-      final system = coerceToDouble(_item['current_stock']);
       final now = DateTime.now().toUtc().toIso8601String();
       patch = {
         'physical_stock_qty': parsed,
@@ -437,15 +470,16 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
   }
 
   void _refreshListInBackground() {
-    invalidateWarehouseSurfacesLight(widget.parentRef, itemId: _itemId);
-    deferInvalidate(
+    invalidateWarehouseSurfacesAfterStockWrite(
+      widget.parentRef,
+      itemId: _itemId,
+    );
+    deferInvalidateDelayed(
       widget.parentRef,
       itemDetailBundleProvider(_itemId),
     );
-    widget.parentRef.invalidate(stockAuditPeriodProvider);
-    deferInvalidate(widget.parentRef, stockChangesFeedProvider);
-    widget.parentRef.invalidate(staffTodayActivityProvider);
-    widget.parentRef.invalidate(staffTodaySummaryProvider);
+    deferInvalidateDelayed(widget.parentRef, stockAuditPeriodProvider);
+    deferInvalidateDelayed(widget.parentRef, stockChangesFeedProvider);
   }
 
   Future<void> _afterSaveBackground(num parsed) async {
@@ -515,9 +549,14 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         if (recovered != null) {
           saved = recovered;
         } else {
-          _showSaveError(
-            StateError('Could not confirm save. Check stock list and retry if needed.'),
+          final recoveredViaError = await _showSaveError(
+            StateError(
+              'Could not confirm save. Check stock list and retry if needed.',
+            ),
+            parsed: parsed,
+            saveStarted: saveStarted,
           );
+          if (recoveredViaError) return;
           return;
         }
       }
@@ -554,7 +593,12 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         return;
       }
       logSilencedApiError(e, st);
-      _showSaveError(e);
+      final recoveredViaError = await _showSaveError(
+        e,
+        parsed: parsed,
+        saveStarted: saveStarted,
+      );
+      if (recoveredViaError) return;
     } finally {
       if (mounted) setState(() => _saving = false);
     }

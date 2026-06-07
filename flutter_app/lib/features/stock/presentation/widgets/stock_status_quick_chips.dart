@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/providers/stock_providers.dart';
 import '../../../../core/theme/hexa_colors.dart';
+import 'stock_warehouse_filter_sheet.dart';
 
 /// All / Low / Out quick filters above the stock search bar.
 class StockStatusQuickChips extends ConsumerWidget {
@@ -17,40 +18,65 @@ class StockStatusQuickChips extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final counts = ref.watch(stockStatusCountsProvider).valueOrNull ?? const {};
+    final countsAsync = ref.watch(stockFilteredStatusCountsProvider);
+    final q = ref.watch(stockListQueryProvider);
+    final op = ref.watch(stockOperationalFiltersProvider);
+    final filterCount = countWarehouseActiveFilters(q, op);
+    final filtersActive = filterCount > 0 || stockListHasScopedFilters(q, op);
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 2),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        children: [
-          _chip(
-            label: 'All',
-            count: counts['all'],
-            icon: Icons.layers_outlined,
-            color: HexaColors.brandPrimary,
-            selected: selectedStatus == 'all',
-            onTap: () => onSelected('all'),
+    return countsAsync.when(
+      loading: () => const SizedBox(height: 36),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (counts) {
+        int? lowCount() => (counts['low'] ?? 0) + (counts['critical'] ?? 0);
+
+        int? countFor(String key, bool selected) {
+          if (filtersActive && !selected) return null;
+          return switch (key) {
+            'all' => counts['all'],
+            'low' => lowCount(),
+            'out' => counts['out'],
+            _ => counts[key],
+          };
+        }
+
+        final lowSelected =
+            selectedStatus == 'low' || selectedStatus == 'shortage';
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 2),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _chip(
+                label: 'All',
+                count: countFor('all', selectedStatus == 'all'),
+                icon: Icons.layers_outlined,
+                color: HexaColors.brandPrimary,
+                selected: selectedStatus == 'all',
+                onTap: () => onSelected('all'),
+              ),
+              _chip(
+                label: 'Low',
+                count: countFor('low', lowSelected),
+                icon: Icons.warning_amber_rounded,
+                color: const Color(0xFFE65100),
+                selected: lowSelected,
+                onTap: () => onSelected('shortage'),
+              ),
+              _chip(
+                label: 'Out',
+                count: countFor('out', selectedStatus == 'out'),
+                icon: Icons.remove_shopping_cart_outlined,
+                color: const Color(0xFFDC2626),
+                selected: selectedStatus == 'out',
+                onTap: () => onSelected('out'),
+              ),
+            ],
           ),
-          _chip(
-            label: 'Low',
-            count: (counts['low'] ?? 0) + (counts['critical'] ?? 0),
-            icon: Icons.warning_amber_rounded,
-            color: const Color(0xFFE65100),
-            selected: selectedStatus == 'low',
-            onTap: () => onSelected('low'),
-          ),
-          _chip(
-            label: 'Out',
-            count: counts['out'],
-            icon: Icons.remove_shopping_cart_outlined,
-            color: const Color(0xFFDC2626),
-            selected: selectedStatus == 'out',
-            onTap: () => onSelected('out'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -83,7 +109,7 @@ class StockStatusQuickChips extends ConsumerWidget {
               color: selected ? Colors.white : color,
             ),
           ),
-          if (count != null && count > 0) ...[
+          if (count != null) ...[
             const SizedBox(width: 4),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
@@ -93,11 +119,21 @@ class StockStatusQuickChips extends ConsumerWidget {
               ),
               child: Text(
                 count > 999 ? '999+' : '$count',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w900,
-                  color: selected ? Colors.white : Colors.white,
+                  color: Colors.white,
                 ),
+              ),
+            ),
+          ] else if (!selected) ...[
+            const SizedBox(width: 4),
+            Text(
+              '—',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: color.withValues(alpha: 0.6),
               ),
             ),
           ],

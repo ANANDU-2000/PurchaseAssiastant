@@ -93,8 +93,8 @@ def _arrive_and_verify(h, bid, pid, line_id: str, qty: str = "10"):
         },
     )
     assert ver.status_code == 200, ver.text
-    assert ver.json()["delivery_status"] in ("staff_verified", "partial")
-    assert ver.json()["delivery_status"] != "stock_committed"
+    status = ver.json()["delivery_status"]
+    assert status in ("staff_verified", "partial", "stock_committed")
     return ver.json()
 
 
@@ -108,7 +108,7 @@ def _commit_stock(h, bid, pid):
     return r.json()
 
 
-def test_verify_does_not_commit_stock_until_owner_commit():
+def test_verify_auto_commits_stock_when_units_ready():
     h, bid = _register_owner()
     iid, sup = _setup_item(h, bid)
     p = _create_purchase(h, bid, iid, sup)
@@ -118,14 +118,15 @@ def test_verify_does_not_commit_stock_until_owner_commit():
     assert Decimal(str(stock0.json()["current_stock"])) == Decimal("0")
 
     body = _arrive_and_verify(h, bid, pid, line_id)
-    assert body["delivery_status"] == "staff_verified"
+    assert body["delivery_status"] == "stock_committed"
 
     stock1 = client.get(f"/v1/businesses/{bid}/stock/{iid}", headers=h)
-    assert Decimal(str(stock1.json()["current_stock"])) == Decimal("0")
+    assert Decimal(str(stock1.json()["current_stock"])) == Decimal("10")
 
-    _commit_stock(h, bid, pid)
-    stock2 = client.get(f"/v1/businesses/{bid}/stock/{iid}", headers=h)
-    assert Decimal(str(stock2.json()["current_stock"])) == Decimal("10")
+
+def test_verify_does_not_commit_stock_until_owner_commit():
+    """Legacy name kept — verify now auto-commits when units are configured."""
+    test_verify_auto_commits_stock_when_units_ready()
 
 
 def test_commit_stock_increments_once():
@@ -133,14 +134,11 @@ def test_commit_stock_increments_once():
     iid, sup = _setup_item(h, bid)
     p = _create_purchase(h, bid, iid, sup)
     pid, line_id = p["id"], p["lines"][0]["id"]
-    _arrive_and_verify(h, bid, pid, line_id)
+    body = _arrive_and_verify(h, bid, pid, line_id)
+    assert body["delivery_status"] == "stock_committed"
 
     stock0 = client.get(f"/v1/businesses/{bid}/stock/{iid}", headers=h)
-    assert Decimal(str(stock0.json()["current_stock"])) == Decimal("0")
-
-    c1 = _commit_stock(h, bid, pid)
-    assert c1["is_delivered"] is True
-    assert (c1.get("stock_updates") or []) != []
+    assert Decimal(str(stock0.json()["current_stock"])) == Decimal("10")
 
     c2 = client.post(
         f"/v1/businesses/{bid}/trade-purchases/{pid}/commit-stock",
@@ -212,7 +210,7 @@ def test_staff_cannot_commit_stock_before_verify():
 
 
 def test_verify_records_received_qty_before_commit():
-    """Staff verify with partial received_qty; stock lands only on owner commit."""
+    """Partial verify keeps stock at zero until owner commit."""
     h, bid = _register_owner()
     iid, sup = _setup_item(h, bid)
     p = _create_purchase(h, bid, iid, sup, qty="10")
@@ -272,11 +270,16 @@ def test_staff_verify_then_owner_commit_adds_stock():
         },
     )
     assert ver.status_code == 200, ver.text
-    assert ver.json()["delivery_status"] == "staff_verified"
+    assert ver.json()["delivery_status"] == "stock_committed"
     stock = client.get(f"/v1/businesses/{bid}/stock/{iid}", headers=owner_h)
-    assert Decimal(str(stock.json()["current_stock"])) == Decimal("0")
+    assert Decimal(str(stock.json()["current_stock"])) == Decimal("10")
 
-    _commit_stock(owner_h, bid, pid)
+    c2 = client.post(
+        f"/v1/businesses/{bid}/trade-purchases/{pid}/commit-stock",
+        headers=owner_h,
+    )
+    assert c2.status_code == 200, c2.text
+    assert (c2.json().get("stock_updates") or []) == []
     stock = client.get(f"/v1/businesses/{bid}/stock/{iid}", headers=owner_h)
     assert Decimal(str(stock.json()["current_stock"])) == Decimal("10")
 

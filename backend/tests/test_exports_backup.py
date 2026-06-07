@@ -60,6 +60,19 @@ def test_backup_zip_contains_pdfs_when_empty_business():
     assert r.status_code == 404, r.text
 
 
+def test_backup_json_export():
+    h, bid = _register_owner()
+    r = client.get(f"/v1/businesses/{bid}/exports/backup/export", headers=h)
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("application/json")
+    body = r.json()
+    assert body["business_id"] == bid
+    assert "catalog_items" in body
+    assert "suppliers" in body
+    assert "purchases" in body
+    assert "stock_movements" in body
+
+
 def test_backup_zip_pdf_builders():
     from app.services.export_files import (
         build_purchase_order_pdf,

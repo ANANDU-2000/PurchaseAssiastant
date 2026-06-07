@@ -15,6 +15,7 @@ import '../../../core/services/backup_deliver.dart';
 import '../../../core/utils/snack.dart';
 
 const _kLastZipBackupKey = 'backup_last_zip_at';
+const _kLastJsonBackupKey = 'backup_last_json_at';
 const _kLastStockXlsxKey = 'backup_last_stock_xlsx_at';
 const _kLastPurchasesPdfKey = 'backup_last_purchases_pdf_at';
 
@@ -29,9 +30,11 @@ class BackupPage extends ConsumerStatefulWidget {
 class _BackupPageState extends ConsumerState<BackupPage> {
   String _preset = 'month';
   bool _busyZip = false;
+  bool _busyJson = false;
   bool _busyStock = false;
   bool _busyPdf = false;
   DateTime? _lastZipAt;
+  DateTime? _lastJsonAt;
   DateTime? _lastStockAt;
   DateTime? _lastPdfAt;
   bool _autoDaily = false;
@@ -47,6 +50,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     if (!mounted) return;
     setState(() {
       _lastZipAt = _ts(prefs.getInt(_kLastZipBackupKey));
+      _lastJsonAt = _ts(prefs.getInt(_kLastJsonBackupKey));
       _lastStockAt = _ts(prefs.getInt(_kLastStockXlsxKey));
       _lastPdfAt = _ts(prefs.getInt(_kLastPurchasesPdfKey));
       _autoDaily = prefs.getBool(kAutoDailyBackupEnabledKey) ?? false;
@@ -63,6 +67,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     if (!mounted) return;
     setState(() {
       if (key == _kLastZipBackupKey) _lastZipAt = now;
+      if (key == _kLastJsonBackupKey) _lastJsonAt = now;
       if (key == _kLastStockXlsxKey) _lastStockAt = now;
       if (key == _kLastPurchasesPdfKey) _lastPdfAt = now;
     });
@@ -217,6 +222,49 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     }
   }
 
+  Future<void> _downloadJson() async {
+    final blocked = _sessionBlockedMessage();
+    if (blocked != null) {
+      showTopSnack(context, blocked, isError: true);
+      return;
+    }
+    if (!await _ensureFreshSession()) return;
+    final session = ref.read(sessionProvider)!;
+    setState(() => _busyJson = true);
+    try {
+      final bytes = await ref.read(hexaApiProvider).downloadBusinessBackupJson(
+            businessId: session.primaryBusiness.id,
+          );
+      if (bytes.isEmpty) {
+        if (mounted) {
+          showTopSnack(context, 'Nothing to export.', isError: true);
+        }
+        return;
+      }
+      final day = DateFormat('yyyyMMdd').format(DateTime.now());
+      await _deliverAndRecord(
+        bytes: bytes,
+        filename: 'harisree_backup_$day.json',
+        mimeType: 'application/json',
+        shareText: 'Harisree JSON backup',
+        saveCategory: 'json',
+        recordKey: _kLastJsonBackupKey,
+      );
+    } on DioException catch (e) {
+      if (mounted) showTopSnack(context, friendlyApiError(e), isError: true);
+    } catch (_) {
+      if (mounted) {
+        showTopSnack(
+          context,
+          'JSON backup failed. Sign in again or try later.',
+          isError: true,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busyJson = false);
+    }
+  }
+
   Future<void> _downloadZip() async {
     final blocked = _sessionBlockedMessage();
     if (blocked != null) {
@@ -264,12 +312,12 @@ class _BackupPageState extends ConsumerState<BackupPage> {
   String _fmt(DateTime? t) =>
       t == null ? 'Never on this device' : DateFormat('dd MMM yyyy, HH:mm').format(t);
 
-  bool get _anyBusy => _busyZip || _busyStock || _busyPdf;
+  bool get _anyBusy => _busyZip || _busyJson || _busyStock || _busyPdf;
 
   String get _storageHint {
     if (kIsWeb) {
       return 'On web, files download to your browser Downloads folder. '
-          'Allow downloads for this site. Auto daily folder backup needs the Windows desktop app.';
+          'Allow downloads for this site. Daily auto-backup saves JSON once per day.';
     }
     if (!kIsWeb && _autoDaily) {
       return 'Daily auto-backup saves to Desktop/Harisree_Backups when you open the app. '
@@ -346,36 +394,64 @@ class _BackupPageState extends ConsumerState<BackupPage> {
             ),
           ),
           const SizedBox(height: 28),
-          if (!kIsWeb) ...[
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Daily auto-backup (desktop)'),
-              subtitle: Text(
-                'Once per day when you open the app: ZIP (PDFs + stock Excel) '
-                'and monthly purchases PDF → Desktop/Harisree_Backups',
-                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
-              ),
-              value: _autoDaily,
-              onChanged: _anyBusy
-                  ? null
-                  : (v) async {
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setBool(kAutoDailyBackupEnabledKey, v);
-                      if (!mounted) return;
-                      setState(() => _autoDaily = v);
-                      if (v) {
-                        unawaited(maybeRunDailyAutoBackup(ref));
-                        showTopSnack(
-                          context,
-                          'Auto-backup enabled — runs once daily when the app opens.',
-                        );
-                      }
-                    },
-            ),
-            const SizedBox(height: 20),
-          ],
-          Text('ZIP — purchases + stock (PDF)',
+          Text('JSON backup',
               style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Text(
+            'Catalog, suppliers, 90-day purchases, and stock audit history as JSON.',
+            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _anyBusy ? null : _downloadJson,
+            icon: _busyJson
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.data_object_outlined),
+            label: Text(_busyJson ? 'Preparing…' : 'Download JSON backup'),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              'Last JSON: ${_fmt(_lastJsonAt)}',
+              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+            ),
+          ),
+          const SizedBox(height: 28),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(kIsWeb ? 'Daily auto-backup (web)' : 'Daily auto-backup (desktop)'),
+            subtitle: Text(
+              kIsWeb
+                  ? 'Once per day when you open the app: JSON backup → browser Downloads'
+                  : 'Once per day when you open the app: ZIP (PDFs + stock Excel) '
+                      'and monthly purchases PDF → Desktop/Harisree_Backups',
+              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
+            ),
+            value: _autoDaily,
+            onChanged: _anyBusy
+                ? null
+                : (v) async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool(kAutoDailyBackupEnabledKey, v);
+                    if (!mounted) return;
+                    setState(() => _autoDaily = v);
+                    if (v) {
+                      unawaited(maybeRunDailyAutoBackup(ref));
+                      showTopSnack(
+                        context,
+                        'Auto-backup enabled — runs once daily when the app opens.',
+                      );
+                    }
+                  },
+          ),
+          const SizedBox(height: 20),
+          if (!kIsWeb) ...[
+            Text('ZIP — purchases + stock (PDF)',
+                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
           Text(
             'ZIP contains purchase summary PDF, one PDF per bill, supplier ledger PDFs, '
@@ -422,6 +498,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
               style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
             ),
           ),
+          ],
         ],
       ),
     );

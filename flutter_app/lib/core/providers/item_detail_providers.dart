@@ -3,8 +3,19 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/session_notifier.dart';
+import '../errors/user_facing_errors.dart';
 import 'catalog_providers.dart';
 import 'stock_providers.dart';
+
+Future<T> _fetchWithRetry<T>(Future<T> Function() load) async {
+  try {
+    return await load();
+  } catch (e, st) {
+    logSilencedApiError(e, st);
+    await Future<void>.delayed(const Duration(seconds: 2));
+    return await load();
+  }
+}
 
 class ItemDetailBundle {
   const ItemDetailBundle({
@@ -64,9 +75,12 @@ final itemDetailBundleProvider =
   Map<String, dynamic> catalog = {};
   try {
     catalog = Map<String, dynamic>.from(
-      await ref.read(catalogItemDetailProvider(itemId).future),
+      await _fetchWithRetry(
+        () => ref.read(catalogItemDetailProvider(itemId).future),
+      ),
     );
-  } catch (e) {
+  } catch (e, st) {
+    logSilencedApiError(e, st);
     catalogError = e;
   }
 
@@ -74,9 +88,12 @@ final itemDetailBundleProvider =
   Map<String, dynamic> stock = {};
   try {
     stock = Map<String, dynamic>.from(
-      await ref.read(stockItemDetailProvider(itemId).future),
+      await _fetchWithRetry(
+        () => ref.read(stockItemDetailProvider(itemId).future),
+      ),
     );
-  } catch (e) {
+  } catch (e, st) {
+    logSilencedApiError(e, st);
     stockError = e;
   }
 
@@ -84,9 +101,12 @@ final itemDetailBundleProvider =
   Map<String, dynamic> activity = {};
   try {
     activity = Map<String, dynamic>.from(
-      await ref.read(stockItemActivityProvider(itemId).future),
+      await _fetchWithRetry(
+        () => ref.read(stockItemActivityProvider(itemId).future),
+      ),
     );
-  } catch (e) {
+  } catch (e, st) {
+    logSilencedApiError(e, st);
     activityError = e;
   }
 

@@ -1,5 +1,33 @@
 import '../../core/json_coerce.dart';
 
+/// Internal metadata on optimistic patches — stripped before list render.
+const kStockListPatchAtKey = '_patchedAt';
+
+DateTime? _parsePatchOrRowTimestamp(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  return DateTime.tryParse(raw);
+}
+
+/// True when server row timestamps are newer than the optimistic patch.
+bool serverRowNewerThanPatch(
+  Map<String, dynamic> serverRow,
+  Map<String, dynamic> patch,
+) {
+  final patchedAt = _parsePatchOrRowTimestamp(
+    patch[kStockListPatchAtKey]?.toString(),
+  );
+  if (patchedAt == null) return true;
+  final candidates = <String?>[
+    serverRow['last_stock_updated_at']?.toString(),
+    serverRow['physical_stock_counted_at']?.toString(),
+  ];
+  for (final raw in candidates) {
+    final ts = _parsePatchOrRowTimestamp(raw);
+    if (ts != null && ts.isAfter(patchedAt)) return true;
+  }
+  return false;
+}
+
 /// Merges optimistic row fields into a stock list payload (items + total).
 Map<String, dynamic> mergeStockListRowMaps(
   Map<String, dynamic> data,
@@ -25,18 +53,34 @@ Map<String, dynamic> mergeStockListRowMap(
   if (id == null || id.isEmpty) return row;
   final patch = patches[id];
   if (patch == null || patch.isEmpty) return row;
-  return {...row, ...patch};
+  if (serverRowNewerThanPatch(row, patch)) return row;
+  final visible = Map<String, dynamic>.from(patch)
+    ..remove(kStockListPatchAtKey);
+  if (visible.isEmpty) return row;
+  return {...row, ...visible};
 }
 
 /// List row fields from POST `/stock/{id}/physical-count` response.
 Map<String, dynamic> stockListPatchFromPhysicalCount(
-  Map<String, dynamic> out,
-) {
-  final counted = coerceToDouble(out['counted_qty']);
-  final system = coerceToDouble(out['system_qty']);
-  final diff = coerceToDoubleNullable(out['difference_qty']) ?? (counted - system);
-  final at = out['counted_at']?.toString();
-  final by = out['counted_by_name']?.toString();
+  Map<String, dynamic> out, {
+  num? fallbackCountedQty,
+  num? fallbackSystemQty,
+}) {
+  final counted = coerceToDoubleNullable(out['physical_stock_qty']) ??
+      coerceToDoubleNullable(out['counted_qty']) ??
+      (fallbackCountedQty != null ? fallbackCountedQty.toDouble() : null);
+  final system = coerceToDoubleNullable(out['system_qty']) ??
+      coerceToDoubleNullable(out['current_stock']) ??
+      (fallbackSystemQty != null ? fallbackSystemQty.toDouble() : null);
+  if (counted == null) return const {};
+  final sys = system ?? 0.0;
+  final diff = coerceToDoubleNullable(out['physical_stock_difference_qty']) ??
+      coerceToDoubleNullable(out['difference_qty']) ??
+      (counted - sys);
+  final at = out['physical_stock_counted_at']?.toString() ??
+      out['counted_at']?.toString();
+  final by = out['physical_stock_counted_by']?.toString() ??
+      out['counted_by_name']?.toString();
   return {
     'physical_stock_qty': counted,
     'physical_stock_difference_qty': diff,

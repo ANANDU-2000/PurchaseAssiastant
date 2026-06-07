@@ -930,8 +930,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/purchase/edit/:purchaseId',
         name: 'purchase_edit',
+        redirect: (context, state) {
+          final id = state.pathParameters['purchaseId']?.trim() ?? '';
+          if (id.isEmpty) return '/purchase';
+          return null;
+        },
         pageBuilder: (context, state) {
-          final id = state.pathParameters['purchaseId']!;
+          final id = state.pathParameters['purchaseId']!.trim();
           return iosPushPage(
             key: state.pageKey,
             child: PurchaseEntryWizardV2(editingId: id),

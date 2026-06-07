@@ -28,6 +28,8 @@ import '../../features/purchase/providers/trade_purchase_detail_provider.dart';
 import '../models/trade_purchase_models.dart';
 import 'server_notifications_provider.dart';
 import 'warehouse_alerts_provider.dart';
+import 'deferred_invalidation.dart'
+    show deferInvalidateDelayed;
 
 // Debounce guard: prevent stampede when called from multiple sources within 400ms.
 Timer? _invalidateDebounce;
@@ -354,6 +356,23 @@ void invalidateWarehouseSurfacesLight(dynamic ref, {String? itemId}) {
   if (itemId != null && itemId.isNotEmpty) {
     invalidateWarehouseItemSurfacesLight(ref, itemId: itemId);
   }
+}
+
+/// After stock save — keep optimistic patch visible; defer list refetch ≥1.5s.
+void invalidateWarehouseSurfacesAfterStockWrite(dynamic ref, {String? itemId}) {
+  if (itemId != null && itemId.isNotEmpty) {
+    invalidateWarehouseItemSurfacesLight(ref, itemId: itemId);
+  }
+  const delay = Duration(milliseconds: 1500);
+  deferInvalidateDelayed(ref, stockListProvider, delay: delay);
+  deferInvalidateDelayed(ref, stockDeliveryIndicatorCountsProvider, delay: delay);
+  deferInvalidateDelayed(ref, bulkStockListProvider, delay: delay);
+  deferInvalidateDelayed(ref, stockStatusCountsProvider, delay: delay);
+  deferInvalidateDelayed(ref, stockOnHandTotalsProvider, delay: delay);
+  deferInvalidateDelayed(ref, staffLowStockAlertsProvider, delay: delay);
+  deferInvalidateDelayed(ref, warehouseAlertsProvider, delay: delay);
+  ref.invalidate(staffTodayActivityProvider);
+  ref.invalidate(staffTodaySummaryProvider);
 }
 
 void invalidateNotificationSurfaces(dynamic ref) {

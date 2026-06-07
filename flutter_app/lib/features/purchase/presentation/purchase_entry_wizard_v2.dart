@@ -18,6 +18,7 @@ import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/json_coerce.dart' show coerceToDoubleNullable;
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/widgets/form_field_scroll.dart';
+import '../../../core/widgets/hexa_page_error_boundary.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/utils/currency_utils.dart';
 import '../../../core/utils/snack.dart';
@@ -94,7 +95,9 @@ class PurchaseEntryWizardV2 extends ConsumerStatefulWidget {
 class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     with WidgetsBindingObserver {
   bool _isBootstrapping = false;
+  bool _bootstrapSlowConnection = false;
   String? _editBootstrapError;
+  Timer? _bootstrapSlowTimer;
   bool _isSaving = false;
   bool _itemSheetInFlight = false;
   bool _formDirty = false;
@@ -198,8 +201,24 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       if (!mounted) return;
       setState(() {
         _isBootstrapping = true;
+        _bootstrapSlowConnection = false;
         _editBootstrapError = null;
       });
+      _bootstrapSlowTimer?.cancel();
+      _bootstrapSlowTimer = Timer(const Duration(seconds: 8), () {
+        if (mounted && _isBootstrapping) {
+          setState(() => _bootstrapSlowConnection = true);
+        }
+      });
+      for (var i = 0; i < 30 && ref.read(sessionProvider) == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        if (!mounted) return;
+      }
+      try {
+        await ref.read(sessionProvider.notifier).ensureFreshSessionForExport();
+      } catch (_) {
+        // Proceed — interceptor may still attach token from store.
+      }
       Map<String, dynamic>? raw;
       try {
         raw = await notifier.loadFromEdit(widget.editingId!);
@@ -210,18 +229,22 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         }
       } catch (e) {
         if (!mounted) return;
+        _bootstrapSlowTimer?.cancel();
         setState(() {
           _editBootstrapError = friendlyApiError(e);
           _isBootstrapping = false;
+          _bootstrapSlowConnection = false;
         });
         return;
       }
       if (!mounted) return;
       if (raw == null) {
+        _bootstrapSlowTimer?.cancel();
         setState(() {
           _editBootstrapError = 'Could not load this purchase (timeout or incomplete data). '
               'Check your connection, pull to refresh login, then tap Retry.';
           _isBootstrapping = false;
+          _bootstrapSlowConnection = false;
         });
         return;
       }
@@ -230,7 +253,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       _loadedRemaining = (raw['remaining'] as num?)?.toDouble();
       if (!mounted) return;
       _syncControllersFromDraft();
-      setState(() => _isBootstrapping = false);
+      _bootstrapSlowTimer?.cancel();
+      setState(() {
+        _isBootstrapping = false;
+        _bootstrapSlowConnection = false;
+      });
     } else {
       if (!mounted) return;
       notifier.reset();
@@ -629,6 +656,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _draftDebounce?.cancel();
+    _bootstrapSlowTimer?.cancel();
     if ((widget.editingId == null || widget.editingId!.isEmpty) && _formDirty) {
       if (_cachedDraftJson == null) {
         _cacheDraftSnapshotForDispose();
@@ -2657,7 +2685,30 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       return Builder(
         builder: (bodyContext) {
           if (_isBootstrapping) {
-            return const Center(child: CircularProgressIndicator());
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const CircularProgressIndicator(),
+                    if (_bootstrapSlowConnection) ...[
+                      const SizedBox(height: 20),
+                      Text(
+                        'Slow connection — still loading purchase…',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(bodyContext).textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: () => _bootstrap(),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
           }
 
           if (_editBootstrapError != null) {
@@ -2767,7 +2818,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         ),
         body: SafeArea(
           bottom: false,
-          child: purchaseWizardMainContent(),
+          child: HexaPageErrorBoundary(
+            title: 'Purchase wizard',
+            onRetry: _bootstrap,
+            child: purchaseWizardMainContent(),
+          ),
         ),
       ),
     );

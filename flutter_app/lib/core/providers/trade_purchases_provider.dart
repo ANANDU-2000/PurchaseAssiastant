@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/auth_failure_policy.dart';
 import '../auth/session_notifier.dart' show activeSessionProvider, hexaApiProvider, sessionProvider;
 import '../../features/shell/shell_branch_provider.dart';
+import '../../features/staff/staff_shell_branch_provider.dart';
 import '../models/trade_purchase_models.dart';
 import '../auth/provider_api_guard.dart';
 import 'analytics_kpi_provider.dart' show analyticsDateRangeProvider;
@@ -62,6 +63,7 @@ String? _tradeListApiStatus(String primaryRaw, String? secondaryRaw) {
 void invalidateTradePurchaseCaches(dynamic ref) {
   ref.invalidate(tradePurchasesListProvider);
   ref.invalidate(tradePurchasesForAlertsProvider);
+  ref.invalidate(staffTradePurchasesForAlertsProvider);
   ref.invalidate(tradePurchasesCatalogIntelProvider);
 }
 
@@ -69,6 +71,7 @@ void invalidateTradePurchaseCaches(dynamic ref) {
 void invalidateTradePurchaseCachesFromContainer(ProviderContainer container) {
   container.invalidate(tradePurchasesListProvider);
   container.invalidate(tradePurchasesForAlertsProvider);
+  container.invalidate(staffTradePurchasesForAlertsProvider);
   container.invalidate(tradePurchasesCatalogIntelProvider);
 }
 
@@ -138,6 +141,35 @@ final tradePurchasesForAlertsProvider =
   return ref.read(hexaApiProvider).listTradePurchases(
         businessId: session.primaryBusiness.id,
         limit: kTradePurchasesAlertFetchLimit,
+      );
+});
+
+/// Staff home + deliveries — not gated on owner [ShellBranch.home].
+final staffTradePurchasesForAlertsProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final link = ref.keepAlive();
+  final t = Timer(const Duration(minutes: 8), link.close);
+  ref.onDispose(t.cancel);
+  if (providerSkipApi(ref)) return [];
+  final session = ref.watch(activeSessionProvider);
+  if (session == null) return [];
+  if (session.primaryBusiness.role.toLowerCase() != 'staff') return [];
+  if (!staffShellBranchIsVisible(ref, StaffShellBranch.home) &&
+      !staffShellBranchIsVisible(ref, StaffShellBranch.deliveries)) {
+    return [];
+  }
+  return ref.read(hexaApiProvider).listTradePurchases(
+        businessId: session.primaryBusiness.id,
+        limit: kTradePurchasesAlertFetchLimit,
+      );
+});
+
+final staffTradePurchasesForAlertsParsedProvider =
+    Provider.autoDispose<AsyncValue<List<TradePurchase>>>((ref) {
+  return ref.watch(staffTradePurchasesForAlertsProvider).whenData(
+        (maps) => maps
+            .map((e) => TradePurchase.fromJson(Map<String, dynamic>.from(e)))
+            .toList(),
       );
 });
 

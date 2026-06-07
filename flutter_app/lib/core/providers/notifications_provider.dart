@@ -458,12 +458,19 @@ final mergedNotificationFeedProvider =
   return list;
 });
 
-/// Badge count — always derived from the merged feed (same source as the list).
+/// Badge count — deduped by notification id from merged feed (same source as list).
 final notificationsUnreadCountProvider = Provider<int>((ref) {
-  return ref
-      .watch(mergedNotificationFeedProvider)
-      .where((e) => !e.isRead)
-      .length;
+  final link = ref.keepAlive();
+  final timer = Timer(const Duration(minutes: 5), link.close);
+  ref.onDispose(timer.cancel);
+  final feed = ref.watch(mergedNotificationFeedProvider);
+  final seen = <String>{};
+  var unread = 0;
+  for (final e in feed) {
+    if (e.isRead || !seen.add(e.id)) continue;
+    unread++;
+  }
+  return unread;
 });
 
 /// Stock / delivery rows shown in Alerts (matches staff home attention cards).

@@ -6,14 +6,14 @@ import 'package:intl/intl.dart';
 
 import '../auth/session_notifier.dart';
 import '../providers/prefs_provider.dart';
+import 'backup_deliver.dart';
 import 'backup_export.dart';
 
 const kAutoDailyBackupEnabledKey = 'backup_auto_daily_enabled';
 const kAutoDailyBackupLastYmdKey = 'backup_auto_daily_last_ymd';
 
-/// Runs at most once per calendar day on desktop/mobile when enabled.
+/// Runs at most once per calendar day when enabled (JSON on web; ZIP on desktop).
 Future<void> maybeRunDailyAutoBackup(WidgetRef ref) async {
-  if (kIsWeb) return;
   final prefs = ref.read(sharedPreferencesProvider);
   if (!(prefs.getBool(kAutoDailyBackupEnabledKey) ?? false)) return;
 
@@ -31,6 +31,30 @@ Future<void> maybeRunDailyAutoBackup(WidgetRef ref) async {
 
   final businessId = session.primaryBusiness.id;
   final api = ref.read(hexaApiProvider);
+
+  if (kIsWeb) {
+    try {
+      final jsonBytes = await api.downloadBusinessBackupJson(
+        businessId: businessId,
+      );
+      if (jsonBytes.isEmpty) return;
+
+      final ymdCompact = DateFormat('yyyyMMdd').format(DateTime.now());
+      final result = await deliverBackupFile(
+        bytes: jsonBytes,
+        filename: 'harisree_backup_$ymdCompact.json',
+        mimeType: 'application/json',
+        shareText: 'Harisree JSON backup',
+        saveCategory: 'json',
+      );
+      if (result.ok) {
+        await prefs.setString(kAutoDailyBackupLastYmdKey, ymd);
+      }
+    } catch (_) {
+      // Silent — user can retry manually from Export & Backup.
+    }
+    return;
+  }
 
   try {
     final zipBytes = await api.downloadBusinessBackup(

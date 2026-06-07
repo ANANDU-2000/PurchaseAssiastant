@@ -39,10 +39,23 @@ void applyStockPagePeriod(WidgetRef ref, HomePeriod p) {
 /// Client-side filters for stock list rows not covered by `/stock/list` query params.
 List<Map<String, dynamic>> filterStockListClient(
   List<Map<String, dynamic>> items,
-  StockOperationalFilters op,
-) {
-  if (!op.evictionOnly) return items;
-  return items.where((it) => it['needs_eviction'] == true).toList();
+  StockOperationalFilters op, {
+  StockListQuery? query,
+}) {
+  var out = items;
+  if (op.evictionOnly) {
+    out = out.where((it) => it['needs_eviction'] == true).toList();
+  }
+  final status = query?.status ?? 'all';
+  if (status == 'shortage') {
+    out = out
+        .where((it) {
+          final st = (it['stock_status']?.toString() ?? '').toLowerCase();
+          return st == 'low' || st == 'critical';
+        })
+        .toList();
+  }
+  return out;
 }
 
 double _num(dynamic v) {

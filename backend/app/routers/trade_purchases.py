@@ -492,7 +492,7 @@ async def commit_trade_purchase_delivery(
     purchase_id: uuid.UUID,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_role("owner", "manager", "super_admin"))],
+    _m: Annotated[Membership, Depends(require_role("owner", "manager", "admin", "super_admin"))],
 ):
     try:
         out = await tps.commit_trade_purchase_delivery(
@@ -514,6 +514,25 @@ async def commit_trade_purchase_delivery(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     if not out:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found")
+    return _purchase_detail_with_event(business_id, _m.role, out)
+
+
+@router.post("/{purchase_id}/auto-commit", response_model=TradePurchaseOut)
+async def auto_commit_trade_purchase_delivery(
+    business_id: uuid.UUID,
+    purchase_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_role("owner", "manager", "admin", "super_admin"))],
+):
+    out = await tps.try_auto_commit_trade_purchase_delivery(
+        db, business_id, purchase_id, user
+    )
+    if not out:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Auto-commit not available — verify delivery and complete unit setup first.",
+        )
     return _purchase_detail_with_event(business_id, _m.role, out)
 
 

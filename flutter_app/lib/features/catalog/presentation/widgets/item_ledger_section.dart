@@ -9,6 +9,7 @@ import '../../../../core/providers/item_detail_providers.dart';
 import '../../../../core/providers/stock_providers.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/utils/unit_utils.dart';
+import '../../../../core/errors/user_facing_errors.dart';
 import '../../../../core/widgets/friendly_load_error.dart';
 import '../../../stock/presentation/update_stock_sheet.dart';
 
@@ -60,10 +61,16 @@ class _ItemLedgerSectionState extends ConsumerState<ItemLedgerSection> {
                 padding: EdgeInsets.symmetric(vertical: 14),
                 child: Center(child: CircularProgressIndicator()),
               ),
-              error: (_, __) => FriendlyLoadError(
-                message: 'Could not load ledger',
-                onRetry: () => ref.invalidate(stockItemActivityProvider(widget.itemId)),
-              ),
+              error: (e, st) {
+                logSilencedApiError(e, st);
+                return FriendlyLoadError(
+                  message: 'Could not load ledger',
+                  onRetry: () {
+                    ref.invalidate(stockItemActivityProvider(widget.itemId));
+                    ref.invalidate(itemDetailBundleProvider(widget.itemId));
+                  },
+                );
+              },
               data: (m) {
                 final raw = (m['activity'] as List?) ?? const [];
                 final unit = (m['item'] is Map)

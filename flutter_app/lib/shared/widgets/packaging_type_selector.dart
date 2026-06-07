@@ -20,6 +20,18 @@ class PackagingTypeSelector extends StatelessWidget {
     this.compactLayout = false,
   });
 
+  void _autofillBoxFromName(String mode) {
+    if (itemsPerBoxController == null || itemNameForAutofill == null) return;
+    if (mode != StockTrackingMode.box) return;
+    if (!RegExp(r'\bbox\b', caseSensitive: false)
+        .hasMatch(itemNameForAutofill!)) {
+      return;
+    }
+    if (itemsPerBoxController!.text.trim().isEmpty) {
+      itemsPerBoxController!.text = '1';
+    }
+  }
+
   void _autofillWeightFromName(String mode) {
     if (weightController == null || itemNameForAutofill == null) return;
     if (mode != StockTrackingMode.wholesaleBag &&
@@ -100,6 +112,7 @@ class PackagingTypeSelector extends StatelessWidget {
                 onPressed: () {
                   onModeChanged(suggestedMode!);
                   _autofillWeightFromName(suggestedMode!);
+                  _autofillBoxFromName(suggestedMode!);
                 },
                 child: const Text('Use'),
               ),
@@ -131,7 +144,8 @@ class PackagingTypeSelector extends StatelessWidget {
             controller: itemsPerBoxController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
-              labelText: 'Pieces per box (optional)',
+              labelText: 'Items per box *',
+              hintText: 'Use 1 if each box is one unit',
               errorText: boxError,
               border: const OutlineInputBorder(),
             ),
@@ -187,6 +201,7 @@ class PackagingTypeSelector extends StatelessWidget {
             onSelected: (_) {
               onModeChanged(m);
               _autofillWeightFromName(m);
+              _autofillBoxFromName(m);
             },
           ),
       ],
@@ -205,6 +220,7 @@ class PackagingTypeSelector extends StatelessWidget {
             onSelected: (_) {
               onModeChanged(m);
               _autofillWeightFromName(m);
+              _autofillBoxFromName(m);
             },
           ),
       ],

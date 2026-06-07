@@ -12,6 +12,7 @@ import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
+import '../../../core/providers/stock_providers.dart' show bulkStockListProvider;
 import '../../../core/unit_engine/stock_tracking_profile.dart';
 import '../../../core/widgets/async_value_form.dart';
 import '../../../shared/widgets/inline_search_field.dart';
@@ -66,10 +67,12 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
   String? _bagDetectHint;
   bool _bagDetectDismissed = false;
   String? _kgFieldError;
+  String? _ipbFieldError;
   bool _selectingType = false;
 
   static final _kgInName =
       RegExp(r'(\d+(?:\.\d+)?)\s*kg', caseSensitive: false);
+  static final _boxInName = RegExp(r'\bbox\b', caseSensitive: false);
 
   String _packageTypeForMode(String mode) {
     switch (mode) {
@@ -177,23 +180,36 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
 
   void _applyBagDetectionFromName() {
     if (!mounted || _bagDetectDismissed) return;
-    final match = _kgInName.firstMatch(_nameCtrl.text);
-    if (match == null) {
-      if (_bagDetectHint != null) {
-        setState(() => _bagDetectHint = null);
+    final name = _nameCtrl.text;
+    final kgMatch = _kgInName.firstMatch(name);
+    if (kgMatch != null) {
+      final kg = kgMatch.group(1) ?? '';
+      if (kg.isNotEmpty) {
+        setState(() {
+          _packagingMode = StockTrackingMode.wholesaleBag;
+          if (_kgCtrl.text.trim().isEmpty) {
+            _kgCtrl.text = kg;
+          }
+          _bagDetectHint = 'Detected: $kg kg/bag ✓';
+          _kgFieldError = null;
+        });
+        return;
       }
+    }
+    if (_boxInName.hasMatch(name)) {
+      setState(() {
+        _packagingMode = StockTrackingMode.box;
+        if (_ipbCtrl.text.trim().isEmpty) {
+          _ipbCtrl.text = '1';
+        }
+        _bagDetectHint = 'Default: 1 box = 1 unit';
+        _ipbFieldError = null;
+      });
       return;
     }
-    final kg = match.group(1) ?? '';
-    if (kg.isEmpty) return;
-    setState(() {
-      _packagingMode = StockTrackingMode.wholesaleBag;
-      if (_kgCtrl.text.trim().isEmpty) {
-        _kgCtrl.text = kg;
-      }
-      _bagDetectHint = 'Detected bag item · $kg kg per bag';
-      _kgFieldError = null;
-    });
+    if (_bagDetectHint != null) {
+      setState(() => _bagDetectHint = null);
+    }
   }
 
   void _dismissBagDetection() {
@@ -213,8 +229,24 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
         _kgCtrl.clear();
         _kgFieldError = null;
       }
+      if (mode == StockTrackingMode.box &&
+          _ipbCtrl.text.trim().isEmpty &&
+          _boxInName.hasMatch(_nameCtrl.text)) {
+        _ipbCtrl.text = '1';
+        _bagDetectHint = 'Default: 1 box = 1 unit';
+      }
+      if (mode == StockTrackingMode.wholesaleBag) {
+        final m = _kgInName.firstMatch(_nameCtrl.text);
+        if (m != null && _kgCtrl.text.trim().isEmpty) {
+          _kgCtrl.text = m.group(1) ?? '';
+          _bagDetectHint = 'Detected: ${_kgCtrl.text} kg/bag ✓';
+        }
+      }
       _bagDetectDismissed = true;
-      _bagDetectHint = null;
+      if (mode != StockTrackingMode.box &&
+          mode != StockTrackingMode.wholesaleBag) {
+        _bagDetectHint = null;
+      }
     });
   }
 
@@ -363,9 +395,21 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
         return false;
       }
     }
+    if (_packagingMode == StockTrackingMode.box) {
+      final ipb = double.tryParse(_ipbCtrl.text.trim());
+      if (ipb == null || ipb <= 0) {
+        setState(() {
+          _ipbFieldError = 'Items per box is required';
+          _error =
+              'Enter items per box (use 1 if each box is one unit).';
+        });
+        return false;
+      }
+    }
     setState(() {
       _error = null;
       _kgFieldError = null;
+      _ipbFieldError = null;
     });
     return true;
   }
@@ -410,6 +454,7 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
       ref,
       itemId: itemId.isNotEmpty ? itemId : null,
     );
+    ref.invalidate(bulkStockListProvider);
   }
 
   void _resetForAddMore() {
@@ -721,6 +766,7 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
                       itemsPerBoxController: _ipbCtrl,
                       weightPerTinController: _wptCtrl,
                       weightError: _kgFieldError,
+                      boxError: _ipbFieldError,
                       itemNameForAutofill: _nameCtrl.text,
                     ),
                     const SizedBox(height: 8),

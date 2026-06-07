@@ -17,6 +17,8 @@ import 'analytics_kpi_provider.dart' show analyticsDateRangeProvider;
 import 'app_period_provider.dart';
 import 'home_breakdown_tab_providers.dart' show homeDateRangeForWatch;
 import 'home_dashboard_provider.dart';
+import '../../features/stock/stock_list_row_patch.dart'
+    show kStockListPatchAtKey, serverRowNewerThanPatch;
 
 void providerKeepAlive(Ref ref, Duration ttl) {
   final link = ref.keepAlive();
@@ -415,11 +417,20 @@ final stockListProvider = FutureProvider.autoDispose((ref) async {
   final effective = purchasedInPeriod == query.purchasedInPeriod
       ? query
       : query.copyWith(purchasedInPeriod: purchasedInPeriod);
-  return ref.watch(
+  final data = await ref.watch(
     stockListCacheProvider(
       StockListCacheKey(effective, op, session.primaryBusiness.id),
     ).future,
   );
+  final raw = data['items'];
+  if (raw is List) {
+    final rows = [
+      for (final e in raw)
+        if (e is Map) Map<String, dynamic>.from(e),
+    ];
+    reconcileStockListRowPatches(ref, rows);
+  }
+  return data;
 });
 
 /// Optimistic list-row overlays until the next `/stock/list` fetch replaces them.
@@ -432,12 +443,36 @@ void applyStockListRowPatch(
   required Map<String, dynamic> patch,
 }) {
   if (itemId.isEmpty || patch.isEmpty) return;
+  final tagged = {
+    ...patch,
+    kStockListPatchAtKey: DateTime.now().toUtc().toIso8601String(),
+  };
   ref.read(stockListRowPatchProvider.notifier).update((current) {
     return {
       ...current,
-      itemId: {...?current[itemId], ...patch},
+      itemId: {...?current[itemId], ...tagged},
     };
   });
+}
+
+/// Drop optimistic patches once `/stock/list` returns fresher server rows.
+void reconcileStockListRowPatches(
+  dynamic ref,
+  Iterable<Map<String, dynamic>> serverRows,
+) {
+  final patches = ref.read(stockListRowPatchProvider);
+  if (patches.isEmpty) return;
+  final staleIds = <String>[];
+  for (final row in serverRows) {
+    final id = row['id']?.toString();
+    if (id == null || id.isEmpty) continue;
+    final patch = patches[id];
+    if (patch == null) continue;
+    if (serverRowNewerThanPatch(row, patch)) staleIds.add(id);
+  }
+  if (staleIds.isNotEmpty) {
+    clearStockListRowPatchesForIds(ref, staleIds);
+  }
 }
 
 void clearStockListRowPatchesForIds(
@@ -497,6 +532,7 @@ final bulkBarcodeDownloadedIdsProvider =
 
 final bulkStockListProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  providerKeepAlive(ref, const Duration(minutes: 3));
   final session = ref.watch(activeSessionProvider);
   final query = ref.watch(stockListQueryProvider);
   final op = ref.watch(stockOperationalFiltersProvider);
@@ -640,6 +676,102 @@ final stockStatusCountsProvider =
     'out': outCount,
     'missing_code': coerceToInt(summary['missing_item_code']),
     'missing_barcode': coerceToInt(summary['missing_barcode']),
+  };
+});
+
+bool stockListHasScopedFilters(StockListQuery q, StockOperationalFilters op) {
+  return q.subcategory.isNotEmpty ||
+      q.category.isNotEmpty ||
+      q.supplier.isNotEmpty ||
+      q.q.trim().isNotEmpty ||
+      q.purchasedInPeriod ||
+      op.purchasedInPeriodOnly ||
+      op.missingBarcodeOnly ||
+      op.missingItemCodeOnly ||
+      op.reorderOnly ||
+      op.evictionOnly ||
+      op.unit.isNotEmpty ||
+      q.status != 'all';
+}
+
+Future<int> _stockListTotalForStatus({
+  required HexaApi api,
+  required String businessId,
+  required StockListQuery query,
+  required StockOperationalFilters op,
+  required String status,
+}) async {
+  final purchasedInPeriod = query.purchasedInPeriod || op.purchasedInPeriodOnly;
+  final res = await api.listStock(
+    businessId: businessId,
+    page: 1,
+    perPage: 1,
+    q: query.q,
+    category: query.category,
+    subcategory: query.subcategory,
+    status: status,
+    sort: query.sort,
+    includePeriod: query.includePeriod,
+    periodStart: query.periodStart,
+    periodEnd: query.periodEnd,
+    purchasedInPeriod: purchasedInPeriod,
+    missingBarcode: op.missingBarcodeOnly,
+    missingItemCode: op.missingItemCodeOnly,
+    reorderOnly: op.reorderOnly,
+    unit: op.unit,
+  );
+  return coerceToInt(res['total']);
+}
+
+/// Chip badge counts using the same filters as the active stock list query.
+final stockFilteredStatusCountsProvider =
+    FutureProvider.autoDispose<Map<String, int>>((ref) async {
+  providerKeepAlive(ref, const Duration(seconds: 45));
+  if (providerSkipApi(ref)) return {};
+  final session = ref.watch(activeSessionProvider);
+  if (session == null) return {};
+  final query = ref.watch(stockListQueryProvider);
+  final op = ref.watch(stockOperationalFiltersProvider);
+  if (!stockListHasScopedFilters(query, op)) {
+    return ref.watch(stockStatusCountsProvider).valueOrNull ?? {};
+  }
+  final api = ref.read(hexaApiProvider);
+  final bid = session.primaryBusiness.id;
+  final results = await Future.wait([
+    _stockListTotalForStatus(
+      api: api,
+      businessId: bid,
+      query: query,
+      op: op,
+      status: 'all',
+    ),
+    _stockListTotalForStatus(
+      api: api,
+      businessId: bid,
+      query: query,
+      op: op,
+      status: 'low',
+    ),
+    _stockListTotalForStatus(
+      api: api,
+      businessId: bid,
+      query: query,
+      op: op,
+      status: 'critical',
+    ),
+    _stockListTotalForStatus(
+      api: api,
+      businessId: bid,
+      query: query,
+      op: op,
+      status: 'out',
+    ),
+  ]);
+  return {
+    'all': results[0],
+    'low': results[1],
+    'critical': results[2],
+    'out': results[3],
   };
 });
 

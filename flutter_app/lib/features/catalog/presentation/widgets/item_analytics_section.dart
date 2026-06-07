@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../../core/json_coerce.dart';
 import '../../../../core/providers/item_detail_providers.dart';
-import '../../../../core/providers/stock_providers.dart' show stockItemIntelligenceProvider;
+import '../../../../core/providers/stock_providers.dart'
+    show stockItemIntelligenceProvider;
 import '../../../../core/utils/unit_utils.dart';
+import '../../../../core/widgets/friendly_load_error.dart';
 
 class ItemAnalyticsSection extends ConsumerWidget {
   const ItemAnalyticsSection({
@@ -19,34 +21,92 @@ class ItemAnalyticsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final stock =
-        ref.watch(itemDetailStockProvider(itemId)).valueOrNull ??
-            const <String, dynamic>{};
+    final stockAsync = ref.watch(itemDetailStockProvider(itemId));
+    final intelAsync = loadIntelligence
+        ? ref.watch(stockItemIntelligenceProvider(itemId))
+        : null;
+
+    if (stockAsync.hasError && !stockAsync.hasValue) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(HexaOp.cardPadding),
+          child: FriendlyLoadError(
+            message: 'Could not load analytics',
+            onRetry: () {
+              ref.invalidate(stockItemIntelligenceProvider(itemId));
+              ref.invalidate(itemDetailBundleProvider(itemId));
+            },
+          ),
+        ),
+      );
+    }
+
+    if (loadIntelligence &&
+        intelAsync != null &&
+        intelAsync.hasError &&
+        !intelAsync.hasValue) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(HexaOp.cardPadding),
+          child: FriendlyLoadError(
+            message: 'Could not load movement intelligence',
+            onRetry: () =>
+                ref.invalidate(stockItemIntelligenceProvider(itemId)),
+          ),
+        ),
+      );
+    }
+
+    if (stockAsync.isLoading && !stockAsync.hasValue) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    final stock = stockAsync.valueOrNull ?? const <String, dynamic>{};
     final intel = loadIntelligence
-        ? ref.watch(stockItemIntelligenceProvider(itemId)).valueOrNull ??
-            const <String, dynamic>{}
+        ? intelAsync?.valueOrNull ?? const <String, dynamic>{}
         : const <String, dynamic>{};
 
-    final unit = (stock['stock_unit'] ?? stock['unit'] ?? '').toString().trim().toUpperCase();
+    final unit =
+        (stock['stock_unit'] ?? stock['unit'] ?? '').toString().trim().toUpperCase();
     final unitLabel = unit.isEmpty ? 'UNIT' : unit;
 
     final current = coerceToDouble(stock['current_stock']);
-    final purchased = coerceToDouble(intel['period_purchased_qty'] ?? stock['period_purchased_qty']);
+    final purchased = coerceToDouble(
+      intel['period_purchased_qty'] ?? stock['period_purchased_qty'],
+    );
     final usage = coerceToDouble(intel['period_usage_qty']);
-    final needsVerify = intel['needs_verification'] == true || stock['needs_verification'] == true;
+    final needsVerify =
+        intel['needs_verification'] == true || stock['needs_verification'] == true;
+    final openingUnset = stock['opening_stock_set_at'] == null &&
+        current == 0 &&
+        purchased == 0;
 
-    // We do not know the exact period days from this endpoint; use a safe, explainable default:
-    // treat the intelligence window as 30 days for a first-pass reorder hint.
     const assumedDays = 30.0;
     final daily = usage > 0 ? usage / assumedDays : 0.0;
     final daysRemaining = (daily > 0.0001) ? (current / daily) : null;
 
     String reorderHint() {
-      if (daysRemaining == null) return 'Not enough movement data to predict reorder.';
+      if (openingUnset) {
+        return 'Opening stock not set yet — reorder hints need movement history.';
+      }
+      if (daysRemaining == null) {
+        return 'Not enough movement data to predict reorder.';
+      }
       final d = daysRemaining.clamp(0, 9999);
-      if (d <= 3) return 'Reorder immediately (≈${d.toStringAsFixed(0)} days remaining).';
-      if (d <= 7) return 'Reorder soon (≈${d.toStringAsFixed(0)} days remaining).';
-      if (d <= 15) return 'Plan reorder (≈${d.toStringAsFixed(0)} days remaining).';
+      if (d <= 3) {
+        return 'Reorder immediately (≈${d.toStringAsFixed(0)} days remaining).';
+      }
+      if (d <= 7) {
+        return 'Reorder soon (≈${d.toStringAsFixed(0)} days remaining).';
+      }
+      if (d <= 15) {
+        return 'Plan reorder (≈${d.toStringAsFixed(0)} days remaining).';
+      }
       return 'Stock looks healthy (≈${d.toStringAsFixed(0)} days remaining).';
     }
 
@@ -64,8 +124,11 @@ class ItemAnalyticsSection extends ConsumerWidget {
               runSpacing: 6,
               children: [
                 _pill('Current ${formatStockQtyNumber(current)} $unitLabel'),
-                if (purchased > 0) _pill('Purchased (period) ${formatStockQtyNumber(purchased)}'),
-                if (usage > 0) _pill('Moved/used (period) ${formatStockQtyNumber(usage)}'),
+                if (openingUnset) _pill('Opening stock not set'),
+                if (purchased > 0)
+                  _pill('Purchased (period) ${formatStockQtyNumber(purchased)}'),
+                if (usage > 0)
+                  _pill('Moved/used (period) ${formatStockQtyNumber(usage)}'),
                 if (daily > 0) _pill('Avg/day ${formatStockQtyNumber(daily)}'),
                 if (needsVerify) _pill('Verification needed'),
               ],
@@ -76,7 +139,9 @@ class ItemAnalyticsSection extends ConsumerWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
                 color: const Color(0xFF1565C0).withValues(alpha: 0.08),
-                border: Border.all(color: const Color(0xFF1565C0).withValues(alpha: 0.25)),
+                border: Border.all(
+                  color: const Color(0xFF1565C0).withValues(alpha: 0.25),
+                ),
               ),
               child: Text(
                 reorderHint(),
@@ -95,9 +160,11 @@ class ItemAnalyticsSection extends ConsumerWidget {
   }
 
   static Widget _pill(String t) => Chip(
-        label: Text(t, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+        label: Text(
+          t,
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+        ),
         visualDensity: VisualDensity.compact,
         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       );
 }
-

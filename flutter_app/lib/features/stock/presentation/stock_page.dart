@@ -302,7 +302,7 @@ class _StockPageState extends ConsumerState<StockPage>
     final op = ref.read(stockOperationalFiltersProvider);
     final q = ref.read(stockListQueryProvider);
     final deliveryFilter = ref.read(stockDeliveryFilterProvider);
-    var items = filterStockListClient(raw, op);
+    var items = filterStockListClient(raw, op, query: q);
     if (deliveryFilter != StockDeliveryFilter.all) {
       items = items
           .where(
@@ -490,7 +490,7 @@ class _StockPageState extends ConsumerState<StockPage>
     final deliveryFilter = ref.watch(stockDeliveryFilterProvider);
     final listQ = ref.watch(stockListQueryProvider);
     final chipCounts =
-        ref.watch(stockStatusCountsProvider).valueOrNull ?? const {};
+        ref.watch(stockFilteredStatusCountsProvider).valueOrNull ?? const {};
     final chipAll = chipCounts['all'] ?? 0;
     final total = coerceToInt(data['total']);
     final maxPage = stockListMaxPage(total, listQ.perPage);

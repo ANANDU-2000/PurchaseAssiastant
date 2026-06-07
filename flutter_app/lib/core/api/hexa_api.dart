@@ -2482,6 +2482,22 @@ class HexaApi {
     return res.data ?? {};
   }
 
+  /// JSON bundle: catalog, suppliers, 90-day purchases, stock audits.
+  Future<Uint8List> downloadBusinessBackupJson({
+    required String businessId,
+  }) async {
+    final res = await _dio.get<List<int>>(
+      '/v1/businesses/$businessId/exports/backup/export',
+      options: Options(
+        responseType: ResponseType.bytes,
+        receiveTimeout: const Duration(seconds: 120),
+      ),
+    );
+    final raw = res.data;
+    if (raw == null) return Uint8List(0);
+    return Uint8List.fromList(raw);
+  }
+
   /// ZIP: purchase summary PDF, per-bill PDFs, supplier ledger PDFs, stock Excel.
   Future<Uint8List> downloadBusinessBackup({
     required String businessId,

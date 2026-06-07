@@ -18,6 +18,8 @@ import 'core/theme/app_theme.dart';
 import 'core/theme/hexa_colors.dart';
 import 'core/notifications/local_notifications_service.dart';
 import 'core/platform/hexa_layout_error_widget.dart';
+import 'core/widgets/hexa_page_error_boundary.dart'
+    show hexaErrorLikelyNonFatal;
 import 'core/platform/remove_boot_overlay.dart';
 import 'core/providers/prefs_provider.dart'
     show kNotificationsOptInKey, sharedPreferencesProvider;
@@ -49,7 +51,13 @@ bool _hexaAsyncErrorLikelyBenign(Object error) {
       s.contains('Box not found') ||
       s.contains('StateError') ||
       s.contains('Cannot use "ref"') ||
-      s.contains('Bad state: Cannot use');
+      s.contains('Bad state: Cannot use') ||
+      s.contains('minified:') ||
+      s.contains('Another exception was thrown') ||
+      s.contains('RenderFlex') ||
+      s.contains('overflowed') ||
+      s.contains('BoxConstraints') ||
+      s.contains('setState() called after dispose()');
 }
 
 void _installHexaPlatformAsyncErrorHook() {
@@ -178,6 +186,13 @@ Future<void> main() async {
   ErrorWidget.builder = buildHexaLayoutErrorWidget;
   _installHexaPlatformAsyncErrorHook();
   FlutterError.onError = (FlutterErrorDetails details) {
+    if (hexaErrorLikelyNonFatal(details) ||
+        _hexaAsyncErrorLikelyBenign(details.exception)) {
+      if (kDebugMode) {
+        debugPrint('[Hexa] FlutterError (suppressed): ${details.exception}');
+      }
+      return;
+    }
     FlutterError.presentError(details);
   };
   // Clean URLs on web (e.g. /home instead of #/home). Requires SPA rewrites (see repo vercel.json).
