@@ -43,7 +43,6 @@ class ScanItemStockSummaryCard extends StatelessWidget {
     final lpDate = _parseDate(item['last_purchase_date']);
     final lpQty = coerceToDoubleNullable(item['last_purchase_qty']);
     final lpUnit = item['last_purchase_unit']?.toString().trim() ?? unit;
-    final supplier = item['supplier_name']?.toString().trim() ?? '';
     final lpRate = coerceToDoubleNullable(item['last_purchase_rate']);
 
     final physAt = _parseDate(
@@ -52,7 +51,7 @@ class ScanItemStockSummaryCard extends StatelessWidget {
     final physBy = item['physical_stock_counted_by']?.toString().trim() ?? '';
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(10),
@@ -79,7 +78,7 @@ class ScanItemStockSummaryCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _StockTile(
-                  label: 'Current Stock',
+                  label: 'System',
                   qty: system,
                   unit: unit,
                   accent: const Color(0xFF0E4F46),
@@ -99,7 +98,7 @@ class ScanItemStockSummaryCard extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: _StockTile(
-                  label: 'Physical Count',
+                  label: 'Physical',
                   qty: physical,
                   unit: unit,
                   accent: const Color(0xFF2563EB),
@@ -115,15 +114,6 @@ class ScanItemStockSummaryCard extends StatelessWidget {
               ),
             ],
           ),
-          if (supplier.isNotEmpty || (lpRate != null && lpRate > 0)) ...[
-            const SizedBox(height: 6),
-            Text(
-              _lastPurchaseSubtitle(lpDate, supplier, lpRate),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, color: HexaColors.textBody),
-            ),
-          ],
         ],
       ),
     );
@@ -133,30 +123,6 @@ class ScanItemStockSummaryCard extends StatelessWidget {
     if (raw is String && raw.isNotEmpty) return DateTime.tryParse(raw);
     if (raw is DateTime) return raw;
     return null;
-  }
-
-  static String _lastPurchaseSubtitle(
-    DateTime? lpDate,
-    String supplier,
-    double? lpRate,
-  ) {
-    final parts = <String>[];
-    if (lpDate != null) {
-      parts.add(
-        '${DateFormat('d MMM yy').format(lpDate.toLocal())} (${daysAgoLabel(lpDate)})',
-      );
-    }
-    if (supplier.isNotEmpty) {
-      parts.add(
-        supplier.length > 28 ? '${supplier.substring(0, 28)}…' : supplier,
-      );
-    }
-    if (lpRate != null && lpRate > 0) {
-      parts.add(
-        '₹${lpRate.toStringAsFixed(lpRate == lpRate.roundToDouble() ? 0 : 2)}',
-      );
-    }
-    return parts.isEmpty ? 'From last bill' : parts.join(' · ');
   }
 
   static String _lastUpdatedLine(Map<String, dynamic> item) {

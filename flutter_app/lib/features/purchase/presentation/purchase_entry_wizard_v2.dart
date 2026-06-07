@@ -2685,6 +2685,20 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     Widget purchaseWizardMainContent() {
       return Builder(
         builder: (bodyContext) {
+          final session = ref.watch(sessionProvider);
+          if (session == null && !_isBootstrapping) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading session…'),
+                ],
+              ),
+            );
+          }
+
           if (_isBootstrapping) {
             return Center(
               child: Padding(

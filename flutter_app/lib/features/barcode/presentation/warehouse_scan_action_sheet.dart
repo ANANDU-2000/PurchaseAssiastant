@@ -34,6 +34,9 @@ Future<bool> showWarehouseScanActionSheet({
   required BuildContext context,
   required WidgetRef ref,
   required Map<String, dynamic> item,
+  StockUpdateMode initialMode = StockUpdateMode.physical,
+  bool skipActionPicker = false,
+  VoidCallback? onPushedRouteReturn,
 }) async {
   final saved = await showHexaBottomSheet<bool>(
     context: context,
@@ -43,6 +46,9 @@ Future<bool> showWarehouseScanActionSheet({
       item: item,
       parentRef: ref,
       parentContext: context,
+      initialMode: initialMode,
+      skipActionPicker: skipActionPicker,
+      onPushedRouteReturn: onPushedRouteReturn,
     ),
   );
   return saved == true;
@@ -53,11 +59,17 @@ class _WarehouseScanActionBody extends ConsumerStatefulWidget {
     required this.item,
     required this.parentRef,
     required this.parentContext,
+    this.initialMode = StockUpdateMode.physical,
+    this.skipActionPicker = false,
+    this.onPushedRouteReturn,
   });
 
   final Map<String, dynamic> item;
   final WidgetRef parentRef;
   final BuildContext parentContext;
+  final StockUpdateMode initialMode;
+  final bool skipActionPicker;
+  final VoidCallback? onPushedRouteReturn;
 
   @override
   ConsumerState<_WarehouseScanActionBody> createState() =>
@@ -111,10 +123,65 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
     ref.invalidate(activeStockAuditProvider);
   }
 
+  void _pushFromScan(String location) {
+    Navigator.pop(context);
+    context.push(location).then((_) {
+      widget.onPushedRouteReturn?.call();
+    });
+  }
+
+  /// Physical count — floor observation only. Does NOT modify current_stock (ERP ledger).
+  void _applyOptimisticPhysicalPatch(
+    Map<String, dynamic>? saved,
+    num parsed,
+  ) {
+    if (_itemId.isEmpty) return;
+    final system = coerceToDouble(_item['current_stock']);
+    var patch = stockListPatchFromPhysicalCount(
+      saved ?? const {},
+      fallbackCountedQty: parsed,
+      fallbackSystemQty: system,
+    );
+    if (patch.isEmpty) {
+      final now = DateTime.now().toUtc().toIso8601String();
+      patch = {
+        'physical_stock_qty': parsed,
+        'physical_stock_difference_qty': parsed.toDouble() - system,
+        'physical_stock_counted_at': now,
+      };
+    }
+    applyStockListRowPatch(
+      widget.parentRef,
+      itemId: _itemId,
+      patch: patch,
+    );
+  }
+
+  Map<String, dynamic>? _physicalCountPayloadFromAudit(
+    Map<String, dynamic>? auditResponse,
+  ) {
+    if (auditResponse == null) return null;
+    final items = auditResponse['items'];
+    if (items is! List) return null;
+    for (final raw in items) {
+      if (raw is! Map) continue;
+      final m = Map<String, dynamic>.from(raw);
+      if (m['catalog_item_id']?.toString() == _itemId ||
+          m['item_id']?.toString() == _itemId) {
+        return m;
+      }
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
     _item = Map<String, dynamic>.from(widget.item);
+    _mode = widget.initialMode;
+    if (widget.skipActionPicker) {
+      _actionChosen = true;
+    }
     _seedQtyFromItem();
     _qtyCtl.addListener(_revalidateQty);
     final hasStockRow = widget.item['current_stock'] != null;
@@ -228,15 +295,15 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
         return;
       }
       if (diff.abs() > 0.5) {
-        final direction = diff > 0 ? 'decrease' : 'increase';
+        final direction = diff > 0 ? 'below' : 'above';
         final ok = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
             title: Text(
-              'Stock will $direction by ${_formatQty(diff.abs())} ${_unitLabel.isEmpty ? 'units' : _unitLabel}',
+              'Physical count is ${_formatQty(diff.abs())} $_unitLabel $direction system',
             ),
             content: const Text(
-              'This updates system stock to match your physical count. Continue?',
+              'This saves a floor count only — system stock in the ledger stays unchanged.',
             ),
             actions: [
               TextButton(
@@ -308,7 +375,7 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
         ref.invalidate(appNotificationsListProvider);
         ref.invalidate(notificationCenterCoordinatorProvider);
         applyStockListRowPatch(
-          ref,
+          widget.parentRef,
           itemId: _itemId,
           patch: stockListPatchFromStockDetail(saved, fallbackQty: qty),
         );
@@ -316,7 +383,7 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
         Map<String, dynamic>? saved;
         final audit = ref.read(activeStockAuditProvider).valueOrNull;
         if (audit != null && audit['id'] != null) {
-          saved = await ref.read(hexaApiProvider).upsertStockAuditLine(
+          final auditOut = await ref.read(hexaApiProvider).upsertStockAuditLine(
                 businessId: bid,
                 auditId: audit['id'].toString(),
                 itemId: _itemId,
@@ -325,23 +392,21 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
                 reason: reasonLabel,
                 notes: note.isEmpty ? null : note,
               );
+          saved = _physicalCountPayloadFromAudit(auditOut);
         } else {
-          saved = await ref.read(hexaApiProvider).verifyStockCountWithRetry(
+          // FIX 1: observation-only — does NOT mutate current_stock
+          saved = await ref.read(hexaApiProvider).recordPhysicalStockCount(
                 businessId: bid,
                 itemId: _itemId,
                 countedQty: qty,
-                adjustmentType: _reasonType ?? 'verification',
-                reason: reasonLabel,
-                notes: note.isEmpty ? null : note,
-                initialStockVersion: stockVersionFromItem(_item),
+                notes: note.isEmpty
+                    ? null
+                    : '$reasonLabel${note.isNotEmpty ? " — $note" : ""}',
               );
         }
         if (!mounted) return;
-        applyStockListRowPatch(
-          ref,
-          itemId: _itemId,
-          patch: stockListPatchFromPhysicalCount(saved),
-        );
+        // Physical count — floor observation only. Does NOT modify current_stock (ERP ledger).
+        _applyOptimisticPhysicalPatch(saved, qty);
       }
 
       if (!mounted) return;
@@ -364,7 +429,8 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
         );
       }
     } on StaleStockConflict {
-      if (!mounted) return;
+      // FIX 1: physical-count has no version locking — stale conflict is system-only
+      if (!mounted || _mode != StockUpdateMode.system) return;
       await _refreshItemFromServer();
       if (!mounted) return;
       if (widget.parentContext.mounted) {
@@ -387,6 +453,8 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
           adjustmentType: _reasonType ?? 'verification',
           notes: _notesCtl.text.trim().isEmpty ? null : _notesCtl.text.trim(),
         );
+        // Physical count — floor observation only. Does NOT modify current_stock (ERP ledger).
+        _applyOptimisticPhysicalPatch(null, qty);
         if (!mounted) return;
         if (widget.parentContext.mounted) {
           showTopSnack(
@@ -486,20 +554,14 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
             icon: Icons.article_outlined,
             title: 'View Full Details',
             subtitle: 'Open full item page with history',
-            onTap: () {
-              Navigator.pop(context);
-              context.push('/catalog/item/$_itemId');
-            },
+            onTap: () => _pushFromScan('/catalog/item/$_itemId'),
           ),
           const SizedBox(height: 8),
           _actionTile(
             icon: Icons.shopping_cart_checkout_outlined,
             title: 'Quick Purchase',
             subtitle: 'Create purchase draft for this item',
-            onTap: () {
-              Navigator.pop(context);
-              context.push('/purchase/new');
-            },
+            onTap: () => _pushFromScan('/purchase/new'),
           ),
           if (privileged) ...[
             const SizedBox(height: 8),
@@ -579,10 +641,28 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
             ),
           ),
-        StockUpdateModeToggle(
-          mode: _mode,
-          onChanged: (m) => setState(() => _mode = m),
-        ),
+        if (privileged)
+          StockUpdateModeToggle(
+            mode: _mode,
+            onChanged: (m) => setState(() => _mode = m),
+          )
+        else
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFECFDF5),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF6EE7B7)),
+            ),
+            child: const Text(
+              'Physical count — floor observation only. System stock unchanged.',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF065F46),
+              ),
+            ),
+          ),
         const SizedBox(height: 6),
         Text(
           privileged
@@ -692,10 +772,7 @@ class _WarehouseScanActionBodyState extends ConsumerState<_WarehouseScanActionBo
           children: [
             Expanded(
               child: OutlinedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  context.push('/catalog/item/$_itemId');
-                },
+                onPressed: () => _pushFromScan('/catalog/item/$_itemId'),
                 child: const Text('Item detail', style: TextStyle(fontSize: 12)),
               ),
             ),

@@ -172,6 +172,25 @@ Future<void> commitPurchaseStockFromList(
       duration: const Duration(seconds: 6),
     );
     if (e is DioException && e.response?.statusCode == 400) {
+      final data = e.response?.data;
+      if (data is Map) {
+        final nested = data['detail'];
+        if (nested is Map &&
+            nested['code']?.toString() == 'UNIT_SETUP_REQUIRED') {
+          final retryIssues = purchaseStockCommitIssues(ref, purchase);
+          if (retryIssues.isNotEmpty && context.mounted) {
+            WidgetsBinding.instance.addPostFrameCallback((_) async {
+              if (!context.mounted) return;
+              await showPurchaseStockCommitBlockedDialog(
+                context,
+                purchase,
+                retryIssues,
+              );
+            });
+          }
+          return;
+        }
+      }
       final detail =
           (fastApiDetailString(e.response?.data) ?? '').toLowerCase();
       if (detail.contains('no stock was added') ||

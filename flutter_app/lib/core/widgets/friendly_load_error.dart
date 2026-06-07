@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Default [FriendlyLoadError.subtitle] for typical network / connectivity failures.
-const String kFriendlyLoadNetworkSubtitle =
-    'Check your connection and try again.';
+const String kFriendlyLoadNetworkSubtitle = 'Tap to retry.';
 
 /// Inline error state with retry — avoids exposing raw exception strings to users.
 class FriendlyLoadError extends StatelessWidget {

@@ -10,3 +10,5 @@ bool get isSafariBrowser => false;
 bool get preferUploadBarcodeOnWeb => false;
 
 WebLiveBarcodeScanner? createWebLiveBarcodeScanner() => null;
+
+Future<void> disposeSharedWebBarcodeScanner() async {}

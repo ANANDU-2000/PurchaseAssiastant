@@ -1111,7 +1111,15 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
           final nested = data['detail'];
           if (nested is Map && nested['code']?.toString() == 'UNIT_SETUP_REQUIRED') {
             final items = (nested['items_needing_setup'] as List?)
-                    ?.map((x) => x.toString())
+                    ?.map((x) {
+                      if (x is Map) {
+                        return x['name']?.toString() ??
+                            x['item_name']?.toString() ??
+                            '?';
+                      }
+                      return x.toString();
+                    })
+                    .where((s) => s.isNotEmpty)
                     .join(', ') ??
                 'some items';
             showTopSnack(
@@ -1249,7 +1257,10 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
     final catalogAsync = ref.watch(catalogItemsListProvider);
     final catalogLoadingForCommit =
         catalogAsync.isLoading && !catalogAsync.hasValue;
-    final canCommitNow = _canCommitStock() && !catalogLoadingForCommit;
+    final setupIssues = _stockCommitIssues(p);
+    final canCommitNow = _canCommitStock() &&
+        !catalogLoadingForCommit &&
+        setupIssues.isEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/auth/session_permissions.dart';
 import '../../../core/stock/stock_save_recovery.dart';
 import '../../../core/stock/stock_version_retry.dart';
 import '../../../core/errors/user_facing_errors.dart';
@@ -162,6 +163,10 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
   }
 
   void _onModeChanged(StockUpdateMode mode) {
+    final session = ref.read(sessionProvider);
+    final privileged =
+        session != null && sessionIsPrivilegedStockRole(session);
+    if (!privileged && mode == StockUpdateMode.system) return;
     setState(() {
       _mode = mode;
       _current = _seedQtyForMode(mode);
@@ -639,6 +644,9 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         : stockLabel;
     final lastPhysical = _lastPhysicalLabel;
     final systemQty = coerceToDouble(_item['current_stock']);
+    final session = ref.watch(sessionProvider);
+    final privileged =
+        session != null && sessionIsPrivilegedStockRole(session);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -726,10 +734,28 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
             ),
           ],
           const SizedBox(height: 10),
-          StockUpdateModeToggle(
-            mode: _mode,
-            onChanged: _onModeChanged,
-          ),
+          if (privileged)
+            StockUpdateModeToggle(
+              mode: _mode,
+              onChanged: _onModeChanged,
+            )
+          else
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFECFDF5),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF6EE7B7)),
+              ),
+              child: const Text(
+                'Physical count — floor observation only. System stock unchanged.',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF065F46),
+                ),
+              ),
+            ),
           const SizedBox(height: 4),
           Text(
             stockUpdateModeHint(_mode),

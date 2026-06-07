@@ -63,6 +63,8 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
   bool _saving = false;
   String? _error;
   bool _prefilled = false;
+  bool _supplierManuallySelected = false;
+  bool _brokerManuallySelected = false;
   Timer? _nameDebounce;
   String? _bagDetectHint;
   bool _bagDetectDismissed = false;
@@ -138,7 +140,8 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
     final saved = await CatalogCreatePrefs.load(session.primaryBusiness.id);
     if (!mounted) return;
     var changed = false;
-    if (_supplierId == null &&
+    if (!_supplierManuallySelected &&
+        _supplierId == null &&
         saved.supplierId != null &&
         saved.supplierId!.isNotEmpty) {
       for (final s in sups) {
@@ -150,7 +153,8 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
         }
       }
     }
-    if (_brokerId == null &&
+    if (!_brokerManuallySelected &&
+        _brokerId == null &&
         saved.brokerId != null &&
         saved.brokerId!.isNotEmpty) {
       for (final b in brokers) {
@@ -275,7 +279,8 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
     if (_prefilled) return;
     _prefilled = true;
     if (widget.defaultSupplierId != null &&
-        widget.defaultSupplierId!.isNotEmpty) {
+        widget.defaultSupplierId!.isNotEmpty &&
+        !_supplierManuallySelected) {
       for (final s in sups) {
         if (s['id']?.toString() == widget.defaultSupplierId) {
           _supplierId = widget.defaultSupplierId;
@@ -284,7 +289,9 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
         }
       }
     }
-    if (widget.defaultBrokerId != null && widget.defaultBrokerId!.isNotEmpty) {
+    if (widget.defaultBrokerId != null &&
+        widget.defaultBrokerId!.isNotEmpty &&
+        !_brokerManuallySelected) {
       for (final b in brokers) {
         if (b['id']?.toString() == widget.defaultBrokerId) {
           _brokerId = widget.defaultBrokerId;
@@ -293,7 +300,8 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
         }
       }
     }
-    if (_supplierId == null &&
+    if (!_supplierManuallySelected &&
+        _supplierId == null &&
         _supplierSearchCtrl.text.isEmpty &&
         sups.length == 1) {
       _supplierId = sups.first['id']?.toString();
@@ -656,12 +664,14 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
         if (types.isEmpty) return;
         final brokers = ref.read(brokersListProvider).valueOrNull ?? [];
         _maybePrefill(types, sups, brokers);
-        unawaited(_loadSavedParty());
+        if (!_supplierManuallySelected) {
+          unawaited(_loadSavedParty());
+        }
       });
     });
     ref.listen(brokersListProvider, (prev, next) {
       next.whenData((_) {
-        if (!mounted) return;
+        if (!mounted || _brokerManuallySelected) return;
         unawaited(_loadSavedParty());
       });
     });
@@ -819,6 +829,7 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
                       onPressed: () => setState(() {
                         _supplierId = null;
                         _supplierSearchCtrl.clear();
+                        _supplierManuallySelected = false;
                       }),
                       child: const Text('Clear'),
                     ),
@@ -829,7 +840,11 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
                 items: _supplierItems(sups),
                 controller: _supplierSearchCtrl,
                 placeholder: 'Search supplier…',
-                onSelected: (it) => setState(() => _supplierId = it.id),
+                onSelected: (it) => setState(() {
+                  _supplierId = it.id;
+                  _supplierSearchCtrl.text = it.label;
+                  _supplierManuallySelected = true;
+                }),
               ),
               const SizedBox(height: 14),
             ],
@@ -851,6 +866,7 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
                       onPressed: () => setState(() {
                         _brokerId = null;
                         _brokerSearchCtrl.clear();
+                        _brokerManuallySelected = false;
                       }),
                       child: const Text('Clear'),
                     ),
@@ -861,7 +877,11 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
                 items: _brokerItems(rows),
                 controller: _brokerSearchCtrl,
                 placeholder: 'Search broker…',
-                onSelected: (it) => setState(() => _brokerId = it.id),
+                onSelected: (it) => setState(() {
+                  _brokerId = it.id;
+                  _brokerSearchCtrl.text = it.label;
+                  _brokerManuallySelected = true;
+                }),
               ),
               const SizedBox(height: 14),
             ],

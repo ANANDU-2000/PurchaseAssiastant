@@ -19,12 +19,11 @@ Future<void> replayStockOfflineQueue({
     final kind = data['kind']?.toString();
     try {
       if (kind == 'stock_verify') {
-        await api.verifyStockCountWithRetry(
+        // FIX 1: replay observation-only physical count, not verify-count
+        await api.recordPhysicalStockCount(
           businessId: businessId,
           itemId: data['item_id'].toString(),
           countedQty: data['counted_qty'] as num,
-          reason: data['reason'].toString(),
-          adjustmentType: data['adjustment_type']?.toString() ?? 'verification',
           notes: data['notes']?.toString(),
         );
       } else if (kind == 'stock_audit_line') {

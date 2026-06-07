@@ -12,7 +12,7 @@ Future<T> _fetchWithRetry<T>(Future<T> Function() load) async {
     return await load();
   } catch (e, st) {
     logSilencedApiError(e, st);
-    await Future<void>.delayed(const Duration(seconds: 2));
+    await Future<void>.delayed(const Duration(seconds: 1));
     return await load();
   }
 }

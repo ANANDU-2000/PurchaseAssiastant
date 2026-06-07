@@ -25,18 +25,24 @@ bool get isSafariBrowser {
 
 int? _iosMajorVersionFromUserAgent() {
   final ua = html.window.navigator.userAgent;
-  final match = RegExp(r'OS (\d+)_').firstMatch(ua);
-  if (match == null) return null;
-  return int.tryParse(match.group(1) ?? '');
+  // FIX 5: iPhone and iPad OS strings
+  final match = RegExp(r'(?:iPhone |CPU )OS (\d+)[_\.]').firstMatch(ua);
+  if (match != null) return int.tryParse(match.group(1) ?? '');
+  final versionMatch = RegExp(r'Version/(\d+)').firstMatch(ua);
+  if (versionMatch != null && isSafariBrowser) {
+    return int.tryParse(versionMatch.group(1) ?? '');
+  }
+  return null;
 }
 
 /// Upload-only fallback when live camera is unreliable (old iOS or no APIs).
 bool get preferUploadBarcodeOnWeb {
+  // FIX 5: use live camera when BarcodeDetector is present
   if (barcodeDetectorAvailable) return false;
   if (isSafariBrowser) {
     final iosMajor = _iosMajorVersionFromUserAgent();
-    if (iosMajor != null && iosMajor >= 17) return false;
-    return true;
+    if (iosMajor == null) return false;
+    return iosMajor < 17;
   }
   return false;
 }
@@ -49,12 +55,24 @@ abstract final class HexaWebLiveBarcodeScanner {
     _shared ??= _WebBarcodeDetectorScanner();
     return _shared!;
   }
+
+  /// Tear down platform view — call when scan route is permanently disposed.
+  static Future<void> disposeShared() async {
+    final s = _shared;
+    _shared = null;
+    if (s is _WebBarcodeDetectorScanner) {
+      await s.dispose();
+    }
+  }
 }
 
 WebLiveBarcodeScanner? createWebLiveBarcodeScanner() {
   if (!barcodeDetectorAvailable) return null;
   return HexaWebLiveBarcodeScanner.shared;
 }
+
+Future<void> disposeSharedWebBarcodeScanner() =>
+    HexaWebLiveBarcodeScanner.disposeShared();
 
 Future<String?> decodeBarcodeFromImageBytes(List<int> bytes) async {
   if (!barcodeDetectorAvailable) return null;
@@ -213,11 +231,11 @@ class _WebBarcodeDetectorScanner implements WebLiveBarcodeScanner {
         'audio': false,
       });
       _stream = stream;
-      _video = html.VideoElement()
+      _video ??= html.VideoElement()
         ..autoplay = true
         ..muted = true
-        ..setAttribute('playsinline', 'true')
-        ..srcObject = stream;
+        ..setAttribute('playsinline', 'true');
+      _video!.srcObject = stream;
 
       await _video!.onLoadedMetadata.first.timeout(const Duration(seconds: 8));
       await _video!.play();
@@ -280,8 +298,14 @@ class _WebBarcodeDetectorScanner implements WebLiveBarcodeScanner {
 
     if (_video != null) {
       _video!.srcObject = null;
-      _video!.remove();
-      _video = null;
+      // Keep element alive so HtmlElementView can reuse on next start().
     }
+  }
+
+  Future<void> dispose() async {
+    await stop();
+    _video?.remove();
+    _video = null;
+    _viewRegistered = false;
   }
 }

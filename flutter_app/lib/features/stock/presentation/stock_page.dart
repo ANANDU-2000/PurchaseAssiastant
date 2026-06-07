@@ -292,8 +292,10 @@ class _StockPageState extends ConsumerState<StockPage>
         q.copyWith(page: q.page + 1);
   }
 
-  List<Map<String, dynamic>> _prepareItems(List<Map<String, dynamic>> raw) {
-    final patches = ref.watch(stockListRowPatchProvider);
+  List<Map<String, dynamic>> _prepareItems(
+    List<Map<String, dynamic>> raw, {
+    Map<String, Map<String, dynamic>> patches = const {},
+  }) {
     if (patches.isNotEmpty) {
       raw = raw
           .map((m) => row_patch.mergeStockListRowMap(m, patches))
@@ -343,7 +345,10 @@ class _StockPageState extends ConsumerState<StockPage>
       for (final e in (data['items'] as List? ?? []))
         if (e is Map) Map<String, dynamic>.from(e),
     ];
-    final items = _prepareItems(raw);
+    final items = _prepareItems(
+      raw,
+      patches: ref.read(stockListRowPatchProvider),
+    );
     if (items.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -399,7 +404,10 @@ class _StockPageState extends ConsumerState<StockPage>
       for (final e in (data['items'] as List? ?? []))
         if (e is Map) Map<String, dynamic>.from(e),
     ];
-    final rows = _prepareItems(raw);
+    final rows = _prepareItems(
+      raw,
+      patches: ref.read(stockListRowPatchProvider),
+    );
     if (rows.isEmpty) return;
     String esc(String s) => '"${s.replaceAll('"', '""')}"';
     final b = StringBuffer();
@@ -476,12 +484,13 @@ class _StockPageState extends ConsumerState<StockPage>
   Widget _buildListBody({
     required Map<String, dynamic> data,
     required bool isReloading,
+    required Map<String, Map<String, dynamic>> rowPatches,
   }) {
     final raw = [
       for (final e in (data['items'] as List? ?? []))
         if (e is Map) Map<String, dynamic>.from(e),
     ];
-    final items = _prepareItems(raw);
+    final items = _prepareItems(raw, patches: rowPatches);
     final deliveryCounts =
         ref.watch(stockDeliveryIndicatorCountsProvider).valueOrNull ??
             StockRowMetrics.countDeliveryIndicators(raw);
@@ -741,6 +750,9 @@ class _StockPageState extends ConsumerState<StockPage>
 
   @override
   Widget build(BuildContext context) {
+    // FIX 6: watch patches in build() so list rebuilds on optimistic row updates
+    final rowPatches = ref.watch(stockListRowPatchProvider);
+
     ref.listen(businessWriteEventProvider, (prev, next) {
       if (prev == null || prev.revision == next.revision) return;
       if (next.kind != 'purchase' && next.kind != 'stock') return;
@@ -930,7 +942,11 @@ class _StockPageState extends ConsumerState<StockPage>
         );
       }
     } else if (data != null) {
-      body = _buildListBody(data: data, isReloading: isReloading);
+      body = _buildListBody(
+        data: data,
+        isReloading: isReloading,
+        rowPatches: rowPatches,
+      );
     } else {
       body = const ListSkeleton(rowCount: 12);
     }

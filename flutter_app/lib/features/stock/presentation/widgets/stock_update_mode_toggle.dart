@@ -10,13 +10,26 @@ class StockUpdateModeToggle extends StatelessWidget {
     super.key,
     required this.mode,
     required this.onChanged,
+    this.allowSystem = true,
   });
 
   final StockUpdateMode mode;
   final ValueChanged<StockUpdateMode> onChanged;
 
+  /// When false, only physical mode is shown (staff floor count).
+  final bool allowSystem;
+
   @override
   Widget build(BuildContext context) {
+    if (!allowSystem) {
+      return const Align(
+        alignment: Alignment.centerLeft,
+        child: Chip(
+          avatar: Icon(Icons.inventory_outlined, size: 16),
+          label: Text('Physical count', style: TextStyle(fontSize: 11)),
+        ),
+      );
+    }
     return SegmentedButton<StockUpdateMode>(
       segments: const [
         ButtonSegment(

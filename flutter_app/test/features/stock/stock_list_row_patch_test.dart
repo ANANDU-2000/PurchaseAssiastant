@@ -6,7 +6,11 @@ void main() {
     final out = mergeStockListRowMap(
       {'id': 'a', 'current_stock': 10, 'physical_stock_qty': 9},
       {
-        'a': {'physical_stock_qty': 11, 'physical_stock_difference_qty': 1},
+        'a': {
+          kStockListPatchAtKey: DateTime.utc(2026, 6, 4, 12).toIso8601String(),
+          'physical_stock_qty': 11,
+          'physical_stock_difference_qty': 1,
+        },
       },
     );
     expect(out['physical_stock_qty'], 11);
