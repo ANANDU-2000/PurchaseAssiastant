@@ -41,7 +41,7 @@ KEYS_TO_SET = {
     "AUTO_MIGRATE": "0",
     "API_READ_BUDGET_SECONDS": "6",
     "AUTO_STOCK_BACKFILL_ON_START": "false",
-    "CORS_ORIGINS": "https://purchase-assiastant.vercel.app",
+    "CORS_ORIGINS": "https://purchase-assiastant.vercel.app,https://purchase-assistant.vercel.app",
     "DATABASE_POOL_SIZE": "5",
     "DATABASE_MAX_OVERFLOW": "10",
     "DATABASE_SSL_INSECURE": "false",

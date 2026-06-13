@@ -14,7 +14,7 @@ router = APIRouter(tags=["health"])
 logger = logging.getLogger("harisree.health")
 
 # Keep in sync with latest Alembic revision in backend/alembic/versions/.
-EXPECTED_ALEMBIC_HEAD = "062_trade_report_indexes"
+EXPECTED_ALEMBIC_HEAD = "064_pg_report_line_indexes"
 
 
 @router.get("/")

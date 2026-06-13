@@ -495,10 +495,17 @@ _DEFAULT_LOCAL_CORS_ORIGINS = [
     "http://127.0.0.1:8092",
 ]
 _origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
-# Canonical Harisree production web (Vercel). Single hostname — do not add assistant/assastant typos.
-_CANONICAL_PROD_WEB = "https://purchase-assiastant.vercel.app"
-if settings.app_env.lower() == "production" and _CANONICAL_PROD_WEB not in _origins:
-    _origins.append(_CANONICAL_PROD_WEB)
+# Harisree production web (Vercel). Canonical spelling is assiastant; assistant is a common bookmark typo.
+_PROD_WEB_ORIGINS = (
+    "https://purchase-assiastant.vercel.app",
+    "https://purchase-assistant.vercel.app",
+)
+if settings.app_env.lower() == "production":
+    _seen_prod = set(_origins)
+    for _web in _PROD_WEB_ORIGINS:
+        if _web not in _seen_prod:
+            _origins.append(_web)
+            _seen_prod.add(_web)
 logger.info("CORS origins (%d): %s", len(_origins), _origins)
 if not _origins:
     _origins = list(_DEFAULT_LOCAL_CORS_ORIGINS)
