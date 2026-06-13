@@ -14,12 +14,9 @@ import '../../../core/json_coerce.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidateWarehouseSurfacesAfterStockWrite;
 import '../../../core/notifications/local_notifications_service.dart';
-import '../../../core/providers/home_owner_dashboard_providers.dart';
-import '../../../core/providers/staff_home_providers.dart';
 import '../../../core/providers/stock_providers.dart'
     show
         applyStockListRowPatch,
-        stockChangesFeedProvider,
         stockListQueryProvider,
         stockStatusCountsProvider;
 import '../stock_list_row_patch.dart'
@@ -263,14 +260,21 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
   void _applyOptimisticListPatch(Map<String, dynamic>? saved, num parsed) {
     if (_itemId.isEmpty) return;
     final system = coerceToDouble(_item['current_stock']);
+    final reorder = _item['reorder_level'];
     var patch = _mode == StockUpdateMode.physical
         ? stockListPatchFromPhysicalCount(
-            saved ?? const {},
+            {
+              ...?saved,
+              if (reorder != null) 'reorder_level': reorder,
+            },
             fallbackCountedQty: parsed,
             fallbackSystemQty: system,
           )
         : stockListPatchFromStockDetail(
-            saved ?? const {},
+            {
+              ...?saved,
+              if (reorder != null) 'reorder_level': reorder,
+            },
             fallbackQty: parsed,
           );
     if (patch.isEmpty && _mode == StockUpdateMode.physical) {
@@ -309,20 +313,18 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     _patchApplied = false;
   }
 
-  void _refreshCountsOnly() {
+  void _refreshBackgroundReconcile() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       invalidateWarehouseSurfacesAfterStockWrite(
         widget.parentRef,
-        itemId: _itemId,
         deferFullList: true,
+        light: true,
       );
-      widget.parentRef.invalidate(stockChangesFeedProvider);
-      widget.parentRef.invalidate(stockAuditPeriodProvider);
     });
   }
 
   Future<void> _afterSaveBackground(num parsed) async {
-    _refreshCountsOnly();
+    _refreshBackgroundReconcile();
     final reorder = coerceToDouble(_item['reorder_level']);
     if (reorder > 0 && parsed <= reorder) {
       final unitLabel = _unit.isNotEmpty ? _unit.toUpperCase() : '';

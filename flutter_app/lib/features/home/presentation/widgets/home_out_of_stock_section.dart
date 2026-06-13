@@ -19,18 +19,13 @@ class HomeOutOfStockSection extends ConsumerWidget {
     if (session == null) {
       return const HomeSectionSkeleton(rows: 2);
     }
-    final cacheKey = StockListCacheKey(
-      kHomeOutOfStockListQuery,
-      const StockOperationalFilters(),
-      session.primaryBusiness.id,
-    );
-    final listAsync = ref.watch(stockListCacheProvider(cacheKey));
+    final listAsync = ref.watch(homeOutOfStockListProvider);
 
     return listAsync.when(
       loading: () => const HomeSectionSkeleton(rows: 2),
       error: (_, __) => SectionInlineError(
         message: 'Could not load out-of-stock items',
-        onRetry: () => ref.invalidate(stockListCacheProvider(cacheKey)),
+        onRetry: () => ref.invalidate(homeOutOfStockListProvider),
       ),
       data: (payload) {
         final raw = payload['items'];

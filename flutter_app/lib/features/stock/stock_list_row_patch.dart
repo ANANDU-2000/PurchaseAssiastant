@@ -8,6 +8,19 @@ DateTime? _parsePatchOrRowTimestamp(String? raw) {
   return DateTime.tryParse(raw);
 }
 
+/// Derive list-row status when the API omits [stock_status] on a partial payload.
+String? stockStatusForPatchRow(Map<String, dynamic> detail) {
+  final st = detail['stock_status']?.toString().trim();
+  if (st != null && st.isNotEmpty) return st;
+  final qty = coerceToDoubleNullable(detail['current_stock']) ??
+      coerceToDoubleNullable(detail['system_qty']);
+  if (qty == null || !qty.isFinite) return null;
+  if (qty <= 0) return 'out';
+  final reorder = coerceToDoubleNullable(detail['reorder_level']);
+  if (reorder != null && reorder > 0 && qty <= reorder) return 'low';
+  return 'healthy';
+}
+
 /// True when server row timestamps are newer than the optimistic patch.
 bool serverRowNewerThanPatch(
   Map<String, dynamic> serverRow,
@@ -69,10 +82,10 @@ Map<String, dynamic> stockListPatchFromPhysicalCount(
 }) {
   final counted = coerceToDoubleNullable(out['physical_stock_qty']) ??
       coerceToDoubleNullable(out['counted_qty']) ??
-      (fallbackCountedQty != null ? fallbackCountedQty.toDouble() : null);
+      fallbackCountedQty?.toDouble();
   final system = coerceToDoubleNullable(out['system_qty']) ??
       coerceToDoubleNullable(out['current_stock']) ??
-      (fallbackSystemQty != null ? fallbackSystemQty.toDouble() : null);
+      fallbackSystemQty?.toDouble();
   if (counted == null) return const {};
   final sys = system ?? 0.0;
   final diff = coerceToDoubleNullable(out['physical_stock_difference_qty']) ??
@@ -84,9 +97,12 @@ Map<String, dynamic> stockListPatchFromPhysicalCount(
       out['counted_by_name']?.toString();
   final systemAt = out['last_stock_updated_at']?.toString();
   final systemBy = out['last_stock_updated_by']?.toString();
+  final status = stockStatusForPatchRow(out);
   return {
     'physical_stock_qty': counted,
     'physical_stock_difference_qty': diff,
+    if (system != null && system.isFinite) 'current_stock': system,
+    if (status != null) 'stock_status': status,
     if (by != null && by.isNotEmpty) 'physical_stock_counted_by': by,
     if (at != null && at.isNotEmpty) 'physical_stock_counted_at': at,
     if (systemAt != null && systemAt.isNotEmpty) 'last_stock_updated_at': systemAt,
@@ -130,5 +146,7 @@ Map<String, dynamic> stockListPatchFromStockDetail(
       patch['physical_stock_difference_qty'] = physQty - sys;
     }
   }
+  final status = stockStatusForPatchRow(detail);
+  if (status != null) patch['stock_status'] = status;
   return patch;
 }

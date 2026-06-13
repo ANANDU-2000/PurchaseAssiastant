@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/hexa_api.dart';
+import '../auth/provider_api_guard.dart';
 import '../auth/session_notifier.dart';
 import '../errors/user_facing_errors.dart';
+import '../json_coerce.dart';
 import '../../features/stock/stock_list_row_patch.dart'
     show
         kStockListPatchAtKey,
@@ -21,6 +23,9 @@ void _providerKeepAlive(Ref ref, Duration ttl) {
   final timer = Timer(ttl, link.close);
   ref.onDispose(timer.cancel);
 }
+
+/// Public alias for providers outside this file (e.g. warehouse alerts).
+void providerKeepAlive(Ref ref, Duration ttl) => _providerKeepAlive(ref, ttl);
 
 /// Query for GET `/v1/businesses/{id}/stock/list`.
 class StockListQuery {
@@ -92,6 +97,30 @@ class StockListQuery {
   }
 }
 
+/// Home out-of-stock strip — small scoped list (not the stock page query).
+const kHomeOutOfStockListQuery = StockListQuery(
+  status: 'out',
+  perPage: 8,
+  page: 1,
+  sort: 'stock_asc',
+);
+
+final homeOutOfStockListProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  _providerKeepAlive(ref, const Duration(minutes: 2));
+  final session = ref.watch(sessionProvider);
+  if (session == null) {
+    return {'items': <Map<String, dynamic>>[], 'total': 0};
+  }
+  return ref.read(hexaApiProvider).listStock(
+        businessId: session.primaryBusiness.id,
+        page: kHomeOutOfStockListQuery.page,
+        perPage: kHomeOutOfStockListQuery.perPage,
+        status: kHomeOutOfStockListQuery.status,
+        sort: kHomeOutOfStockListQuery.sort,
+      );
+});
+
 /// Item drill-down: period purchases, variance, recent lines.
 final stockItemIntelligenceProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, itemId) async {
@@ -137,6 +166,38 @@ final stockPagePeriodProvider =
 
 /// Tablet/desktop split pane selection.
 final stockSelectedItemIdProvider = StateProvider<String?>((ref) => null);
+
+/// Restored scroll position when returning to the stock list tab.
+final stockListScrollOffsetProvider = StateProvider<double>((ref) => 0);
+
+enum StockDeliveryFilter { all, pending, delivered }
+
+/// Client-side delivery truck filter on stock list.
+final stockDeliveryFilterProvider =
+    StateProvider<StockDeliveryFilter>((ref) => StockDeliveryFilter.all);
+
+/// True when list query narrows beyond default warehouse scope (search, period, etc.).
+bool stockListHasScopedFilters(StockListQuery q, StockOperationalFilters op) {
+  if (q.q.trim().isNotEmpty) return true;
+  if (q.category.trim().isNotEmpty) return true;
+  if (q.supplier.trim().isNotEmpty) return true;
+  if (q.includePeriod) return true;
+  if (q.purchasedInPeriod) return true;
+  if (op.evictionOnly) return true;
+  if (op.purchasedInPeriodOnly) return true;
+  return false;
+}
+
+int _warehouseChipFilterCount(StockListQuery q, StockOperationalFilters op) {
+  var n = 0;
+  if (q.subcategory.isNotEmpty) n++;
+  if (q.status != 'all') n++;
+  if (op.missingBarcodeOnly) n++;
+  if (op.missingItemCodeOnly) n++;
+  if (op.reorderOnly) n++;
+  if (op.unit.isNotEmpty) n++;
+  return n;
+}
 
 /// Client-side filters shared by stock + bulk print.
 class StockOperationalFilters {
@@ -410,6 +471,11 @@ void applyStockListRowPatch(
       itemId: {...?current[itemId], ...tagged},
     };
   });
+  if (kDebugMode) {
+    debugPrint(
+      '[STOCK_UI_REFRESH] itemId=$itemId patchKeys=${patch.keys.toList()}',
+    );
+  }
 }
 
 /// Drop optimistic patches once `/stock/list` returns fresher server rows.
@@ -545,6 +611,84 @@ final stockStatusCountsProvider =
     'out': outCount,
     'missing_code': (summary['missing_item_code'] as num?)?.toInt() ?? 0,
     'missing_barcode': (summary['missing_barcode'] as num?)?.toInt() ?? 0,
+  };
+});
+
+/// Pending/delivered truck counts for stock list filter chips.
+final stockDeliveryIndicatorCountsProvider = FutureProvider.autoDispose<
+    ({int pending, int delivered})>((ref) async {
+  _providerKeepAlive(ref, const Duration(seconds: 25));
+  final session = ref.watch(sessionProvider);
+  if (session == null || providerSkipApi(ref)) {
+    return (pending: 0, delivered: 0);
+  }
+  final query = ref.watch(stockListQueryProvider);
+  final op = ref.watch(stockOperationalFiltersProvider);
+  final counts = await ref.read(hexaApiProvider).stockDeliveryIndicatorCounts(
+        businessId: session.primaryBusiness.id,
+        q: query.q,
+        category: query.category,
+        subcategory: query.subcategory,
+        status: query.status,
+        sort: query.sort,
+        includePeriod: query.includePeriod,
+        periodStart: query.periodStart,
+        periodEnd: query.periodEnd,
+        missingBarcode: op.missingBarcodeOnly,
+        missingItemCode: op.missingItemCodeOnly,
+        reorderOnly: op.reorderOnly,
+        unit: op.unit,
+      );
+  return (
+    pending: coerceToInt(counts['pending']),
+    delivered: coerceToInt(counts['delivered']),
+  );
+});
+
+/// All/Low/Out chip counts — scoped when warehouse filters are active.
+final stockFilteredStatusCountsProvider =
+    FutureProvider.autoDispose<Map<String, int>>((ref) async {
+  _providerKeepAlive(ref, const Duration(seconds: 25));
+  final q = ref.watch(stockListQueryProvider);
+  final op = ref.watch(stockOperationalFiltersProvider);
+  if (_warehouseChipFilterCount(q, op) == 0 &&
+      !stockListHasScopedFilters(q, op)) {
+    return ref.watch(stockStatusCountsProvider.future);
+  }
+  final session = ref.watch(sessionProvider);
+  if (session == null || providerSkipApi(ref)) return {};
+  final api = ref.read(hexaApiProvider);
+  final bid = session.primaryBusiness.id;
+
+  Future<int> totalFor(String status) async {
+    final res = await api.listStock(
+      businessId: bid,
+      page: 1,
+      perPage: 1,
+      q: q.q,
+      category: q.category,
+      subcategory: q.subcategory,
+      status: status,
+      sort: q.sort,
+      includePeriod: q.includePeriod,
+      periodStart: q.periodStart,
+      periodEnd: q.periodEnd,
+      purchasedInPeriod: q.purchasedInPeriod || op.purchasedInPeriodOnly,
+      missingBarcode: op.missingBarcodeOnly,
+      missingItemCode: op.missingItemCodeOnly,
+      reorderOnly: op.reorderOnly,
+      unit: op.unit,
+    );
+    return (res['total'] as num?)?.toInt() ?? 0;
+  }
+
+  final low = await totalFor('low');
+  final critical = await totalFor('critical');
+  return {
+    'all': await totalFor('all'),
+    'low': low,
+    'critical': critical,
+    'out': await totalFor('out'),
   };
 });
 

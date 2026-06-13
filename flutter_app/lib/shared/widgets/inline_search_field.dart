@@ -10,12 +10,18 @@ class InlineSearchItem {
     required this.label,
     this.subtitle,
     this.searchText,
+    this.sortBoost = 0,
+    this.pendingBalance,
+    this.lastPurchaseDate,
   });
 
   final String id;
   final String label;
   final String? subtitle;
   final String? searchText;
+  final int sortBoost;
+  final double? pendingBalance;
+  final String? lastPurchaseDate;
 
   @override
   bool operator ==(Object other) =>
