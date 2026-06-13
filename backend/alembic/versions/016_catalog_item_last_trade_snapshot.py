@@ -69,33 +69,34 @@ def upgrade() -> None:
         unique=False,
         if_not_exists=True,
     )
-    if not _fk_exists(bind, "catalog_items", ("last_supplier_id",), "suppliers"):
-        op.create_foreign_key(
-            "fk_catalog_items_last_supplier_id_suppliers",
-            "catalog_items",
-            "suppliers",
-            ["last_supplier_id"],
-            ["id"],
-            ondelete="SET NULL",
-        )
-    if not _fk_exists(bind, "catalog_items", ("last_broker_id",), "brokers"):
-        op.create_foreign_key(
-            "fk_catalog_items_last_broker_id_brokers",
-            "catalog_items",
-            "brokers",
-            ["last_broker_id"],
-            ["id"],
-            ondelete="SET NULL",
-        )
-    if not _fk_exists(bind, "catalog_items", ("last_trade_purchase_id",), "trade_purchases"):
-        op.create_foreign_key(
-            "fk_catalog_items_last_trade_purchase_id_trade_purchases",
-            "catalog_items",
-            "trade_purchases",
-            ["last_trade_purchase_id"],
-            ["id"],
-            ondelete="SET NULL",
-        )
+    if bind.dialect.name != "sqlite":
+        if not _fk_exists(bind, "catalog_items", ("last_supplier_id",), "suppliers"):
+            op.create_foreign_key(
+                "fk_catalog_items_last_supplier_id_suppliers",
+                "catalog_items",
+                "suppliers",
+                ["last_supplier_id"],
+                ["id"],
+                ondelete="SET NULL",
+            )
+        if not _fk_exists(bind, "catalog_items", ("last_broker_id",), "brokers"):
+            op.create_foreign_key(
+                "fk_catalog_items_last_broker_id_brokers",
+                "catalog_items",
+                "brokers",
+                ["last_broker_id"],
+                ["id"],
+                ondelete="SET NULL",
+            )
+        if not _fk_exists(bind, "catalog_items", ("last_trade_purchase_id",), "trade_purchases"):
+            op.create_foreign_key(
+                "fk_catalog_items_last_trade_purchase_id_trade_purchases",
+                "catalog_items",
+                "trade_purchases",
+                ["last_trade_purchase_id"],
+                ["id"],
+                ondelete="SET NULL",
+            )
 
 
 def downgrade() -> None:
