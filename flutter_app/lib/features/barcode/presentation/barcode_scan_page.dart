@@ -334,9 +334,26 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
     }
   }
 
+  Future<void> _disposeNativeCamera() async {
+    final cam = _camera;
+    _camera = null;
+    if (BarcodeCameraSession.mobile == cam) {
+      BarcodeCameraSession.mobile = null;
+    }
+    if (cam != null) {
+      await cam.stop();
+      await cam.dispose();
+    }
+  }
+
   Future<void> _startNativeMobileScanner() async {
     if (!mounted) return;
-    _camera = BarcodeCameraSession.mobile ?? _newScannerController();
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await _disposeNativeCamera();
+      _camera = _newScannerController();
+    } else {
+      _camera = BarcodeCameraSession.mobile ?? _newScannerController();
+    }
     BarcodeCameraSession.retainMobile(_camera!);
     if (!_camera!.value.isRunning) {
       await _camera!.start();
@@ -873,8 +890,8 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final cam = _camera;
     if (kIsWeb) {
+      final cam = _camera;
       if (state == AppLifecycleState.paused) {
         if (cam != null) unawaited(cam.stop());
         unawaited(_stopWebLiveScanner());
@@ -888,15 +905,11 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden) {
-      if (cam != null) unawaited(cam.stop());
+      unawaited(_disposeNativeCamera());
       unawaited(_stopWebLiveScanner());
       _scanLineCtrl.stop();
     } else if (state == AppLifecycleState.resumed) {
-      if (_useWebDetectorPreview) {
-        unawaited(_initCamera());
-      } else if (cam != null) {
-        unawaited(cam.start());
-      }
+      unawaited(_initCamera());
       if (!_busy) {
         _scanLineCtrl.repeat(reverse: true);
       }

@@ -11,14 +11,16 @@ from typing import Any
 
 from time import monotonic
 
-from sqlalchemy import delete, exists, func, not_, or_, select, text
+from sqlalchemy import and_, delete, exists, func, not_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db_resilience import execute_with_retry
 from app.models import (
+    Broker,
     CatalogItem,
     PurchaseLifecycleEvent,
+    Supplier,
     SupplierItemDefault,
     TradePurchase,
     TradePurchaseDraft,
@@ -869,6 +871,118 @@ async def check_duplicate(
     )
 
 
+def _trade_list_payment_exprs(today: date):
+    total = func.coalesce(TradePurchase.total_amount, 0)
+    paid = func.coalesce(TradePurchase.paid_amount, 0)
+    remaining = total - paid
+    open_balance = and_(total > 0, remaining > 0)
+    is_paid = or_(total <= 0, remaining <= 0, paid >= total)
+    not_terminal = TradePurchase.status.notin_(("cancelled", "deleted", "draft"))
+    is_overdue = and_(
+        not_terminal,
+        open_balance,
+        TradePurchase.due_date.isnot(None),
+        TradePurchase.due_date < today,
+    )
+    due_soon_end = today + timedelta(days=3)
+    is_due_soon = and_(
+        not_terminal,
+        open_balance,
+        TradePurchase.due_date.isnot(None),
+        TradePurchase.due_date >= today,
+        TradePurchase.due_date <= due_soon_end,
+    )
+    is_pending = and_(
+        not_terminal,
+        not_(is_paid),
+        not_(is_overdue),
+        not_(is_due_soon),
+        or_(
+            TradePurchase.status.in_(("confirmed", "saved")),
+            paid > 0,
+        ),
+    )
+    return {
+        "is_paid": is_paid,
+        "is_overdue": is_overdue,
+        "is_due_soon": is_due_soon,
+        "is_pending": is_pending,
+    }
+
+
+def _apply_trade_list_status_sql(stmt, status_filter: str | None, today: date):
+    """Push list status filters to SQL where possible. Returns (stmt, applied)."""
+    sf = (status_filter or "all").strip().lower()
+    if not sf or sf == "all":
+        return stmt, False
+    pay = _trade_list_payment_exprs(today)
+    if sf == "draft":
+        return stmt.where(TradePurchase.status.in_(("draft", "saved"))), True
+    if sf == "due_soon":
+        return stmt.where(pay["is_due_soon"]), True
+    if sf == "overdue":
+        return stmt.where(pay["is_overdue"]), True
+    if sf == "paid":
+        return stmt.where(pay["is_paid"]), True
+    if sf == "pending":
+        return stmt.where(pay["is_pending"]), True
+    if sf == "delivered":
+        return stmt.where(
+            or_(
+                TradePurchase.is_delivered.is_(True),
+                func.lower(func.coalesce(TradePurchase.delivery_status, ""))
+                == "stock_committed",
+            )
+        ), True
+    if sf == "cancelled":
+        return stmt.where(
+            or_(
+                func.lower(func.coalesce(TradePurchase.status, "")) == "cancelled",
+                func.lower(func.coalesce(TradePurchase.delivery_status, ""))
+                == "cancelled",
+            )
+        ), True
+    if sf in (
+        "in_transit",
+        "dispatched",
+        "arrived",
+        "staff_verifying",
+        "staff_verified",
+        "partial",
+        "stock_committed",
+    ):
+        return stmt.where(
+            func.lower(func.coalesce(TradePurchase.delivery_status, "pending")) == sf
+        ), True
+    return stmt, False
+
+
+def _apply_trade_list_search_sql(stmt, business_id: uuid.UUID, q: str | None):
+    needle = (q or "").strip().lower()
+    if not needle:
+        return stmt, False
+    pattern = f"%{needle}%"
+    line_match = exists(
+        select(1).where(
+            TradePurchaseLine.trade_purchase_id == TradePurchase.id,
+            func.lower(func.coalesce(TradePurchaseLine.item_name, "")).like(pattern),
+        )
+    )
+    stmt = (
+        stmt.outerjoin(Supplier, TradePurchase.supplier_id == Supplier.id)
+        .outerjoin(Broker, TradePurchase.broker_id == Broker.id)
+        .where(
+            or_(
+                func.lower(func.coalesce(TradePurchase.human_id, "")).like(pattern),
+                func.lower(func.coalesce(Supplier.name, "")).like(pattern),
+                func.lower(func.coalesce(Broker.name, "")).like(pattern),
+                line_match,
+            )
+        )
+    )
+    return stmt, True
+
+
 async def list_trade_purchases(
     db: AsyncSession,
     business_id: uuid.UUID,
@@ -892,14 +1006,19 @@ async def list_trade_purchases(
     has_entity_filter = (
         supplier_id is not None or broker_id is not None or catalog_item_id is not None
     )
+    sf = (status_filter or "all").strip().lower()
+    needle = (q or "").strip().lower()
+    today = date.today()
+    status_sql = False
+    search_sql = False
     if has_entity_filter:
         fetch_cap = min(max(limit, 1), 500)
+    elif needle:
+        fetch_cap = min(max(limit * 2, limit), 500)
+    elif sf and sf != "all":
+        fetch_cap = min(max(limit, 1), 500)
     else:
-        fetch_cap = (
-            min(max(limit * 5, limit), 500)
-            if (status_filter and status_filter != "all") or q
-            else min(limit, 500)
-        )
+        fetch_cap = min(limit, 500)
     stmt = (
         select(TradePurchase)
         .where(
@@ -947,6 +1066,10 @@ async def list_trade_purchases(
                 )
             )
         )
+    stmt, status_sql = _apply_trade_list_status_sql(stmt, status_filter, today)
+    stmt, search_sql = _apply_trade_list_search_sql(stmt, business_id, q)
+    if not has_entity_filter and (status_sql or search_sql):
+        fetch_cap = min(max(limit, 1), 500)
     off = min(max(int(offset or 0), 0), 10_000)
     stmt = stmt.offset(off).limit(fetch_cap)
     res = await execute_with_retry(lambda: db.execute(stmt))

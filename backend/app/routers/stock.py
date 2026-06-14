@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 from app.deps import get_current_user, require_membership, require_permission, require_role
 from app.services.staff_audit import log_staff_activity, log_staff_activity_best_effort
 from app.services.notification_emitter import CATEGORY_STAFF
-from app.services.stock_inventory import movement_delivered_qty_map
+from app.services.stock_inventory import movement_delivered_qty_map, compute_stock_alerts_summary
 from app.models import (
     Broker,
     CatalogItem,
@@ -1750,67 +1750,7 @@ async def stock_alerts_summary(
     _m: Annotated[Membership, Depends(require_membership)],
 ):
     """Operational alert counts for owner home strip."""
-    today = date.today()
-    low = crit = out = active_out = missing_barcode = missing_item_code = eviction = 0
-    catalog_total = 0
-    ir = await db.execute(
-        select(
-            CatalogItem.current_stock,
-            CatalogItem.reorder_level,
-            CatalogItem.item_code,
-            CatalogItem.barcode,
-            CatalogItem.last_purchase_at,
-            CatalogItem.opening_stock_qty,
-            CatalogItem.eviction_days,
-            ItemCategory.is_perishable,
-        )
-        .join(ItemCategory, CatalogItem.category_id == ItemCategory.id)
-        .where(
-            CatalogItem.business_id == business_id,
-            CatalogItem.deleted_at.is_(None),
-        )
-    )
-    for row in ir.all():
-        catalog_total += 1
-        cur, ro, code, barcode, lpa, opening_qty, ev_days, perish = row
-        cur_d = Decimal(cur or 0)
-        ro_d = Decimal(ro or 0)
-        st = stock_status(cur_d, ro_d)
-        if st == "low":
-            low += 1
-        elif st == "critical":
-            crit += 1
-        elif st == "out":
-            out += 1
-            opening_set = opening_qty is not None and Decimal(opening_qty) > 0
-            if opening_set or lpa is not None:
-                active_out += 1
-        if not (barcode and str(barcode).strip()):
-            missing_barcode += 1
-        if not (code and str(code).strip()):
-            missing_item_code += 1
-        if perish and cur_d > 0 and ev_days and lpa:
-            days = max(0, (datetime.now(timezone.utc) - lpa).days)
-            if days > int(ev_days):
-                eviction += 1
-    lr = await db.execute(
-        select(func.count(DailyUsageLog.id)).where(
-            DailyUsageLog.business_id == business_id,
-            DailyUsageLog.usage_date == today,
-        )
-    )
-    logged = int(lr.scalar_one() or 0)
-    return StockAlertsSummaryOut(
-        low_stock=low,
-        critical_stock=crit,
-        out_of_stock=out,
-        active_out_of_stock=active_out,
-        missing_barcode=missing_barcode,
-        missing_item_code=missing_item_code,
-        missing_usage_logs=max(0, catalog_total - logged),
-        eviction_count=eviction,
-        total_items=catalog_total,
-    )
+    return await compute_stock_alerts_summary(db, business_id)
 
 
 async def warehouse_alerts_from_stock(

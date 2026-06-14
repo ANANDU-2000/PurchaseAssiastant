@@ -103,7 +103,8 @@ class Settings(BaseSettings):
     database_get_read_failsafe: bool = True
     # asyncio wait_for cap for curated heavy GET aggregates (snapshot, home-overview, month dashboard).
     # 0 disables. Mutations rely on database_command_timeout_seconds instead.
-    api_read_budget_seconds: float = 4.0
+    # 8s default: Render cold home-overview can exceed 4s; home-overview also uses 10s override.
+    api_read_budget_seconds: float = 8.0
 
     # Log WARNING when HTTP round-trip exceeds this many ms (all routes). 0 disables slow-request WARN.
     http_slow_request_warning_ms: int = 500

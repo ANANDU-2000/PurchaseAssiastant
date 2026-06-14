@@ -24,12 +24,18 @@ final contactsSuppliersEnrichedProvider =
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
   final r = contactsDefaultRange();
-  final list = await api.listSuppliers(businessId: session.primaryBusiness.id);
-  List<Map<String, dynamic>> metrics = [];
-  try {
-    metrics = await api.tradeReportSuppliers(
-        businessId: session.primaryBusiness.id, from: r.from, to: r.to);
-  } catch (_) {}
+  final listFuture =
+      api.listSuppliers(businessId: session.primaryBusiness.id);
+  final metricsFuture = api
+      .tradeReportSuppliers(
+          businessId: session.primaryBusiness.id, from: r.from, to: r.to)
+      .catchError((Object _, StackTrace __) => <Map<String, dynamic>>[]);
+  final results = await Future.wait<List<Map<String, dynamic>>>([
+    listFuture,
+    metricsFuture,
+  ]);
+  final list = results[0];
+  final metrics = results[1];
   final byId = <String, Map<String, dynamic>>{};
   for (final m in metrics) {
     byId[m['supplier_id']?.toString() ?? ''] = m;
@@ -49,12 +55,17 @@ final contactsBrokersEnrichedProvider =
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
   final r = contactsDefaultRange();
-  final list = await api.listBrokers(businessId: session.primaryBusiness.id);
-  List<Map<String, dynamic>> metrics = [];
-  try {
-    metrics = await api.analyticsBrokers(
-        businessId: session.primaryBusiness.id, from: r.from, to: r.to);
-  } catch (_) {}
+  final listFuture = api.listBrokers(businessId: session.primaryBusiness.id);
+  final metricsFuture = api
+      .analyticsBrokers(
+          businessId: session.primaryBusiness.id, from: r.from, to: r.to)
+      .catchError((Object _, StackTrace __) => <Map<String, dynamic>>[]);
+  final results = await Future.wait<List<Map<String, dynamic>>>([
+    listFuture,
+    metricsFuture,
+  ]);
+  final list = results[0];
+  final metrics = results[1];
   final byId = <String, Map<String, dynamic>>{};
   for (final m in metrics) {
     byId[m['broker_id']?.toString() ?? ''] = m;

@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import Any, Literal
 
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import CatalogItem, Membership, User
@@ -266,6 +267,27 @@ async def apply_stock_movement(
         created_at=now,
     )
     db.add(movement)
+
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        if idem:
+            existing_r = await db.execute(
+                select(StockMovement).where(
+                    StockMovement.business_id == business_id,
+                    StockMovement.idempotency_key == idem,
+                )
+            )
+            existing = existing_r.scalar_one_or_none()
+            if existing is not None:
+                item = await _locked_item(
+                    db, business_id=business_id, item_id=existing.item_id
+                )
+                if item is None:
+                    raise ValueError("Item not found") from None
+                return StockMovementResult(existing, item, duplicate=True)
+        raise
 
     if create_projection:
         db.add(

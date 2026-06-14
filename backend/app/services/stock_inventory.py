@@ -1,13 +1,15 @@
 import uuid
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import Integer, and_, case, func, literal, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import CatalogItem, User
+from app.models import CatalogItem, ItemCategory, User
+from app.models.operations import DailyUsageLog
+from app.schemas.stock import StockAlertsSummaryOut
 from app.models.stock_adjustment import StockAdjustmentLog
 from app.models.stock_movement import StockMovement
 from app.services.unit_normalization import (
@@ -30,6 +32,115 @@ def stock_status(current: Decimal | None, reorder: Decimal | None) -> str:
         if cur <= ro:
             return "low"
     return "healthy"
+
+
+def _days_since_last_purchase_expr(db: AsyncSession):
+    """Integer days since last_purchase_at (floor at 0), SQLite + Postgres."""
+    bind = db.get_bind()
+    dialect = (getattr(getattr(bind, "dialect", None), "name", None) or "").lower()
+    lpa = CatalogItem.last_purchase_at
+    if dialect == "sqlite":
+        raw = func.cast(func.julianday("now") - func.julianday(lpa), Integer)
+        return case((raw < 0, 0), else_=raw)
+    raw = func.floor(func.extract("epoch", func.now() - lpa) / literal(86400))
+    return func.greatest(raw, 0)
+
+
+def _int_count(value: Any) -> int:
+    if value is None:
+        return 0
+    return int(value)
+
+
+async def compute_stock_alerts_summary(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+) -> StockAlertsSummaryOut:
+    """Single-query stock alert rollups (replaces per-row Python loop)."""
+    cur = func.coalesce(CatalogItem.current_stock, 0)
+    ro = func.coalesce(CatalogItem.reorder_level, 0)
+    half_ro = ro * literal(0.5)
+
+    is_out = cur <= 0
+    is_critical = and_(not_(is_out), ro > 0, cur <= half_ro)
+    is_low = or_(
+        and_(not_(is_out), ro > 0, cur > half_ro, cur <= ro),
+        and_(not_(is_out), ro <= 0, cur > 0, cur < 1),
+    )
+    opening_set = and_(
+        CatalogItem.opening_stock_qty.isnot(None),
+        CatalogItem.opening_stock_qty > 0,
+    )
+    is_active_out = and_(
+        is_out,
+        or_(opening_set, CatalogItem.last_purchase_at.isnot(None)),
+    )
+    barcode_missing = or_(
+        CatalogItem.barcode.is_(None),
+        func.trim(func.coalesce(CatalogItem.barcode, "")) == "",
+    )
+    code_missing = or_(
+        CatalogItem.item_code.is_(None),
+        func.trim(func.coalesce(CatalogItem.item_code, "")) == "",
+    )
+    days_since = _days_since_last_purchase_expr(db)
+    is_eviction = and_(
+        ItemCategory.is_perishable.is_(True),
+        cur > 0,
+        CatalogItem.eviction_days.isnot(None),
+        CatalogItem.last_purchase_at.isnot(None),
+        days_since > CatalogItem.eviction_days,
+    )
+
+    agg = await db.execute(
+        select(
+            func.count().label("total"),
+            func.coalesce(func.sum(case((is_low, 1), else_=0)), 0).label("low"),
+            func.coalesce(func.sum(case((is_critical, 1), else_=0)), 0).label(
+                "critical"
+            ),
+            func.coalesce(func.sum(case((is_out, 1), else_=0)), 0).label("out"),
+            func.coalesce(func.sum(case((is_active_out, 1), else_=0)), 0).label(
+                "active_out"
+            ),
+            func.coalesce(func.sum(case((barcode_missing, 1), else_=0)), 0).label(
+                "missing_barcode"
+            ),
+            func.coalesce(func.sum(case((code_missing, 1), else_=0)), 0).label(
+                "missing_item_code"
+            ),
+            func.coalesce(func.sum(case((is_eviction, 1), else_=0)), 0).label(
+                "eviction"
+            ),
+        )
+        .select_from(CatalogItem)
+        .join(ItemCategory, CatalogItem.category_id == ItemCategory.id)
+        .where(
+            CatalogItem.business_id == business_id,
+            CatalogItem.deleted_at.is_(None),
+        )
+    )
+    row = agg.one()
+    catalog_total = _int_count(row.total)
+    today = date.today()
+    lr = await db.execute(
+        select(func.count(DailyUsageLog.id)).where(
+            DailyUsageLog.business_id == business_id,
+            DailyUsageLog.usage_date == today,
+        )
+    )
+    logged = _int_count(lr.scalar_one())
+    return StockAlertsSummaryOut(
+        low_stock=_int_count(row.low),
+        critical_stock=_int_count(row.critical),
+        out_of_stock=_int_count(row.out),
+        active_out_of_stock=_int_count(row.active_out),
+        missing_barcode=_int_count(row.missing_barcode),
+        missing_item_code=_int_count(row.missing_item_code),
+        missing_usage_logs=max(0, catalog_total - logged),
+        eviction_count=_int_count(row.eviction),
+        total_items=catalog_total,
+    )
 
 
 def catalog_stock_qty(item: CatalogItem) -> Decimal:

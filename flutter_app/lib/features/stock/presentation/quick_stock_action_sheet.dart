@@ -238,6 +238,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     required String? reasonType,
     required String note,
     required int? stockVersion,
+    required String idempotencyKey,
   }) async {
     final session = parentRef.read(sessionProvider);
     if (session == null) return null;
@@ -251,6 +252,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         adjustmentType: reasonType ?? 'correction',
         reason: note.isNotEmpty ? '$reasonLabel — $note' : reasonLabel,
         initialStockVersion: stockVersion,
+        idempotencyKey: idempotencyKey,
       );
       parentRef.invalidate(appNotificationsListProvider);
       parentRef.invalidate(notificationCenterCoordinatorProvider);
@@ -371,6 +373,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     required String itemName,
     required String unit,
     required bool refreshItemDetail,
+    required String idempotencyKey,
     ScaffoldMessengerState? messenger,
   }) async {
     try {
@@ -383,6 +386,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         reasonType: reasonType,
         note: note,
         stockVersion: stockVersion,
+        idempotencyKey: idempotencyKey,
       ).timeout(const Duration(seconds: 45));
       if (kDebugMode) {
         debugPrint(
@@ -530,6 +534,8 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     final captureRefreshDetail = widget.refreshItemDetail;
     final parentRef = widget.parentRef;
     final messenger = ScaffoldMessenger.maybeOf(context);
+    final idempotencyKey =
+        'stock-save:$captureItemId:${DateTime.now().microsecondsSinceEpoch}';
 
     _applyOptimisticListPatch(null, parsed, parentRef: parentRef);
     // Close sheet immediately — optimistic patch updates the list; spinner must not stick.
@@ -550,6 +556,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         itemName: captureName,
         unit: captureUnit,
         refreshItemDetail: captureRefreshDetail,
+        idempotencyKey: idempotencyKey,
         messenger: messenger,
       ),
     );

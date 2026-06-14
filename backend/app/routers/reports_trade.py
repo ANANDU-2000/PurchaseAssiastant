@@ -46,14 +46,16 @@ _trade_line_amount_expr = tq.trade_line_amount_expr
 _trade_purchase_date_filter = tq.trade_purchase_date_filter
 
 _trade_dashboard_ttl_s = 60.0
-_trade_dashboard_cache: dict[
+_trade_dashboard_cache: OrderedDict[
     tuple[str, str, str, int, bool],
     tuple[float, dict[str, Any], str, bytes],
-] = {}
+] = OrderedDict()
 _trade_dashboard_cache_max = 256
 
 _trade_summary_ttl_s = 45.0
-_trade_summary_cache: dict[tuple[str, str, str, str, int], tuple[float, dict[str, Any]]] = {}
+_trade_summary_cache: OrderedDict[
+    tuple[str, str, str, str, int], tuple[float, dict[str, Any]]
+] = OrderedDict()
 _trade_summary_cache_max = 256
 
 _DEGRADED_META = frozenset({"degraded", "degraded_reason"})
@@ -341,10 +343,41 @@ def _store_trade_dashboard_cache(
     body = json_bytes(payload)
     etag = payload_etag(body)
     entry = (monotonic(), payload, etag, body)
+    if cache_key in _trade_dashboard_cache:
+        del _trade_dashboard_cache[cache_key]
     _trade_dashboard_cache[cache_key] = entry
-    if len(_trade_dashboard_cache) > _trade_dashboard_cache_max:
-        _trade_dashboard_cache.clear()
+    while len(_trade_dashboard_cache) > _trade_dashboard_cache_max:
+        _trade_dashboard_cache.popitem(last=False)
     return entry
+
+
+def _get_trade_dashboard_cache(
+    cache_key: tuple[Any, ...],
+) -> tuple[float, dict[str, Any], str, bytes] | None:
+    cached = _trade_dashboard_cache.get(cache_key)
+    if cached is not None:
+        _trade_dashboard_cache.move_to_end(cache_key)
+    return cached
+
+
+def _store_trade_summary_cache(
+    cache_key: tuple[Any, ...],
+    payload: dict[str, Any],
+) -> None:
+    if cache_key in _trade_summary_cache:
+        del _trade_summary_cache[cache_key]
+    _trade_summary_cache[cache_key] = (monotonic(), payload)
+    while len(_trade_summary_cache) > _trade_summary_cache_max:
+        _trade_summary_cache.popitem(last=False)
+
+
+def _get_trade_summary_cache(
+    cache_key: tuple[Any, ...],
+) -> tuple[float, dict[str, Any]] | None:
+    cached = _trade_summary_cache.get(cache_key)
+    if cached is not None:
+        _trade_summary_cache.move_to_end(cache_key)
+    return cached
 
 
 def _apply_trade_dashboard_compact(payload: dict[str, Any]) -> None:
@@ -822,14 +855,14 @@ async def trade_dashboard_snapshot(
     del _m
     cache_key = _snapshot_cache_key(business_id, date_from, date_to, compact=False, shell_bundle=False)
     now_mono = monotonic()
-    cached = _trade_dashboard_cache.get(cache_key)
+    cached = _get_trade_dashboard_cache(cache_key)
     if cached is not None and now_mono - cached[0] <= _trade_dashboard_ttl_s:
         return cached[1]
 
     async def compute() -> dict[str, Any]:
         return await _compute_trade_dashboard_snapshot_payload(db, business_id, date_from, date_to)
 
-    ok, maybe = await run_read_budget_bounded(compute)
+    ok, maybe = await run_read_budget_bounded(compute, timeout_seconds=10.0)
     if not ok or maybe is None:
         return _degraded_dashboard_response(cache_key, date_from, date_to, compact=False)
     payload = _strip_degraded_snapshot_fields(dict(maybe))
@@ -869,7 +902,7 @@ async def trade_home_overview(
         business_id, date_from, date_to, compact=compact, shell_bundle=shell_bundle
     )
     now_mono = monotonic()
-    cached = _trade_dashboard_cache.get(cache_key)
+    cached = _get_trade_dashboard_cache(cache_key)
     if cached is not None and now_mono - cached[0] <= _trade_dashboard_ttl_s:
         return json_response_with_etag(
             request,
@@ -900,7 +933,7 @@ async def trade_home_overview(
             out["home_shell"] = home_shell
         return out
 
-    ok, maybe = await run_read_budget_bounded(compute)
+    ok, maybe = await run_read_budget_bounded(compute, timeout_seconds=10.0)
     if not ok or maybe is None:
         degraded = _degraded_dashboard_response(cache_key, date_from, date_to, compact=compact)
         return json_response_with_etag(
@@ -946,7 +979,7 @@ async def trade_purchase_summary(
         gen,
     )
     t0 = monotonic()
-    hit = _trade_summary_cache.get(su_key)
+    hit = _get_trade_summary_cache(su_key)
     if hit is not None and t0 - hit[0] <= _trade_summary_ttl_s:
         return json_response_with_etag(
             request,
@@ -1022,9 +1055,7 @@ async def trade_purchase_summary(
         )
     payload = _strip_degraded_snapshot_fields(dict(maybe))
     _put_summary_last_good(su_key, payload)
-    _trade_summary_cache[su_key] = (monotonic(), payload)
-    if len(_trade_summary_cache) > _trade_summary_cache_max:
-        _trade_summary_cache.clear()
+    _store_trade_summary_cache(su_key, payload)
     return json_response_with_etag(
         request,
         payload,
