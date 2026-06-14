@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart' show ScrollNotification;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/hexa_api.dart';
+import '../auth/auth_failure_policy.dart';
 import '../auth/provider_api_guard.dart';
 import '../auth/session_notifier.dart';
 import '../errors/user_facing_errors.dart';
@@ -415,12 +416,19 @@ final stockListProvider = FutureProvider.autoDispose((ref) async {
     throw const StockListFetchBlockedException('no_session');
   }
   await awaitProviderApiReady(ref);
-  if (providerSkipApi(ref)) {
+  final skipApi = providerSkipApi(ref);
+  if (skipApi) {
     final cachedBody = ref.read(stockListCachedBodyProvider);
     if (stockListCacheBodyIsUsable(cachedBody)) {
       return Map<String, dynamic>.from(cachedBody!);
     }
-    throw const StockListFetchBlockedException('api_gate');
+    final canForceLiveOnWeb = kIsWeb &&
+        !ref.read(auth401CircuitOpenProvider) &&
+        !ref.read(authSessionExpiredProvider);
+    if (!canForceLiveOnWeb) {
+      throw const StockListFetchBlockedException('api_gate');
+    }
+    // Web shell tabs: resume/refresh gates can stick while APIs are healthy (200).
   }
   final queryKey = query.toCacheKey();
   final cachedKey = ref.read(stockListCacheQueryKeyProvider);

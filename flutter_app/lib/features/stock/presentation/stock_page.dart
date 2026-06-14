@@ -146,6 +146,13 @@ class _StockPageState extends ConsumerState<StockPage>
       clearStockListEtagCache(ref);
     }
 
+    // Shell IndexedStack + tab resume gates can block stock/list while other XHRs succeed.
+    ref.read(authResumeGateProvider.notifier).state = false;
+    ref.read(authRefreshInFlightProvider.notifier).state = false;
+    if (!ref.read(auth401CircuitOpenProvider)) {
+      ref.read(authApiGateProvider.notifier).clearSuspend();
+    }
+
     _deliveryCountsPoll = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
       if (providerSkipApi(ref)) return;

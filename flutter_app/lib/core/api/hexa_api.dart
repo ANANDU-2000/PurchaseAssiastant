@@ -5,7 +5,7 @@ import 'dart:math' show Random;
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
 import 'package:http_parser/http_parser.dart';
 
 import 'dio_auto_retry_interceptor.dart';
@@ -2649,40 +2649,55 @@ class HexaApi {
     String unit = '',
     String? ifNoneMatch,
   }) async {
-    final res = await _dio.get<Map<String, dynamic>>(
-      '/v1/businesses/$businessId/stock/list',
-      queryParameters: {
-        'page': page,
-        'per_page': perPage,
-        'q': q,
-        'category': category,
-        'subcategory': subcategory,
-        'status': status,
-        'sort': sort,
-        if (includePeriod) 'include_period': true,
-        if (includeToday) 'include_today': true,
-        if (purchasedInPeriod) 'purchased_in_period': true,
-        if (missingBarcode) 'missing_barcode': true,
-        if (missingItemCode) 'missing_item_code': true,
-        if (reorderOnly) 'reorder_only': true,
-        if (unit.trim().isNotEmpty) 'unit': unit.trim(),
-        if (periodStart != null && periodStart.isNotEmpty) ...{
-          'period_start': periodStart,
-          'date_from': periodStart,
+    Future<Response<Map<String, dynamic>>> doGet({required bool cacheBust}) {
+      return _dio.get<Map<String, dynamic>>(
+        '/v1/businesses/$businessId/stock/list',
+        queryParameters: {
+          'page': page,
+          'per_page': perPage,
+          'q': q,
+          'category': category,
+          'subcategory': subcategory,
+          'status': status,
+          'sort': sort,
+          if (includePeriod) 'include_period': true,
+          if (includeToday) 'include_today': true,
+          if (purchasedInPeriod) 'purchased_in_period': true,
+          if (missingBarcode) 'missing_barcode': true,
+          if (missingItemCode) 'missing_item_code': true,
+          if (reorderOnly) 'reorder_only': true,
+          if (unit.trim().isNotEmpty) 'unit': unit.trim(),
+          if (periodStart != null && periodStart.isNotEmpty) ...{
+            'period_start': periodStart,
+            'date_from': periodStart,
+          },
+          if (periodEnd != null && periodEnd.isNotEmpty) ...{
+            'period_end': periodEnd,
+            'date_to': periodEnd,
+          },
+          if (cacheBust) '_nc': DateTime.now().millisecondsSinceEpoch,
         },
-        if (periodEnd != null && periodEnd.isNotEmpty) ...{
-          'period_end': periodEnd,
-          'date_to': periodEnd,
-        },
-      },
-      options: Options(
-        headers: {
-          if (ifNoneMatch != null && ifNoneMatch.isNotEmpty)
-            'If-None-Match': ifNoneMatch,
-        },
-        validateStatus: (code) => code != null && (code < 400 || code == 304),
-      ),
-    );
+        options: Options(
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+            if (!cacheBust &&
+                ifNoneMatch != null &&
+                ifNoneMatch.isNotEmpty)
+              'If-None-Match': ifNoneMatch,
+          },
+          validateStatus: (code) =>
+              code != null && (code < 400 || code == 304),
+        ),
+      );
+    }
+
+    var res = await doGet(cacheBust: false);
+    // Browser HTTP cache can return 304 even without If-None-Match — breaks RAM ETag path.
+    if (res.statusCode == 304 &&
+        (kIsWeb || ifNoneMatch == null || ifNoneMatch.isEmpty)) {
+      res = await doGet(cacheBust: true);
+    }
     if (res.statusCode == 304) {
       return const {'_not_modified': true};
     }

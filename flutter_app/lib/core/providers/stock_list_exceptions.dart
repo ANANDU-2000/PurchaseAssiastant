@@ -27,7 +27,9 @@ bool isStockListAuthFailure(Object? error) {
 /// Transient pause (auth refresh, tab hidden) — not a sign-in failure.
 bool isStockListTransientBlock(Object? error) {
   if (error is! StockListFetchBlockedException) return false;
-  return error.reason == 'api_gate' || error.reason == 'tab_not_visible';
+  return error.reason == 'api_gate' ||
+      error.reason == 'tab_not_visible' ||
+      error.reason == 'etag_stale';
 }
 
 /// Item detail / stock row fetches — loading skeleton, not hard error.
