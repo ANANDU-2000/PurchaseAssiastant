@@ -3848,16 +3848,25 @@ class HexaApi {
     int windowDays = 90,
     String priceField = 'landing',
   }) async {
-    final res = await _dio.get<Map<String, dynamic>>(
-      '/v1/businesses/$businessId/price-intelligence',
-      queryParameters: {
-        'item': item,
-        if (currentPrice != null) 'current_price': currentPrice,
-        'window_days': windowDays,
-        'price_field': priceField,
-      },
-    );
-    return res.data ?? {};
+    try {
+      final res = await _dio.get<dynamic>(
+        '/v1/businesses/$businessId/price-intelligence',
+        queryParameters: {
+          'item': item,
+          if (currentPrice != null) 'current_price': currentPrice,
+          'window_days': windowDays,
+          'price_field': priceField,
+        },
+      );
+      final data = res.data;
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+      return const {};
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return const {};
+      rethrow;
+    }
   }
 
   /// OCR preview stub — requires `ENABLE_OCR` on server; never auto-saves.

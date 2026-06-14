@@ -40,7 +40,7 @@ class HomeLiveStatusBar extends ConsumerWidget {
     final attention = ref.watch(homeLowStockAttentionCountProvider);
     final pendingDel = ref.watch(homePendingDeliveryCountProvider);
     final reorderN = ref.watch(homeStaffReorderRequestCountProvider);
-    final warehouse = ref.watch(homeWarehouseAlertsProvider).valueOrNull;
+    final warehouse = ref.watch(homeWarehouseAlertsProvider);
     final mismatchN =
         warehouse?.pendingVerifications ??
         ref.watch(stockVariancesTodayProvider).valueOrNull?.length ??
@@ -154,7 +154,7 @@ class _HomeStockStatusSheet extends ConsumerWidget {
     final attention = ref.watch(homeLowStockAttentionCountProvider);
     final pendingDel = ref.watch(homePendingDeliveryCountProvider);
     final reorderN = ref.watch(homeStaffReorderRequestCountProvider);
-    final warehouse = ref.watch(homeWarehouseAlertsProvider).valueOrNull ??
+    final warehouse = ref.watch(homeWarehouseAlertsProvider) ??
         const WarehouseAlerts();
     final mismatchN = warehouse.pendingVerifications;
     final missingBarcode = warehouse.missingBarcode;

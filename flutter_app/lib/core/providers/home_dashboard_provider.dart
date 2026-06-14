@@ -963,12 +963,16 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
     List<Map<String, dynamic>> items;
     List<Map<String, dynamic>> categories;
     try {
-      final pair = await Future.wait([
+      final pair = await Future.wait<Object?>([
         ref.read(catalogItemsListProvider.future),
         ref.read(itemCategoriesListProvider.future),
       ]);
-      items = List<Map<String, dynamic>>.from(pair[0] as List);
-      categories = List<Map<String, dynamic>>.from(pair[1] as List);
+      items = (pair[0] as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      categories = (pair[1] as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
     } catch (_) {
       final pair = await Future.wait([
         api.listCatalogItems(businessId: bid),

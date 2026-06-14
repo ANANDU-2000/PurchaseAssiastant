@@ -15,7 +15,7 @@ class HomeMultiAlertStrip extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final a = ref.watch(homeWarehouseAlertsProvider).valueOrNull;
+    final a = ref.watch(homeWarehouseAlertsProvider);
     if (a == null || !a.hasAny) return const SizedBox.shrink();
 
     final pills = <({String label, Color color, VoidCallback onTap})>[];

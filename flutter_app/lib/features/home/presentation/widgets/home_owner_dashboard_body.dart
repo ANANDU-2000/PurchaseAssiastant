@@ -145,7 +145,12 @@ class HomeOwnerDashboardBody extends ConsumerWidget {
           crossAxisSpacing: 8,
           childAspectRatio: context.isDesktopLayout
               ? 2.2
-              : math.max(1.35, MediaQuery.sizeOf(context).width / 200),
+              : math.max(
+                  1.35,
+                  MediaQuery.sizeOf(context).width > 0
+                      ? MediaQuery.sizeOf(context).width / 200
+                      : 1.35,
+                ),
           children: [
             _KpiTile(
               label: 'Purchases',

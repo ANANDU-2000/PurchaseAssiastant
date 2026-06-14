@@ -618,8 +618,8 @@ app.include_router(report_views.router)
 app.include_router(search.router)
 app.include_router(analytics.router)
 app.include_router(dashboard.router)
-if settings.enable_ai:
-    app.include_router(price_intelligence.router)
+# Trade SQL analytics — not gated on ENABLE_AI (assistant/chat only).
+app.include_router(price_intelligence.router)
 app.include_router(catalog.router)
 app.include_router(contacts.router)
 if settings.s3_bucket:

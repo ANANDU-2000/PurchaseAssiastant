@@ -30,12 +30,13 @@ final contactsSuppliersEnrichedProvider =
       .tradeReportSuppliers(
           businessId: session.primaryBusiness.id, from: r.from, to: r.to)
       .catchError((Object _, StackTrace __) => <Map<String, dynamic>>[]);
-  final results = await Future.wait<List<Map<String, dynamic>>>([
-    listFuture,
-    metricsFuture,
-  ]);
-  final list = results[0];
-  final metrics = results[1];
+  final results = await Future.wait<Object?>([listFuture, metricsFuture]);
+  final list = (results[0] as List)
+      .map((e) => Map<String, dynamic>.from(e as Map))
+      .toList();
+  final metrics = (results[1] as List)
+      .map((e) => Map<String, dynamic>.from(e as Map))
+      .toList();
   final byId = <String, Map<String, dynamic>>{};
   for (final m in metrics) {
     byId[m['supplier_id']?.toString() ?? ''] = m;
@@ -60,12 +61,13 @@ final contactsBrokersEnrichedProvider =
       .analyticsBrokers(
           businessId: session.primaryBusiness.id, from: r.from, to: r.to)
       .catchError((Object _, StackTrace __) => <Map<String, dynamic>>[]);
-  final results = await Future.wait<List<Map<String, dynamic>>>([
-    listFuture,
-    metricsFuture,
-  ]);
-  final list = results[0];
-  final metrics = results[1];
+  final results = await Future.wait<Object?>([listFuture, metricsFuture]);
+  final list = (results[0] as List)
+      .map((e) => Map<String, dynamic>.from(e as Map))
+      .toList();
+  final metrics = (results[1] as List)
+      .map((e) => Map<String, dynamic>.from(e as Map))
+      .toList();
   final byId = <String, Map<String, dynamic>>{};
   for (final m in metrics) {
     byId[m['broker_id']?.toString() ?? ''] = m;

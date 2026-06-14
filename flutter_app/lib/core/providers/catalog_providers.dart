@@ -173,10 +173,14 @@ final catalogItemPriceIntelProvider =
   final curStr = sep < 0 ? '' : key.substring(sep + 1);
   final cur = curStr.isEmpty ? null : double.tryParse(curStr);
   if (name.trim().length < 2) return {};
-  return ref.read(hexaApiProvider).priceIntelligence(
-        businessId: session.primaryBusiness.id,
-        item: name,
-        currentPrice: cur,
-        priceField: 'landing',
-      );
+  try {
+    return await ref.read(hexaApiProvider).priceIntelligence(
+          businessId: session.primaryBusiness.id,
+          item: name,
+          currentPrice: cur,
+          priceField: 'landing',
+        );
+  } catch (_) {
+    return {};
+  }
 });

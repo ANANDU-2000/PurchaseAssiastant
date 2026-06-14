@@ -16,12 +16,16 @@ final itemPriceIntelligenceProvider = FutureProvider.autoDispose
   final to = DateTime.parse(hq.to);
   final spanDays = to.difference(from).inDays.abs() + 1;
   final windowDays = spanDays.clamp(7, 365);
-  return ref.read(hexaApiProvider).priceIntelligence(
-        businessId: session.primaryBusiness.id,
-        item: itemName,
-        priceField: 'landing',
-        windowDays: windowDays,
-      );
+  try {
+    return await ref.read(hexaApiProvider).priceIntelligence(
+          businessId: session.primaryBusiness.id,
+          item: itemName,
+          priceField: 'landing',
+          windowDays: windowDays,
+        );
+  } catch (_) {
+    return const {};
+  }
 });
 
 /// Landing price intelligence (API) for catalog item detail analytics tab.

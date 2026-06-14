@@ -38,9 +38,9 @@ final notificationCenterCoordinatorProvider =
 });
 
 final homeWarehouseAlertsProvider =
-    Provider.autoDispose<AsyncValue<WarehouseAlerts>>((ref) {
+    Provider.autoDispose<WarehouseAlerts?>((ref) {
   ref.watch(notificationCenterCoordinatorProvider);
-  return ref.watch(warehouseAlertsProvider);
+  return ref.watch(warehouseAlertsProvider).valueOrNull;
 });
 
 final notificationFeedForUiProvider =

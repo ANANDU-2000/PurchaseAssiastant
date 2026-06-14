@@ -519,7 +519,6 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         '[STOCK_SAVE_START] itemId=$_itemId mode=$_mode qty=$parsed',
       );
     }
-    _saving = true;
     _preSaveItemSnapshot = Map<String, dynamic>.from(_item);
     final preSaveSnapshot = _preSaveItemSnapshot!;
     final captureItemRow = Map<String, dynamic>.from(_item);
@@ -537,10 +536,23 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     final idempotencyKey =
         'stock-save:$captureItemId:${DateTime.now().microsecondsSinceEpoch}';
 
-    _applyOptimisticListPatch(null, parsed, parentRef: parentRef);
-    // Close sheet immediately — optimistic patch updates the list; spinner must not stick.
+    // Close sheet before cache patches — avoids rebuild with a stuck spinner.
     if (mounted) Navigator.of(context).pop(true);
     unawaited(HapticFeedback.mediumImpact());
+    try {
+      _applyOptimisticListPatch(
+        null,
+        parsed,
+        parentRef: parentRef,
+        itemId: captureItemId,
+        mode: captureMode,
+        itemRow: captureItemRow,
+      );
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[STOCK_SAVE_PATCH] optimistic patch failed: $e\n$st');
+      }
+    }
     unawaited(
       _completeStockSaveAfterPop(
         parentRef: parentRef,
