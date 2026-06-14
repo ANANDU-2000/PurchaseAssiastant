@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/session_notifier.dart';
+import 'contacts_list_fetch.dart';
 
 /// Kept alive so supplier pickers never cold-load across navigations.
 final suppliersListProvider =
@@ -13,5 +14,8 @@ final suppliersListProvider =
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
-  return api.listSuppliers(businessId: session.primaryBusiness.id);
+  return fetchContactsListWithApiGuard(
+    ref,
+    () => api.listSuppliers(businessId: session.primaryBusiness.id),
+  );
 });

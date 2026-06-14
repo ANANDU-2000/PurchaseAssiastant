@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/session_notifier.dart';
+import 'contacts_list_fetch.dart';
 
 /// Kept alive — brokers list is small and reused frequently.
 final brokersListProvider =
@@ -13,5 +14,8 @@ final brokersListProvider =
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
-  return api.listBrokers(businessId: session.primaryBusiness.id);
+  return fetchContactsListWithApiGuard(
+    ref,
+    () => api.listBrokers(businessId: session.primaryBusiness.id),
+  );
 });
