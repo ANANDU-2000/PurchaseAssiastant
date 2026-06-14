@@ -1,6 +1,11 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../auth/provider_api_guard.dart';
+import '../providers/stock_list_exceptions.dart';
 import '../theme/hexa_colors.dart';
 import '../../features/shell/shell_branch_provider.dart';
 
@@ -43,8 +48,49 @@ class HexaPageErrorBoundary extends ConsumerWidget {
   }
 }
 
+/// Async / provider errors that must not replace the entire app shell on web.
+bool hexaAsyncErrorLikelyBenign(Object error) {
+  if (error is DioException) return true;
+  if (error is TimeoutException) return true;
+  if (error is ProviderFetchAborted) return true;
+  if (error is StockListFetchBlockedException) return true;
+  final s = error.toString();
+  return s.contains('SocketException') ||
+      s.contains('ClientException') ||
+      s.contains('Connection reset') ||
+      s.contains('Connection closed') ||
+      s.contains('HandshakeException') ||
+      s.contains('Failed host lookup') ||
+      s.contains('ERR_NETWORK') ||
+      s.contains('ERR_QUIC') ||
+      s.contains('ERR_FAILED') ||
+      s.contains('XMLHttpRequest') ||
+      s.contains('CORS policy') ||
+      s.contains('Access-Control-Allow-Origin') ||
+      s.contains('network changed') ||
+      s.contains('QUIC_PROTOCOL') ||
+      s.contains('GoError') ||
+      s.contains('nothing to pop') ||
+      s.contains('HiveError') ||
+      s.contains('Box not found') ||
+      s.contains('StateError') ||
+      s.contains('Cannot call onDispose after a provider was disposed') ||
+      s.contains('ProviderFetchAborted') ||
+      s.contains('StockListFetchBlockedException') ||
+      s.contains('Cannot use "ref"') ||
+      s.contains('Bad state: Cannot use') ||
+      s.contains("Instance of 'minified:") ||
+      s.contains('minified:') ||
+      s.contains('Another exception was thrown') ||
+      s.contains('RenderFlex') ||
+      s.contains('overflowed') ||
+      s.contains('BoxConstraints') ||
+      s.contains('setState() called after dispose()');
+}
+
 /// Shared heuristics for layout/network/transient failures (legacy callers).
 bool hexaErrorLikelyNonFatal(FlutterErrorDetails details) {
+  if (hexaAsyncErrorLikelyBenign(details.exception)) return true;
   if (details.silent) return true;
   final s = details.exceptionAsString();
   return s.contains('RenderFlex') ||

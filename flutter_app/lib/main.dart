@@ -23,7 +23,7 @@ import 'core/theme/hexa_colors.dart';
 import 'core/notifications/local_notifications_service.dart';
 import 'core/platform/hexa_layout_error_widget.dart';
 import 'core/widgets/hexa_page_error_boundary.dart'
-    show hexaErrorLikelyNonFatal;
+    show hexaAsyncErrorLikelyBenign, hexaErrorLikelyNonFatal;
 import 'core/platform/remove_boot_overlay.dart';
 import 'core/providers/prefs_provider.dart'
     show kNotificationsOptInKey, sharedPreferencesProvider;
@@ -31,41 +31,6 @@ import 'core/providers/api_degraded_provider.dart';
 import 'core/services/offline_store.dart';
 import 'core/services/offline_sync_service.dart';
 import 'core/services/pdf_locale.dart';
-
-/// Async errors that escape zones are not [FlutterErrorDetails]; treat common
-/// network failures as handled so they do not destabilize the engine. This does
-/// not replace call-site try/catch — see [_HexaErrorBoundary] in [app.dart].
-bool _hexaAsyncErrorLikelyBenign(Object error) {
-  if (error is DioException) return true;
-  if (error is TimeoutException) return true;
-  final s = error.toString();
-  return s.contains('SocketException') ||
-      s.contains('ClientException') ||
-      s.contains('Connection reset') ||
-      s.contains('Connection closed') ||
-      s.contains('HandshakeException') ||
-      s.contains('Failed host lookup') ||
-      s.contains('ERR_NETWORK') ||
-      s.contains('ERR_QUIC') ||
-      s.contains('network changed') ||
-      s.contains('QUIC_PROTOCOL') ||
-      s.contains('GoError') ||
-      s.contains('nothing to pop') ||
-      s.contains('HiveError') ||
-      s.contains('Box not found') ||
-      s.contains('StateError') ||
-      s.contains('Cannot call onDispose after a provider was disposed') ||
-      s.contains('ProviderFetchAborted') ||
-      s.contains('StockListFetchBlockedException') ||
-      s.contains('Cannot use "ref"') ||
-      s.contains('Bad state: Cannot use') ||
-      s.contains('minified:') ||
-      s.contains('Another exception was thrown') ||
-      s.contains('RenderFlex') ||
-      s.contains('overflowed') ||
-      s.contains('BoxConstraints') ||
-      s.contains('setState() called after dispose()');
-}
 
 class _AppProviderObserver extends ProviderObserver {
   @override
@@ -99,7 +64,7 @@ void _installHexaPlatformAsyncErrorHook() {
     if (kDebugMode) {
       debugPrint('[Hexa] PlatformDispatcher.onError: $error\n$stack');
     }
-    if (_hexaAsyncErrorLikelyBenign(error)) {
+    if (hexaAsyncErrorLikelyBenign(error)) {
       return true;
     }
     return false;
@@ -217,7 +182,7 @@ Future<void> main() async {
   _installHexaPlatformAsyncErrorHook();
   FlutterError.onError = (FlutterErrorDetails details) {
     if (hexaErrorLikelyNonFatal(details) ||
-        _hexaAsyncErrorLikelyBenign(details.exception)) {
+        hexaAsyncErrorLikelyBenign(details.exception)) {
       if (kDebugMode) {
         debugPrint('[Hexa] FlutterError (suppressed): ${details.exception}');
       }

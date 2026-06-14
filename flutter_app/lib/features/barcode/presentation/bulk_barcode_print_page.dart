@@ -983,7 +983,7 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
           final listPane = Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (listAsync.valueOrNull?['partial'] == true)
+              if (listAsync.valueOrNull?['fetchFailed'] == true)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
                     HexaOp.pageGutter,
@@ -999,15 +999,16 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
                       child: Row(
                         children: [
                           const Icon(
-                            Icons.wifi_off_rounded,
+                            Icons.cloud_off_rounded,
                             size: 20,
                             color: Color(0xFFF57F17),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Connection dropped while loading items. '
-                              'Showing ${listAsync.valueOrNull?['loaded'] ?? 0} loaded — retry when online.',
+                              'Could not load more items (server or browser block). '
+                              'Showing ${listAsync.valueOrNull?['loaded'] ?? 0} of '
+                              '${listAsync.valueOrNull?['total'] ?? '?'} — tap Retry.',
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,

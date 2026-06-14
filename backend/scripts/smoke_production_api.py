@@ -38,6 +38,30 @@ def _get(path: str, *, origin: str | None = None) -> tuple[int, dict[str, str], 
         return e.code, hdrs, body
 
 
+def _options(
+    path: str,
+    *,
+    origin: str,
+    request_method: str = "GET",
+    request_headers: str = "authorization,content-type",
+) -> tuple[int, dict[str, str], str]:
+    headers = {
+        "Origin": origin,
+        "Access-Control-Request-Method": request_method,
+        "Access-Control-Request-Headers": request_headers,
+    }
+    req = urllib.request.Request(f"{API_BASE}{path}", headers=headers, method="OPTIONS")
+    try:
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            hdrs = {k.lower(): v for k, v in resp.headers.items()}
+            return resp.status, hdrs, body
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        hdrs = {k.lower(): v for k, v in e.headers.items()}
+        return e.code, hdrs, body
+
+
 def _ok(name: str, cond: bool, detail: str = "") -> bool:
     mark = "PASS" if cond else "FAIL"
     print(f"[{mark}] {name}" + (f" — {detail}" if detail else ""))
@@ -72,6 +96,21 @@ def main() -> int:
             "cors",
             cors == CORS_ORIGIN,
             f"allow-origin={cors!r}",
+        )
+
+        preflight_path = (
+            "/v1/businesses/00000000-0000-0000-0000-000000000001"
+            "/reports/home-overview"
+            "?from=2026-05-16&to=2026-06-14&tz_offset_minutes=330"
+            "&compact=true&shell_bundle=true"
+        )
+        code, hdrs, _ = _options(preflight_path, origin=CORS_ORIGIN)
+        cors = hdrs.get("access-control-allow-origin", "")
+        methods = hdrs.get("access-control-allow-methods", "")
+        all_ok &= _ok(
+            "cors preflight home-overview",
+            code in (200, 204) and cors == CORS_ORIGIN and "GET" in methods.upper(),
+            f"HTTP {code} allow-origin={cors!r} methods={methods!r}",
         )
 
     print("done:", "OK" if all_ok else "ISSUES")

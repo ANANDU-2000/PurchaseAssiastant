@@ -546,7 +546,8 @@ bool handleBulkStockListScrollNotification(
   dynamic ref,
   Map<String, dynamic>? blob,
 ) {
-  if (blob?['partial'] != true) return false;
+  if (blob?['hasMore'] != true) return false;
+  if (blob?['fetchFailed'] == true) return false;
   if (notification.metrics.pixels <
       notification.metrics.maxScrollExtent - 300) {
     return false;
@@ -592,7 +593,7 @@ final bulkStockListProvider =
           'items': merged,
           'total': total > 0 ? total : merged.length,
           'loaded': merged.length,
-          'partial': true,
+          'hasMore': total > merged.length,
         };
       }
       total = (res['total'] as num?)?.toInt() ?? 0;
@@ -609,7 +610,8 @@ final bulkStockListProvider =
           'items': merged,
           'total': total > 0 ? total : merged.length,
           'loaded': merged.length,
-          'partial': true,
+          'hasMore': total > merged.length,
+          'fetchFailed': true,
         };
       }
       rethrow;
@@ -620,7 +622,7 @@ final bulkStockListProvider =
     'items': merged,
     'total': total,
     'loaded': merged.length,
-    if (hasMore) 'partial': true,
+    if (hasMore) 'hasMore': true,
   };
 });
 

@@ -519,12 +519,12 @@ _PROD_WEB_ORIGINS = (
     "https://purchase-assiastant.vercel.app",
     "https://purchase-assistant.vercel.app",
 )
-if settings.app_env.lower() == "production":
-    _seen_prod = set(_origins)
-    for _web in _PROD_WEB_ORIGINS:
-        if _web not in _seen_prod:
-            _origins.append(_web)
-            _seen_prod.add(_web)
+# Always merge prod Vercel hosts — Render env can omit them or APP_ENV may be mis-set.
+_seen_prod = set(_origins)
+for _web in _PROD_WEB_ORIGINS:
+    if _web not in _seen_prod:
+        _origins.append(_web)
+        _seen_prod.add(_web)
 logger.info("CORS origins (%d): %s", len(_origins), _origins)
 if not _origins:
     _origins = list(_DEFAULT_LOCAL_CORS_ORIGINS)
@@ -540,20 +540,66 @@ _cors_kwargs = dict(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+_cors_origin_regex: str | None = None
 # Flutter web `flutter run -d chrome` often picks a random port; listing every port in CORS_ORIGINS is impractical.
 # In development only, allow any http(s) localhost / 127.0.0.1 origin. Production must set explicit CORS_ORIGINS.
 if settings.app_env.lower() == "development":
     # Flutter web may be served as http://[::1]:PORT on some systems — include IPv6 loopback.
-    _cors_kwargs["allow_origin_regex"] = (
-        r"https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$"
-    )
+    _cors_origin_regex = r"https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$"
+    _cors_kwargs["allow_origin_regex"] = _cors_origin_regex
 
 
-class ForceCORSOnErrorMiddleware(BaseHTTPMiddleware):
-    """Ensure 4xx/5xx responses include CORS headers when Origin is allowed.
+def _cors_origin_allowed(origin: str) -> bool:
+    if not origin:
+        return False
+    if origin in _origins:
+        return True
+    if _cors_origin_regex:
+        return bool(re.fullmatch(_cors_origin_regex, origin))
+    return False
 
-    Uncaught errors can bypass CORSMiddleware header injection; browsers then hide
-    the response body and Flutter web surfaces a generic network/CORS failure.
+
+def apply_cors_headers(request: Request, response):
+    """Attach CORS headers when Origin is allowed and the response lacks them."""
+    origin = request.headers.get("origin", "").strip()
+    if not origin or not _cors_origin_allowed(origin):
+        return response
+    existing = {k.lower() for k in response.headers}
+    if "access-control-allow-origin" not in existing:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        vary = response.headers.get("Vary", "")
+        if "Origin" not in vary:
+            response.headers["Vary"] = f"{vary}, Origin".strip(", ")
+    if request.method == "OPTIONS":
+        if "access-control-allow-methods" not in existing:
+            response.headers["Access-Control-Allow-Methods"] = (
+                "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT"
+            )
+        if "access-control-allow-headers" not in existing:
+            req_headers = request.headers.get(
+                "access-control-request-headers", "authorization,content-type"
+            )
+            response.headers["Access-Control-Allow-Headers"] = req_headers
+    return response
+
+
+def _json_with_cors(
+    request: Request,
+    *,
+    status_code: int,
+    content: dict[str, Any] | list[Any],
+    headers: dict[str, str] | None = None,
+) -> JSONResponse:
+    response = JSONResponse(status_code=status_code, content=content, headers=headers or {})
+    return apply_cors_headers(request, response)
+
+
+class EnsureCORSMiddleware(BaseHTTPMiddleware):
+    """Outermost safety net: uncaught exceptions and error responses still get CORS.
+
+    Browsers hide failed preflight/GET bodies without Access-Control-Allow-Origin; Flutter
+    web then logs generic XMLHttpRequest/CORS errors and Riverpod providers retry-loop.
     """
 
     def __init__(
@@ -575,26 +621,41 @@ class ForceCORSOnErrorMiddleware(BaseHTTPMiddleware):
         return bool(self._origin_re and self._origin_re.fullmatch(origin))
 
     async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        if response.status_code < 400:
-            return response
+        try:
+            response = await call_next(request)
+        except Exception:
+            logger.exception(
+                "Unhandled before response | %s %s",
+                request.method,
+                request.url.path,
+            )
+            response = JSONResponse(
+                status_code=500,
+                content={"error": "SERVER_TEMPORARY_ISSUE"},
+            )
         origin = request.headers.get("origin", "").strip()
         if not origin or not self._origin_allowed(origin):
             return response
-        if "access-control-allow-origin" not in {
-            k.lower() for k in response.headers
-        }:
+        existing = {k.lower() for k in response.headers}
+        if "access-control-allow-origin" not in existing:
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Vary"] = "Origin"
+            vary = response.headers.get("Vary", "")
+            if "Origin" not in vary:
+                response.headers["Vary"] = f"{vary}, Origin".strip(", ")
+        if request.method == "OPTIONS":
+            if "access-control-allow-methods" not in existing:
+                response.headers["Access-Control-Allow-Methods"] = (
+                    "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT"
+                )
+            if "access-control-allow-headers" not in existing:
+                req_headers = request.headers.get(
+                    "access-control-request-headers", "authorization,content-type"
+                )
+                response.headers["Access-Control-Allow-Headers"] = req_headers
         return response
 
 
-app.add_middleware(
-    ForceCORSOnErrorMiddleware,
-    allow_origins=_origins,
-    allow_origin_regex=_cors_kwargs.get("allow_origin_regex"),
-)
 app.add_middleware(CORSMiddleware, **_cors_kwargs)
 
 if settings.trusted_hosts:
@@ -603,6 +664,12 @@ if settings.trusted_hosts:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
 
 app.add_middleware(GZipMiddleware, minimum_size=500)
+
+app.add_middleware(
+    EnsureCORSMiddleware,
+    allow_origins=_origins,
+    allow_origin_regex=_cors_origin_regex,
+)
 
 app.include_router(health.router)
 if (settings.whatsapp_reports_cron_secret or "").strip():
@@ -730,7 +797,9 @@ async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
             path,
             exc_info=True,
         )
-        return JSONResponse(status_code=409, content={"detail": "integrity_error"})
+        return _json_with_cors(
+            request, status_code=409, content={"detail": "integrity_error"}
+        )
 
     if isinstance(exc, ProgrammingError):
         logger.exception(
@@ -738,7 +807,11 @@ async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
             request.method,
             path,
         )
-        return JSONResponse(status_code=500, content={"error": "SERVER_TEMPORARY_ISSUE"})
+        return _json_with_cors(
+            request,
+            status_code=500,
+            content={"error": "SERVER_TEMPORARY_ISSUE"},
+        )
 
     if not is_sa_infrastructure_failure(exc):
         logger.exception(
@@ -746,7 +819,11 @@ async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
             request.method,
             path,
         )
-        return JSONResponse(status_code=500, content={"error": "SERVER_TEMPORARY_ISSUE"})
+        return _json_with_cors(
+            request,
+            status_code=500,
+            content={"error": "SERVER_TEMPORARY_ISSUE"},
+        )
 
     logger.warning(
         "SQLAlchemy infrastructure | %s | %s %s",
@@ -757,21 +834,22 @@ async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
     )
     payload = {"detail": "database_unavailable", "error": "SERVER_TEMPORARY_ISSUE"}
     if request.method != "GET":
-        return JSONResponse(status_code=503, content=payload, headers=hdrs)
+        return _json_with_cors(request, status_code=503, content=payload, headers=hdrs)
     if cfg.database_get_read_failsafe and not _block_db_empty_shape_paths(path):
         fb = _get_db_failsafe_body(request)
         if fb is not None:
             # 200 + X-Database-Unavailable: clients treat body as normal JSON (empty list /
             # zeroed dashboard) while still surfacing degraded mode from the header.
-            return JSONResponse(status_code=200, content=fb, headers=hdrs)
-    return JSONResponse(status_code=503, content=payload, headers=hdrs)
+            return _json_with_cors(request, status_code=200, content=fb, headers=hdrs)
+    return _json_with_cors(request, status_code=503, content=payload, headers=hdrs)
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Never leak tracebacks / SQL to clients — full detail stays in logs."""
     if isinstance(exc, RequestValidationError):
-        return JSONResponse(
+        return _json_with_cors(
+            request,
             status_code=422,
             content={"detail": exc.errors()},
         )
@@ -782,13 +860,14 @@ async def global_exception_handler(request: Request, exc: Exception):
             payload = dict(detail)
         else:
             payload = {"detail": detail}
-        return JSONResponse(status_code=exc.status_code, content=payload)
+        return _json_with_cors(request, status_code=exc.status_code, content=payload)
     logger.exception(
         "Unhandled | %s %s",
         request.method,
         request.url.path,
     )
-    return JSONResponse(
+    return _json_with_cors(
+        request,
         status_code=500,
         content={"error": "SERVER_TEMPORARY_ISSUE"},
     )
