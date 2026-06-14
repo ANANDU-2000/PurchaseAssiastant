@@ -80,6 +80,8 @@ class _StockPageState extends ConsumerState<StockPage>
   bool _searchExpanded = false;
   bool _emptyListAutoRetried = false;
   bool _transientListRetryScheduled = false;
+  int _transientListRetryCount = 0;
+  static const _maxTransientListRetries = 12;
   String _instantSearch = '';
   Map<String, dynamic>? _mergedData;
   double? _pendingScrollOffset;
@@ -177,11 +179,18 @@ class _StockPageState extends ConsumerState<StockPage>
 
   void _scheduleTransientStockListRetry() {
     if (_transientListRetryScheduled || !mounted) return;
+    if (_transientListRetryCount >= _maxTransientListRetries) return;
     _transientListRetryScheduled = true;
     unawaited(
-      Future<void>.delayed(const Duration(milliseconds: 900), () {
+      Future<void>.delayed(const Duration(milliseconds: 900), () async {
         _transientListRetryScheduled = false;
-        if (!mounted || providerSkipApi(ref)) return;
+        if (!mounted) return;
+        _transientListRetryCount++;
+        final deadline = DateTime.now().add(const Duration(seconds: 10));
+        while (providerSkipApi(ref) && DateTime.now().isBefore(deadline)) {
+          await Future<void>.delayed(const Duration(milliseconds: 120));
+        }
+        if (!mounted) return;
         clearStockListEtagCache(ref);
         _resetMerged();
         ref.invalidate(stockListProvider);
@@ -919,9 +928,26 @@ class _StockPageState extends ConsumerState<StockPage>
       body = const ListSkeleton(rowCount: 12);
     } else if (listAsync.hasError && data == null) {
       final err = listAsync.error;
-      if (err is ProviderFetchAborted || isStockListTransientBlock(err)) {
+      final transient = err is ProviderFetchAborted ||
+          isStockListTransientBlock(err);
+      if (transient && _transientListRetryCount < _maxTransientListRetries) {
         _scheduleTransientStockListRetry();
         body = const ListSkeleton(rowCount: 12);
+      } else if (transient) {
+        body = FriendlyLoadError(
+          message: 'Stock list is still loading',
+          subtitle:
+              'Session refresh took too long. Tap Retry or sign in again if this persists.',
+          onRetry: () {
+            _transientListRetryCount = 0;
+            ref.read(authApiGateProvider.notifier).reset();
+            ref.read(authResumeGateProvider.notifier).state = false;
+            clearStockListEtagCache(ref);
+            _resetMerged();
+            ref.invalidate(stockListProvider);
+            ref.invalidate(stockStatusCountsProvider);
+          },
+        );
       } else {
       final blocked = err is StockListFetchBlockedException
           ? err.reason

@@ -86,7 +86,10 @@ class _AppForegroundListenerState extends ConsumerState<AppForegroundListener>
   Future<void> _onReturnedToForeground() async {
     try {
       final session = ref.read(sessionProvider);
-      if (session == null) return;
+      if (session == null) {
+        ref.read(authResumeGateProvider.notifier).state = false;
+        return;
+      }
       try {
         await ref.read(sessionProvider.notifier).silentRefreshIfNeeded();
       } catch (_) {
