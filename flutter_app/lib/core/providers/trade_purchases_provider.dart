@@ -141,14 +141,15 @@ final tradePurchasesForAlertsProvider =
 /// Staff home + deliveries — shares [tradePurchasesRecentSnapshotProvider] SSOT.
 final staffTradePurchasesForAlertsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final link = ref.keepAlive();
-  final t = Timer(const Duration(minutes: 8), link.close);
-  ref.onDispose(t.cancel);
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 8));
   if (providerSkipApi(ref)) return [];
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
   if (session.primaryBusiness.role.toLowerCase() != 'staff') return [];
-  return ref.watch(tradePurchasesRecentSnapshotProvider.future);
+  final rows = await ref.watch(tradePurchasesRecentSnapshotProvider.future);
+  if (providerWasDisposed(disposed)) return [];
+  return rows;
 });
 
 final staffTradePurchasesForAlertsParsedProvider =
@@ -204,12 +205,13 @@ final purchaseHistoryListFetchKeyProvider = Provider.autoDispose<String>((ref) {
 
 class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchasesListView> {
   bool _loadMoreBusy = false;
-  bool _dead = false;
+  ProviderDisposeGuard? _disposeGuard;
+
+  bool get _dead => _disposeGuard?.disposed ?? false;
 
   @override
   Future<TradePurchasesListView> build() async {
-    _dead = false;
-    ref.onDispose(() => _dead = true);
+    _disposeGuard = registerProviderDisposeGuard(ref);
     registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
 
     if (ref.watch(authSessionExpiredProvider)) {

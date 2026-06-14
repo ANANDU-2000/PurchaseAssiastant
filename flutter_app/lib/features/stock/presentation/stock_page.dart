@@ -106,7 +106,22 @@ class _StockPageState extends ConsumerState<StockPage>
     _subcatCtrl.text = initialQuery.subcategory;
     _scroll.addListener(_onScrollLoadMore);
 
-    applyStockPagePeriod(ref, ref.read(stockPagePeriodProvider));
+    final period = ref.read(stockPagePeriodProvider);
+    final range = homePeriodRange(period);
+    final endInclusive = range.end.subtract(const Duration(days: 1));
+    final q = ref.read(stockListQueryProvider);
+    final normalized = q.copyWith(
+      perPage: 50,
+      page: 1,
+      sort: 'recent',
+      includePeriod: true,
+      periodStart: stockApiDate(range.start),
+      periodEnd: stockApiDate(endInclusive),
+    );
+    if (normalized.toCacheKey() != q.toCacheKey()) {
+      ref.read(stockListQueryProvider.notifier).state = normalized;
+      ref.read(stockSelectedItemIdProvider.notifier).state = null;
+    }
 
     _deliveryCountsPoll = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
@@ -122,19 +137,18 @@ class _StockPageState extends ConsumerState<StockPage>
         _scroll.jumpTo(saved.clamp(0.0, max));
       }
     });
+  }
 
-    final q = ref.read(stockListQueryProvider);
-    if (q.perPage != 50 || q.sort != 'recent') {
-      ref.read(stockListQueryProvider.notifier).state =
-          q.copyWith(perPage: 50, page: 1, sort: 'recent');
+  @override
+  void deactivate() {
+    if (_scroll.hasClients) {
+      ref.read(stockListScrollOffsetProvider.notifier).state = _scroll.offset;
     }
+    super.deactivate();
   }
 
   @override
   void dispose() {
-    if (_scroll.hasClients) {
-      ref.read(stockListScrollOffsetProvider.notifier).state = _scroll.offset;
-    }
     _tabs.dispose();
     _debounce?.cancel();
     _deliveryCountsPoll?.cancel();
@@ -720,20 +734,25 @@ class _StockPageState extends ConsumerState<StockPage>
       final restoreOffset = _pendingScrollOffset;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final incoming = next.value;
-        final rows = [
-          for (final e in (incoming['items'] as List? ?? []))
-            if (e is Map) Map<String, dynamic>.from(e),
-        ];
-        reconcileStockListRowPatches(ref, rows);
-        setState(() {
-          _loadingMore = false;
-          _mergedData = mergeStockListPage(
-            previous: q.page > 1 ? _mergedData : null,
-            incoming: incoming,
-            page: q.page,
-          );
-        });
+        try {
+          final incoming = next.value;
+          final rows = [
+            for (final e in (incoming['items'] as List? ?? []))
+              if (e is Map) Map<String, dynamic>.from(e),
+          ];
+          reconcileStockListRowPatches(ref, rows);
+          setState(() {
+            _loadingMore = false;
+            _mergedData = mergeStockListPage(
+              previous: q.page > 1 ? _mergedData : null,
+              incoming: incoming,
+              page: q.page,
+            );
+          });
+        } catch (_) {
+          if (!mounted) return;
+          setState(() => _loadingMore = false);
+        }
         if (restoreOffset != null && _scroll.hasClients) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted || !_scroll.hasClients) return;
@@ -805,6 +824,15 @@ class _StockPageState extends ConsumerState<StockPage>
       );
     } else if (data != null) {
       body = _buildListBody(data: data, isReloading: isReloading);
+    } else if (listAsync.hasError) {
+      body = FriendlyLoadError(
+        message: 'Unable to load stock',
+        onRetry: () {
+          _resetMerged();
+          ref.invalidate(stockListProvider);
+          ref.invalidate(stockStatusCountsProvider);
+        },
+      );
     } else {
       body = const ListSkeleton(rowCount: 12);
     }

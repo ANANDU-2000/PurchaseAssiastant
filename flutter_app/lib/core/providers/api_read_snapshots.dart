@@ -12,35 +12,37 @@ final Map<String, Future<List<Map<String, dynamic>>>> _tradePurchasesRecentInfli
 /// SSOT for `GET …/stock/audit/recent` — one fetch serves home, stock tabs, and activity.
 final stockAuditRecentSnapshotProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final link = ref.keepAlive();
-  final timer = Timer(const Duration(minutes: 2), link.close);
-  ref.onDispose(timer.cancel);
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   if (providerSkipApi(ref)) return [];
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
-  return ref.read(hexaApiProvider).listStockAuditRecent(
+  final rows = await ref.read(hexaApiProvider).listStockAuditRecent(
         businessId: session.primaryBusiness.id,
         limit: HexaApi.stockAuditRecentMaxLimit,
       );
+  if (providerWasDisposed(disposed)) return [];
+  return rows;
 });
 
 /// SSOT for recent unfiltered `GET …/trade-purchases?limit=50` (alerts + catalog intel).
 final tradePurchasesRecentSnapshotProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final link = ref.keepAlive();
-  final timer = Timer(const Duration(minutes: 2), link.close);
-  ref.onDispose(timer.cancel);
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   if (providerSkipApi(ref)) return [];
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
   final bid = session.primaryBusiness.id;
-  return _tradePurchasesRecentInflight.putIfAbsent(
+  final page = await _tradePurchasesRecentInflight.putIfAbsent(
     bid,
     () => ref
         .read(hexaApiProvider)
         .listTradePurchases(businessId: bid, limit: 50)
         .whenComplete(() => _tradePurchasesRecentInflight.remove(bid)),
   );
+  if (providerWasDisposed(disposed)) return [];
+  return page;
 });
 
 void bustStockAuditRecentSnapshot(dynamic ref) {

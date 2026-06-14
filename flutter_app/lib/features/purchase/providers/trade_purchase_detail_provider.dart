@@ -44,7 +44,7 @@ final tradePurchaseDetailProvider =
           )
           .timeout(kTradePurchaseDetailFetchTimeout);
       if (providerWasDisposed(disposed)) {
-        throw StateError('Cannot call onDispose after a provider was disposed');
+        throw const ProviderFetchAborted();
       }
       final purchase = TradePurchase.fromJson(m);
       if (purchase.statusEnum == PurchaseStatus.deleted) {
@@ -53,6 +53,8 @@ final tradePurchaseDetailProvider =
       return purchase;
     } on TradePurchaseUnavailableError {
       rethrow;
+    } on ProviderFetchAborted {
+      rethrow;
     } on StateError {
       rethrow;
     } on DioException catch (e) {
@@ -60,12 +62,12 @@ final tradePurchaseDetailProvider =
         throw const TradePurchaseUnavailableError();
       }
       if (providerWasDisposed(disposed)) {
-        throw StateError('Cannot call onDispose after a provider was disposed');
+        throw const ProviderFetchAborted();
       }
       rethrow;
     } on TimeoutException {
       if (providerWasDisposed(disposed)) {
-        throw StateError('Cannot call onDispose after a provider was disposed');
+        throw const ProviderFetchAborted();
       }
       if (attempt == 2) {
         throw Exception(

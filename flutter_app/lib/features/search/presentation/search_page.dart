@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/auth/provider_api_guard.dart';
 import '../../../core/providers/business_write_revision.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/recent_unified_search_provider.dart';
@@ -39,6 +40,7 @@ void bustUnifiedSearchCache({String? businessId}) {
 final unifiedSearchProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>, String>(
   (ref, q) async {
+    final disposed = registerProviderDisposeGuard(ref);
     final session = ref.watch(sessionProvider);
     if (session == null || q.trim().isEmpty) {
       return {
@@ -60,6 +62,15 @@ final unifiedSearchProvider =
           businessId: bid,
           q: q.trim(),
         );
+    if (providerWasDisposed(disposed)) {
+      return {
+        'catalog_items': <dynamic>[],
+        'suppliers': <dynamic>[],
+        'brokers': <dynamic>[],
+        'catalog_subcategories': <dynamic>[],
+        'recent_purchases': <dynamic>[],
+      };
+    }
     _unifiedSearchCache[key] = (at: now, data: data);
     while (_unifiedSearchCache.length > _unifiedSearchCacheMaxEntries) {
       String? oldestK;

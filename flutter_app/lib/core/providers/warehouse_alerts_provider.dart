@@ -6,7 +6,6 @@ import '../auth/provider_api_guard.dart';
 import '../auth/session_notifier.dart' show activeSessionProvider, hexaApiProvider;
 import '../json_coerce.dart';
 import 'home_dashboard_provider.dart' show homeDashboardDataProvider, homeTabHasOperationalBundle;
-import 'stock_providers.dart' show providerKeepAlive;
 
 final Map<String, Future<Map<String, dynamic>>> _warehouseAlertsInflight = {};
 
@@ -78,7 +77,8 @@ final warehouseAlertsProvider =
         .operational!
         .warehouseAlerts;
   }
-  providerKeepAlive(ref, const Duration(seconds: 60));
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(seconds: 60));
   if (providerSkipApi(ref)) return const WarehouseAlerts();
   final session = ref.watch(activeSessionProvider);
   if (session == null) return const WarehouseAlerts();
@@ -91,6 +91,7 @@ final warehouseAlertsProvider =
           .getWarehouseAlertsSummary(businessId: bid)
           .whenComplete(() => _warehouseAlertsInflight.remove(bid)),
     );
+    if (providerWasDisposed(disposed)) return const WarehouseAlerts();
     return _warehouseAlertsFromSummary(summary);
   } catch (_) {
     return const WarehouseAlerts();

@@ -13,7 +13,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'app.dart';
 import 'core/config/app_config.dart';
 import 'core/api/api_warmup.dart';
-import 'core/auth/provider_api_guard.dart' show registerRootProviderContainer;
+import 'core/auth/provider_api_guard.dart'
+    show ProviderFetchAborted, registerRootProviderContainer;
 import 'core/auth/session_notifier.dart' show sessionProvider, hexaApiProvider;
 import 'core/theme/app_theme.dart';
 import 'core/theme/hexa_colors.dart';
@@ -51,6 +52,8 @@ bool _hexaAsyncErrorLikelyBenign(Object error) {
       s.contains('HiveError') ||
       s.contains('Box not found') ||
       s.contains('StateError') ||
+      s.contains('Cannot call onDispose after a provider was disposed') ||
+      s.contains('ProviderFetchAborted') ||
       s.contains('Cannot use "ref"') ||
       s.contains('Bad state: Cannot use') ||
       s.contains('minified:') ||
@@ -69,7 +72,10 @@ class _AppProviderObserver extends ProviderObserver {
     StackTrace stackTrace,
     ProviderContainer container,
   ) {
-    if (error is StateError && error.message.contains('onDispose')) {
+    if (error is ProviderFetchAborted) return;
+    if (error is StateError &&
+        (error.message.contains('onDispose') ||
+            error.message.contains('disposed'))) {
       return;
     }
     if (kDebugMode) {

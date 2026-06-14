@@ -30,10 +30,8 @@ import '../../../core/providers/business_aggregates_invalidation.dart'
         invalidateAfterPurchaseDelete,
         invalidatePurchaseListSurfacesLight,
         invalidatePurchaseMetadataLight;
-import '../../../core/providers/catalog_providers.dart';
 import '../../../core/purchase/purchase_stock_commit_flow.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
-import '../../shell/shell_branch_provider.dart';
 import '../providers/trade_purchase_detail_provider.dart';
 import '../state/purchase_local_wip_draft_provider.dart';
 import '../../../core/services/purchase_pdf.dart';
@@ -723,11 +721,6 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // IndexedStack keeps History mounted off-screen; never force shell branch here
-    // (that fought Stock/Home tab selection and tripped Riverpod during build).
-    final shell = StatefulNavigationShell.maybeOf(context);
-    if (shell?.currentIndex != ShellBranch.history) return;
-
     final routerState = GoRouterState.of(context);
     final raw = routerState.uri.queryParameters['filter'];
     final f = (raw == null || raw.isEmpty) ? 'all' : raw.toLowerCase();
@@ -735,10 +728,6 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
     _lastRouteFilter = f;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (StatefulNavigationShell.maybeOf(context)?.currentIndex !=
-          ShellBranch.history) {
-        return;
-      }
       _syncFilterFromRoute();
     });
   }

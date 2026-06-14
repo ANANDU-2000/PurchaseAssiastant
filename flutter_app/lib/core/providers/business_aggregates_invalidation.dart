@@ -44,14 +44,11 @@ Timer? _invalidateDebounce;
 Timer? _invalidateTier2;
 Timer? _invalidateTier3;
 const _invalidateDebounceMs = 250;
-DateTime? _lastDashboardInvalidateAt;
-const _dashboardInvalidateMinGap = Duration(seconds: 5);
 
 /// Immediate owner home refresh after writes (bypasses debounced aggregate gap).
 void forceRefreshOwnerHomeDashboard(dynamic ref) {
   bustHomeDashboardVolatileCaches();
   bustHomeShellReportsInflight();
-  _lastDashboardInvalidateAt = DateTime.now();
   ref.invalidate(homeDashboardDataProvider);
   ref.invalidate(homeShellReportsProvider);
   ref.invalidate(homeRecentActivityFeedProvider);
@@ -147,9 +144,6 @@ void _doInvalidateBusinessAggregates(ProviderContainer container) {
   final branch = container.read(shellCurrentBranchProvider);
   final onHome = branch == ShellBranch.home;
   final onReports = branch == ShellBranch.reports;
-  final now = DateTime.now();
-  final allowDashboardInvalidate = _lastDashboardInvalidateAt == null ||
-      now.difference(_lastDashboardInvalidateAt!) >= _dashboardInvalidateMinGap;
 
   // Tier 1 — critical counts (immediate).
   container.invalidate(deliveryPipelineProvider);
@@ -159,25 +153,29 @@ void _doInvalidateBusinessAggregates(ProviderContainer container) {
   container.invalidate(appNotificationsSummaryProvider);
   bumpBusinessDataWriteRevision(container);
 
-  // Tier 2 — lists after DB write propagation (~400ms).
+  // Tier 2 — lists + home dashboard after DB write propagation (~400ms).
+  // [bustHomeDashboardVolatileCaches] already ran above; invalidate so the
+  // notifier rebuilds and schedules a fresh pull (avoids stale KPIs while still
+  // on Home after a save).
   _invalidateTier2 = Timer(const Duration(milliseconds: 400), () {
     _invalidateTier2 = null;
     invalidateTradePurchaseCachesFromContainer(container);
     _invalidateCatalogSurfacesFromContainer(container);
     _invalidateContactsSurfacesFromContainer(container);
     container.invalidate(businessUsersListProvider);
+    container.invalidate(homeDashboardDataProvider);
+    container.invalidate(homeShellReportsProvider);
+    if (onHome) {
+      container.invalidate(homeRecentActivityFeedProvider);
+      container.invalidate(homeStockAttentionCountProvider);
+    }
   });
 
-  // Tier 3 — heavy aggregates (~1.5s), home/reports only.
+  // Tier 3 — heavy aggregates (~1.5s), reports only.
   _invalidateTier3 = Timer(const Duration(milliseconds: 1500), () {
     _invalidateTier3 = null;
     if (onReports) {
       invalidateAnalyticsDataLiveFromContainer(container);
-    }
-    if (allowDashboardInvalidate && onHome) {
-      _lastDashboardInvalidateAt = DateTime.now();
-      container.invalidate(homeDashboardDataProvider);
-      container.invalidate(homeShellReportsProvider);
     }
   });
 }
@@ -328,6 +326,7 @@ void invalidatePurchaseWorkspace(
   }
   emitBusinessWriteEvent(ref, kind: 'purchase', affectedItemIds: ids);
   invalidateBusinessAggregates(ref);
+  forceRefreshOwnerHomeDashboard(ref);
 }
 
 void _invalidateStockAuditFeeds(dynamic ref) {

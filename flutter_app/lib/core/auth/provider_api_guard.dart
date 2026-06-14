@@ -21,23 +21,38 @@ ProviderContainer resolveInvalidationContainer(dynamic ref) {
   throw StateError('No ProviderContainer for invalidation');
 }
 
+/// Thrown when an async provider body completes after auto-dispose (benign).
+class ProviderFetchAborted implements Exception {
+  const ProviderFetchAborted();
+}
+
 /// Tracks disposal during async provider bodies.
 class ProviderDisposeGuard {
   bool disposed = false;
 }
 
+void safeRefOnDispose(dynamic ref, void Function() cb) {
+  try {
+    ref.onDispose(cb);
+  } catch (_) {
+    // Provider already torn down — treat as disposed.
+  }
+}
+
 ProviderDisposeGuard registerProviderDisposeGuard(dynamic ref) {
   final guard = ProviderDisposeGuard();
-  ref.onDispose(() => guard.disposed = true);
+  safeRefOnDispose(ref, () => guard.disposed = true);
   return guard;
 }
 
 bool providerWasDisposed(ProviderDisposeGuard guard) => guard.disposed;
 
 void registerProviderKeepAliveTimer(dynamic ref, Duration ttl) {
-  final link = ref.keepAlive();
-  final timer = Timer(ttl, link.close);
-  ref.onDispose(timer.cancel);
+  try {
+    final link = ref.keepAlive();
+    final timer = Timer(ttl, link.close);
+    safeRefOnDispose(ref, timer.cancel);
+  } catch (_) {}
 }
 
 /// Skip network fetches when logged out or after terminal 401 (stops request storms).
