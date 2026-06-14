@@ -147,6 +147,7 @@ class _StockMissingLabelsPageState extends ConsumerState<StockMissingLabelsPage>
                       canEdit: canEdit,
                       canPrint: canPrint,
                       showInformOwner: isStaff,
+                      blob: blob,
                     ),
                     _list(
                       context,
@@ -156,6 +157,7 @@ class _StockMissingLabelsPageState extends ConsumerState<StockMissingLabelsPage>
                       canEdit: canEdit,
                       canPrint: canPrint,
                       showInformOwner: false,
+                      blob: blob,
                     ),
                   ],
                 ),
@@ -175,6 +177,7 @@ class _StockMissingLabelsPageState extends ConsumerState<StockMissingLabelsPage>
     required bool canEdit,
     required bool canPrint,
     required bool showInformOwner,
+    Map<String, dynamic>? blob,
   }) {
     if (rows.isEmpty) {
       return Center(
@@ -185,7 +188,10 @@ class _StockMissingLabelsPageState extends ConsumerState<StockMissingLabelsPage>
         ),
       );
     }
-    return ListView.separated(
+    return NotificationListener<ScrollNotification>(
+      onNotification: (n) =>
+          handleBulkStockListScrollNotification(n, ref, blob),
+      child: ListView.separated(
       padding: const EdgeInsets.symmetric(
         horizontal: HexaOp.pageGutter,
         vertical: 8,
@@ -296,6 +302,7 @@ class _StockMissingLabelsPageState extends ConsumerState<StockMissingLabelsPage>
           ),
         );
       },
+    ),
     );
   }
 }

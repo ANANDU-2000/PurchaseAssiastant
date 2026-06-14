@@ -204,12 +204,13 @@ final purchaseHistoryListFetchKeyProvider = Provider.autoDispose<String>((ref) {
 
 class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchasesListView> {
   bool _loadMoreBusy = false;
+  bool _dead = false;
 
   @override
   Future<TradePurchasesListView> build() async {
-    final link = ref.keepAlive();
-    final t = Timer(const Duration(minutes: 2), link.close);
-    ref.onDispose(t.cancel);
+    _dead = false;
+    ref.onDispose(() => _dead = true);
+    registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
 
     if (ref.watch(authSessionExpiredProvider)) {
       return const TradePurchasesListView(rows: [], hasMore: false);
@@ -247,6 +248,9 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
           purchaseFrom: apiRange.from,
           purchaseTo: apiRange.to,
         );
+    if (_dead) {
+      return const TradePurchasesListView(rows: [], hasMore: false);
+    }
     final hasMore = page.length >= kTradePurchasesHistoryFetchLimit;
     return TradePurchasesListView(rows: page, hasMore: hasMore);
   }
@@ -254,7 +258,7 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
   /// Appends the next API page when the user scrolls near the end of the list.
   Future<void> loadMore() async {
     final cur = state.valueOrNull;
-    if (cur == null || !cur.hasMore || _loadMoreBusy) return;
+    if (cur == null || !cur.hasMore || _loadMoreBusy || _dead) return;
     final branch = ref.read(shellCurrentBranchProvider);
     final fullscreenSearch =
         ref.read(purchaseHistoryFullscreenSearchActiveProvider);
@@ -283,6 +287,7 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
             purchaseFrom: apiRange.from,
             purchaseTo: apiRange.to,
           );
+      if (_dead) return;
       final after = state.valueOrNull;
       if (after == null || after.rows.length != offset) return;
       if (page.isEmpty) {

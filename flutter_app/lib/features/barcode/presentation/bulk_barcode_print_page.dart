@@ -1271,7 +1271,10 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
           ),
         ),
         Expanded(
-          child: ListView.builder(
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (n) =>
+                handleBulkStockListScrollNotification(n, ref, data),
+            child: ListView.builder(
             itemCount: visible.length,
             itemBuilder: (context, i) {
               final it = visible[i];
@@ -1335,6 +1338,7 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
                       },
               );
             },
+          ),
           ),
         ),
       ],

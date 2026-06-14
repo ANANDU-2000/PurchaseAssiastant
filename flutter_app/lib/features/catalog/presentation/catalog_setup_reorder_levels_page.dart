@@ -178,7 +178,14 @@ class _CatalogSetupReorderLevelsPageState
                           ),
                         ),
                       )
-                    : ListView.builder(
+                    : NotificationListener<ScrollNotification>(
+                        onNotification: (n) =>
+                            handleBulkStockListScrollNotification(
+                          n,
+                          ref,
+                          data,
+                        ),
+                        child: ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
                   itemCount: visibleRows.length,
                   itemBuilder: (ctx, i) {
@@ -217,6 +224,7 @@ class _CatalogSetupReorderLevelsPageState
                     );
                   },
                 ),
+                      ),
               ),
               SafeArea(
                 top: false,

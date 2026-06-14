@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/auth/provider_api_guard.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/models/trade_purchase_models.dart';
 
@@ -29,7 +30,8 @@ const Duration kTradePurchaseDetailFetchTimeout = Duration(seconds: 15);
 /// or delete so a revisit does not show stale rows.
 final tradePurchaseDetailProvider =
     FutureProvider.autoDispose.family<TradePurchase, String>((ref, purchaseId) async {
-  ref.keepAlive();
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = ref.watch(sessionProvider);
   if (session == null) throw StateError('no session');
   for (var attempt = 0; attempt < 3; attempt++) {
@@ -41,6 +43,9 @@ final tradePurchaseDetailProvider =
             purchaseId: purchaseId,
           )
           .timeout(kTradePurchaseDetailFetchTimeout);
+      if (providerWasDisposed(disposed)) {
+        throw StateError('Cannot call onDispose after a provider was disposed');
+      }
       final purchase = TradePurchase.fromJson(m);
       if (purchase.statusEnum == PurchaseStatus.deleted) {
         throw const TradePurchaseUnavailableError();
@@ -48,12 +53,20 @@ final tradePurchaseDetailProvider =
       return purchase;
     } on TradePurchaseUnavailableError {
       rethrow;
+    } on StateError {
+      rethrow;
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
         throw const TradePurchaseUnavailableError();
       }
+      if (providerWasDisposed(disposed)) {
+        throw StateError('Cannot call onDispose after a provider was disposed');
+      }
       rethrow;
     } on TimeoutException {
+      if (providerWasDisposed(disposed)) {
+        throw StateError('Cannot call onDispose after a provider was disposed');
+      }
       if (attempt == 2) {
         throw Exception(
           'Could not load purchase in time — check your connection and try again.',

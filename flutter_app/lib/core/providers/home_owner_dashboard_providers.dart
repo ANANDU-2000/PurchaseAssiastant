@@ -32,12 +32,6 @@ import 'delivery_pipeline_provider.dart';
 import 'notifications_provider.dart' show mergedNotificationFeedProvider;
 import 'warehouse_alerts_provider.dart';
 
-void _providerKeepAlive(Ref ref, Duration ttl) {
-  final keepAlive = ref.keepAlive();
-  final timer = Timer(ttl, keepAlive.close);
-  ref.onDispose(timer.cancel);
-}
-
 const _ownerOverviewTtl = Duration(minutes: 3);
 final Map<String, Map<String, dynamic>> _ownerOverviewSnapCache = {};
 final Map<String, DateTime> _ownerOverviewFetchedAt = {};
@@ -149,6 +143,7 @@ class HomeInventorySummary {
 
 final homeInventorySummaryProvider =
     FutureProvider.autoDispose<HomeInventorySummary>((ref) async {
+  final disposed = registerProviderDisposeGuard(ref);
   final dashState = ref.watch(homeDashboardDataProvider);
   final inHand = dashState.snapshot.data.stockInHand;
   if (homeTabHasOperationalBundle(ref) && inHand != null) {
@@ -164,7 +159,7 @@ final homeInventorySummaryProvider =
   if (dashState.refreshing && !homeTabHasOperationalBundle(ref)) {
     return HomeInventorySummary.empty;
   }
-  _providerKeepAlive(ref, const Duration(minutes: 5));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 5));
   final session = ref.watch(activeSessionProvider);
   if (session == null) return HomeInventorySummary.empty;
   try {
@@ -174,6 +169,7 @@ final homeInventorySummaryProvider =
           businessId: session.primaryBusiness.id,
         )
         .timeout(const Duration(seconds: 12));
+    if (providerWasDisposed(disposed)) return HomeInventorySummary.empty;
     return HomeInventorySummary.fromJson(raw);
   } catch (_) {
     return HomeInventorySummary.empty;
@@ -184,7 +180,8 @@ final homeInventorySummaryProvider =
 @Deprecated('Use homeDashboardDataProvider with HomePeriod.today')
 final homeTodayDashboardDataProvider =
     FutureProvider.autoDispose<HomeDashboardData>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = ref.watch(activeSessionProvider);
   if (session == null) return HomeDashboardData.empty;
   final now = DateTime.now();
@@ -197,14 +194,17 @@ final homeTodayDashboardDataProvider =
     from: from,
     to: to,
   );
+  if (providerWasDisposed(disposed)) return HomeDashboardData.empty;
   return homeDashboardDataFromApiSnapshot(HomePeriod.today, snap);
 });
 
 /// Single parallel fetch for low + critical counts (avoids duplicate sequential home polls).
 final stockAlertCountsProvider =
     FutureProvider.autoDispose<({int low, int critical})>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final counts = await ref.watch(stockStatusCountsProvider.future);
+  if (providerWasDisposed(disposed)) return (low: 0, critical: 0);
   return (
     low: coerceToInt(counts['low']),
     critical: coerceToInt(counts['critical']),
@@ -212,12 +212,16 @@ final stockAlertCountsProvider =
 });
 
 final stockLowCountProvider = FutureProvider.autoDispose<int>((ref) async {
+  final disposed = registerProviderDisposeGuard(ref);
   final c = await ref.watch(stockAlertCountsProvider.future);
+  if (providerWasDisposed(disposed)) return 0;
   return c.low;
 });
 
 final stockCriticalCountProvider = FutureProvider.autoDispose<int>((ref) async {
+  final disposed = registerProviderDisposeGuard(ref);
   final c = await ref.watch(stockAlertCountsProvider.future);
+  if (providerWasDisposed(disposed)) return 0;
   return c.critical;
 });
 
@@ -232,8 +236,10 @@ final homeStockAttentionCountProvider =
         .operational!
         .stockAttentionCount;
   }
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final counts = await ref.watch(stockStatusCountsProvider.future);
+  if (providerWasDisposed(disposed)) return 0;
   final out = coerceToInt(counts['out']);
   final low = coerceToInt(counts['low']);
   final critical = coerceToInt(counts['critical']);
@@ -299,7 +305,8 @@ final stockLowTopHomeProvider =
   if (!ref.watch(homeLowStockTopFetchEnabledProvider)) {
     return [];
   }
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
   final m = await ref.read(hexaApiProvider).listStockLow(
@@ -307,6 +314,7 @@ final stockLowTopHomeProvider =
         page: 1,
         perPage: 6,
       );
+  if (providerWasDisposed(disposed)) return [];
   final items = m['items'];
   if (items is! List) return [];
   return [
@@ -318,17 +326,20 @@ final stockLowTopHomeProvider =
 /// Stock adjustments for the global [homePeriodProvider] window (client-filtered).
 final stockAuditPeriodProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
   ref.watch(homePeriodProvider);
   ref.watch(homeCustomDateRangeProvider);
   final rows = await ref.watch(stockAuditRecentSnapshotProvider.future);
+  if (providerWasDisposed(disposed)) return [];
   return _filterAuditsToHomePeriod(ref, rows);
 });
 final stockAuditDayProvider = FutureProvider.autoDispose
     .family<List<Map<String, dynamic>>, DateTime>((ref, day) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
   final d = DateTime(day.year, day.month, day.day);
@@ -346,6 +357,7 @@ final stockAuditDayProvider = FutureProvider.autoDispose
       purchaseTo: dayStr,
     ),
   ]);
+  if (providerWasDisposed(disposed)) return [];
   final auditRows = (results[0] as List)
       .map((e) => Map<String, dynamic>.from(e as Map))
       .toList();
@@ -367,7 +379,8 @@ final homeOwnerPeriodDashboardProvider =
 
 final stockVariancesTodayProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   if (homeTabHasOperationalBundle(ref)) {
     return const [];
   }
@@ -381,34 +394,42 @@ final stockVariancesTodayProvider =
   }
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
-  return ref.read(hexaApiProvider).listStockVariancesToday(
+  final rows = await ref.read(hexaApiProvider).listStockVariancesToday(
         businessId: session.primaryBusiness.id,
       );
+  if (providerWasDisposed(disposed)) return [];
+  return rows;
 });
 
 final activeStaffSessionsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   if (shellBranchIsVisible(ref, ShellBranch.home) &&
       !ref.watch(homeStaffSessionsFetchEnabledProvider)) {
     return [];
   }
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
-  return ref.read(hexaApiProvider).listActiveSessions(
+  final rows = await ref.read(hexaApiProvider).listActiveSessions(
         businessId: session.primaryBusiness.id,
       );
+  if (providerWasDisposed(disposed)) return [];
+  return rows;
 });
 
 final activeSessionsCountProvider = FutureProvider.autoDispose<int>((ref) async {
+  final disposed = registerProviderDisposeGuard(ref);
   final rows = await ref.watch(activeStaffSessionsProvider.future);
+  if (providerWasDisposed(disposed)) return 0;
   return rows.length;
 });
 
 /// Rolling calendar month (1st → today) for owner home quick stats.
 final homeMonthDashboardDataProvider =
     FutureProvider.autoDispose<HomeDashboardData>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   if (!shellBranchIsVisible(ref, ShellBranch.home)) {
     return HomeDashboardData.empty;
   }
@@ -423,6 +444,7 @@ final homeMonthDashboardDataProvider =
     from: _apiDate(start),
     to: _apiDate(end),
   );
+  if (providerWasDisposed(disposed)) return HomeDashboardData.empty;
   return homeDashboardDataFromApiSnapshot(HomePeriod.month, snap);
 });
 
@@ -755,7 +777,8 @@ Future<List<HomeActivityItem>> _fetchHomeWarehouseActivity(
   int maxItems = 15,
   Duration feedTimeout = const Duration(seconds: 15),
 }) async {
-  _providerKeepAlive(ref, const Duration(minutes: 5));
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 5));
   // Period drives refetch; do not watch session — resume JWT refresh must not
   // cancel/restart this fetch (caused infinite skeletons on Warehouse activity).
   final session = ref.read(activeSessionProvider);
@@ -798,6 +821,7 @@ Future<List<HomeActivityItem>> _fetchHomeWarehouseActivity(
   } on TimeoutException {
     throw Exception('Recent changes timed out. Pull to refresh.');
   }
+  if (providerWasDisposed(disposed)) return [];
   final audits = _filterAuditsToHomePeriod(ref, auditRows);
   final items = <HomeActivityItem>[];
   final seenPurchaseIds = <String>{};
@@ -934,10 +958,13 @@ final homeRecentActivityFeedProvider =
   if (!ref.watch(homeActivityFeedFetchEnabledProvider)) {
     return const [];
   }
-  _providerKeepAlive(ref, const Duration(seconds: 30));
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(seconds: 30));
   ref.watch(homePeriodProvider);
   ref.watch(homeCustomDateRangeProvider);
-  return _fetchHomeWarehouseActivity(ref, purchaseLimit: 15, maxItems: 15);
+  final items = await _fetchHomeWarehouseActivity(ref, purchaseLimit: 15, maxItems: 15);
+  if (providerWasDisposed(disposed)) return const [];
+  return items;
 });
 
 /// Full warehouse activity list for Home → View all (respects shared period).
@@ -958,6 +985,7 @@ final homeWarehouseActivityFullProvider =
 /// @deprecated Use [homeRecentActivityFeedProvider] only — kept for invalidation parity.
 final homeRecentPurchasesCompactProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final disposed = registerProviderDisposeGuard(ref);
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
   final q = homeDateRangeForRef(ref);
@@ -969,5 +997,6 @@ final homeRecentPurchasesCompactProvider =
         purchaseFrom: q.from,
         purchaseTo: q.to,
       );
+  if (providerWasDisposed(disposed)) return [];
   return rows;
 });

@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_failure_policy.dart';
+import '../auth/provider_api_guard.dart';
 import '../auth/session_notifier.dart';
 import '../models/session.dart';
 import '../models/trade_purchase_models.dart';
@@ -13,12 +14,6 @@ import 'app_period_provider.dart';
 import 'prefs_provider.dart';
 import 'stock_providers.dart';
 import 'trade_purchases_provider.dart';
-
-void _providerKeepAlive(Ref ref, Duration ttl) {
-  final link = ref.keepAlive();
-  final timer = Timer(ttl, link.close);
-  ref.onDispose(timer.cancel);
-}
 
 /// Clears staff home caches after login/logout so a prior `session == null`
 /// fetch never sticks as an empty list for the next user.
@@ -113,7 +108,7 @@ String _todayApiDate() {
 }
 
 final staffDisplayNameProvider = FutureProvider.autoDispose<String>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 5));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 5));
   final session = await _waitForSession(ref);
   if (session == null) return 'Staff';
   try {
@@ -151,7 +146,7 @@ Future<Session?> _waitForSession(Ref ref, {int attempts = 40}) async {
 
 final staffTodayActivityProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   if (!_staffSessionActive(ref)) return [];
   _assertStaffProviderRole(ref);
   final session = await _waitForSession(ref);
@@ -172,7 +167,7 @@ final staffTodayActivityProvider =
 /// Today's stock adjustments from audit feed (authoritative for stock work counts).
 final staffTodayStockWorkProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   if (!_staffSessionActive(ref)) return [];
   final session = await _waitForSession(ref);
   if (session == null) return [];
@@ -190,7 +185,7 @@ final staffTodayStockWorkProvider =
 
 final staffLowStockAlertsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = await _waitForSession(ref);
   if (session == null) return [];
   try {
@@ -365,7 +360,7 @@ final staffPendingDeliveriesProvider =
 /// Last barcode scans from device prefs (shared with [BarcodeScanPage]).
 final staffRecentScansProvider =
     FutureProvider.autoDispose<List<BarcodeRecentScan>>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 5));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 5));
   return loadBarcodeRecentScans(max: 8);
 });
 
@@ -450,7 +445,7 @@ final staffTodaySummaryProvider =
 });
 
 final staffTodayPurchasesProvider = FutureProvider.autoDispose<List<TradePurchase>>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   if (!_staffSessionActive(ref)) return [];
   final session = await _waitForSession(ref);
   if (session == null) return [];
@@ -479,7 +474,7 @@ enum StaffPurchaseHistoryPeriod { today, week, allTime }
 /// Staff purchase history — no financial fields (API redacts for staff role).
 final staffTradePurchasesHistoryProvider = FutureProvider.autoDispose
     .family<List<TradePurchase>, StaffPurchaseHistoryPeriod>((ref, period) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   if (!_staffSessionActive(ref)) {
     throw StateError('Session expired — sign in again');
   }
@@ -542,7 +537,7 @@ final staffTradePurchasesHistoryProvider = FutureProvider.autoDispose
 /// All catalog stock rows with empty item_code (paged load).
 final missingCodeItemsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = await _waitForSession(ref);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
@@ -575,7 +570,7 @@ final missingCodeItemsProvider =
 /// Full stock rows for staff item gallery (category / code / barcode filters).
 final staffGalleryStockProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 3));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 3));
   final session = await _waitForSession(ref);
   if (session == null) return [];
   final api = ref.read(hexaApiProvider);
@@ -613,7 +608,7 @@ final staffOpeningStockCountProvider = Provider.autoDispose<int>((ref) {
 
 final staffStockMismatchCountProvider =
     FutureProvider.autoDispose<int>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = await _waitForSession(ref);
   if (session == null) return 0;
   final rows = await ref.read(hexaApiProvider).listStockVariancesToday(
@@ -657,7 +652,7 @@ String staffActivityLabel(String actionType) {
 
 final staffRecentActivityProvider =
     FutureProvider.autoDispose<List<StaffRecentActivityItem>>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final activityRows = await ref.watch(staffTodayActivityProvider.future);
   final scans = await ref.watch(staffRecentScansProvider.future);
   final now = DateTime.now();

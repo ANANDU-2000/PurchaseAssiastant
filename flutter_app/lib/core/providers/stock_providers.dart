@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
+import 'package:flutter/widgets.dart' show ScrollNotification;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/hexa_api.dart';
@@ -22,14 +23,9 @@ import 'app_period_provider.dart';
 import 'deferred_invalidation.dart';
 import 'home_dashboard_provider.dart';
 
-void _providerKeepAlive(Ref ref, Duration ttl) {
-  final link = ref.keepAlive();
-  final timer = Timer(ttl, link.close);
-  ref.onDispose(timer.cancel);
-}
-
 /// Public alias for providers outside this file (e.g. warehouse alerts).
-void providerKeepAlive(Ref ref, Duration ttl) => _providerKeepAlive(ref, ttl);
+void providerKeepAlive(Ref ref, Duration ttl) =>
+    registerProviderKeepAliveTimer(ref, ttl);
 
 final Map<String, Future<Map<String, dynamic>>> _stockListInflight = {};
 final Map<String, Future<Map<String, dynamic>>> _openingMissingInflight = {};
@@ -122,7 +118,7 @@ const kHomeOutOfStockListQuery = StockListQuery(
 final homeOutOfStockListProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final disposed = registerProviderDisposeGuard(ref);
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = ref.watch(sessionProvider);
   if (session == null) {
     return {'items': <Map<String, dynamic>>[], 'total': 0};
@@ -143,15 +139,19 @@ final homeOutOfStockListProvider =
 /// Item drill-down: period purchases, variance, recent lines.
 final stockItemIntelligenceProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, itemId) async {
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(seconds: 45));
   final session = ref.watch(sessionProvider);
   if (session == null) return {};
   final range = ref.watch(stockListQueryProvider);
-  return ref.read(hexaApiProvider).getStockIntelligence(
+  final result = await ref.read(hexaApiProvider).getStockIntelligence(
         businessId: session.primaryBusiness.id,
         itemId: itemId,
         periodStart: range.periodStart,
         periodEnd: range.periodEnd,
       );
+  if (providerWasDisposed(disposed)) return {};
+  return result;
 });
 
 final stockItemActivityProvider = FutureProvider.autoDispose
@@ -297,7 +297,7 @@ int countOperationalActiveFilters(
 /// On-hand warehouse totals (bags/kg/boxes/tins). Never pass period — that returns purchases.
 final stockOnHandTotalsProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 3));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 3));
   final session = ref.watch(sessionProvider);
   if (session == null) return {};
   return ref.read(hexaApiProvider).getStockTotals(
@@ -309,7 +309,7 @@ final stockOnHandTotalsProvider =
 final stockTotalsProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>, AppPeriod>(
   (ref, period) async {
-    _providerKeepAlive(ref, const Duration(minutes: 3));
+    registerProviderKeepAliveTimer(ref, const Duration(minutes: 3));
     final session = ref.watch(sessionProvider);
     if (session == null) return {};
     return ref.read(hexaApiProvider).getStockTotals(
@@ -324,7 +324,7 @@ final stockTotalsProvider =
 /// Reads [stockAuditRecentSnapshotProvider] — no extra HTTP when home already loaded audit.
 final stockChangesFeedProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   ref.watch(stockPagePeriodProvider);
@@ -445,10 +445,40 @@ final bulkBarcodeSelectionProvider = StateProvider<Set<String>>((ref) => {});
 final bulkBarcodeDownloadedIdsProvider =
     StateProvider<Set<String>>((ref) => {});
 
+/// Web lazy pagination cap for [bulkStockListProvider] (mobile loads up to 40 pages).
+final bulkStockListMaxPageProvider = StateProvider<int>(
+  (ref) => kIsWeb ? 1 : 40,
+);
+
+/// Request the next bulk stock list page (no-op when already at cap).
+void requestBulkStockListNextPage(dynamic ref) {
+  final cur = ref.read(bulkStockListMaxPageProvider);
+  if (cur >= 40) return;
+  ref.read(bulkStockListMaxPageProvider.notifier).state = cur + 1;
+}
+
+/// Lazy-load more bulk stock rows when the user scrolls near the list bottom.
+bool handleBulkStockListScrollNotification(
+  ScrollNotification notification,
+  dynamic ref,
+  Map<String, dynamic>? blob,
+) {
+  if (blob?['partial'] != true) return false;
+  if (notification.metrics.pixels <
+      notification.metrics.maxScrollExtent - 300) {
+    return false;
+  }
+  requestBulkStockListNextPage(ref);
+  return false;
+}
+
 final bulkStockListProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final disposed = registerProviderDisposeGuard(ref);
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = ref.watch(sessionProvider);
   final query = ref.watch(stockListQueryProvider);
+  final maxPages = ref.watch(bulkStockListMaxPageProvider);
   if (session == null) {
     return {'items': <Map<String, dynamic>>[], 'total': 0, 'loaded': 0};
   }
@@ -459,7 +489,7 @@ final bulkStockListProvider =
   var page = 1;
   final merged = <Map<String, dynamic>>[];
   var total = 0;
-  while (page <= 40) {
+  while (page <= maxPages) {
     try {
       final res = await api.listStock(
         businessId: session.primaryBusiness.id,
@@ -474,6 +504,14 @@ final bulkStockListProvider =
         periodStart: query.periodStart,
         periodEnd: query.periodEnd,
       );
+      if (providerWasDisposed(disposed)) {
+        return {
+          'items': merged,
+          'total': total > 0 ? total : merged.length,
+          'loaded': merged.length,
+          'partial': true,
+        };
+      }
       total = (res['total'] as num?)?.toInt() ?? 0;
       final raw = (res['items'] as List?) ?? const [];
       if (raw.isEmpty) break;
@@ -494,7 +532,13 @@ final bulkStockListProvider =
       rethrow;
     }
   }
-  return {'items': merged, 'total': total, 'loaded': merged.length};
+  final hasMore = total > merged.length;
+  return {
+    'items': merged,
+    'total': total,
+    'loaded': merged.length,
+    if (hasMore) 'partial': true,
+  };
 });
 
 /// Optimistic list-row overlays until the next `/stock/list` fetch replaces them.
@@ -629,7 +673,7 @@ final stockItemDetailProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>, String>(
   (ref, itemId) async {
     final disposed = registerProviderDisposeGuard(ref);
-    _providerKeepAlive(ref, const Duration(seconds: 45));
+    registerProviderKeepAliveTimer(ref, const Duration(seconds: 45));
     final session = ref.watch(sessionProvider);
     if (session == null) return {};
     await awaitProviderApiReady(ref);
@@ -654,19 +698,23 @@ final stockItemDetailProvider =
 final stockItemAuditProvider =
     FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
   (ref, itemId) async {
+    final disposed = registerProviderDisposeGuard(ref);
+    registerProviderKeepAliveTimer(ref, const Duration(seconds: 45));
     final session = ref.watch(sessionProvider);
     if (session == null) return [];
-    return ref.read(hexaApiProvider).listStockAuditForItem(
+    final rows = await ref.read(hexaApiProvider).listStockAuditForItem(
           businessId: session.primaryBusiness.id,
           itemId: itemId,
         );
+    if (providerWasDisposed(disposed)) return [];
+    return rows;
   },
 );
 
 /// Raw GET `/stock/alerts/summary` — SSOT for chip counts off Home bundle.
 final stockAlertsSummaryProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
-  _providerKeepAlive(ref, const Duration(seconds: 30));
+  registerProviderKeepAliveTimer(ref, const Duration(seconds: 30));
   final session = ref.watch(sessionProvider);
   if (session == null || providerSkipApi(ref)) return const {};
   final bid = session.primaryBusiness.id;
@@ -704,7 +752,7 @@ final stockStatusCountsProvider =
   final disposed = registerProviderDisposeGuard(ref);
   final bundled = homeBundledStockStatusCounts(ref);
   if (bundled != null) return bundled;
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = ref.watch(sessionProvider);
   if (session == null) return {};
   final api = ref.read(hexaApiProvider);
@@ -734,7 +782,7 @@ final stockStatusCountsProvider =
 /// Pending/delivered truck counts for stock list filter chips.
 final stockDeliveryIndicatorCountsProvider = FutureProvider.autoDispose<
     ({int pending, int delivered})>((ref) async {
-  _providerKeepAlive(ref, const Duration(seconds: 25));
+  registerProviderKeepAliveTimer(ref, const Duration(seconds: 25));
   final session = ref.watch(sessionProvider);
   if (session == null || providerSkipApi(ref)) {
     return (pending: 0, delivered: 0);
@@ -775,7 +823,7 @@ final stockDeliveryIndicatorCountsProvider = FutureProvider.autoDispose<
 /// All/Low/Out chip counts — scoped when warehouse filters are active.
 final stockFilteredStatusCountsProvider =
     FutureProvider.autoDispose<Map<String, int>>((ref) async {
-  _providerKeepAlive(ref, const Duration(seconds: 25));
+  registerProviderKeepAliveTimer(ref, const Duration(seconds: 25));
   final q = ref.watch(stockListQueryProvider);
   final op = ref.watch(stockOperationalFiltersProvider);
   if (_warehouseChipFilterCount(q, op) == 0 &&
@@ -864,7 +912,7 @@ final lowStockByCategoryProvider =
     return {};
   }
   final disposed = registerProviderDisposeGuard(ref);
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = ref.watch(sessionProvider);
   if (session == null) return {};
   final api = ref.read(hexaApiProvider);
@@ -994,7 +1042,7 @@ final openingStockSetupQueryProvider =
 /// Server-backed list: summary + rows.
 final openingStockSetupProvider = FutureProvider.autoDispose<Map<String, dynamic>>(
   (ref) async {
-    _providerKeepAlive(ref, const Duration(minutes: 2));
+    registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
     final session = ref.watch(sessionProvider);
     if (session == null) {
       return {
@@ -1033,7 +1081,7 @@ final openingStockBulkSelectionProvider = StateProvider<Set<String>>(
 /// Items missing opening stock (home banners + critical alerts).
 final openingStockMissingProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
-  _providerKeepAlive(ref, const Duration(minutes: 2));
+  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   if (!homeOverviewReadyForSatellites(ref)) {
     return {'items': <Map<String, dynamic>>[], 'missing_count': 0};
   }
