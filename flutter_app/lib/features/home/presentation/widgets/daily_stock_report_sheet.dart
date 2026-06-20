@@ -10,7 +10,7 @@ import '../../../../core/providers/home_owner_dashboard_providers.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../../stock/presentation/widgets/stock_today_feed.dart';
 
-/// One-tap daily summary for owner (WhatsApp-friendly text).
+/// One-tap daily summary for owner (share-friendly text).
 class DailyStockReportSheet extends ConsumerWidget {
   const DailyStockReportSheet({super.key});
 
@@ -26,7 +26,7 @@ class DailyStockReportSheet extends ConsumerWidget {
     );
   }
 
-  String _buildWhatsAppText({
+  String _buildShareText({
     required String dateLabel,
     required List<Map<String, dynamic>> purchases,
     required List<Map<String, dynamic>> audits,
@@ -179,7 +179,7 @@ class DailyStockReportSheet extends ConsumerWidget {
                       final p = purchases.valueOrNull ?? [];
                       final a = audits.valueOrNull ?? [];
                       final v = variances.valueOrNull ?? [];
-                      final text = _buildWhatsAppText(
+                      final text = _buildShareText(
                         dateLabel: dateLabel,
                         purchases: p,
                         audits: a,
@@ -189,8 +189,8 @@ class DailyStockReportSheet extends ConsumerWidget {
                       );
                       await Share.share(text);
                     },
-                    icon: const Icon(Icons.chat_rounded),
-                    label: const Text('WhatsApp'),
+                    icon: const Icon(Icons.share_rounded),
+                    label: const Text('Share'),
                   ),
                 ),
                 const SizedBox(width: 8),

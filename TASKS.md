@@ -6,9 +6,9 @@
 
 - [x] **PERF-P0** Quick stock save: `invalidateStockRowSaveSurfaces` (light reconcile, reorder-only aggregate storm); contacts search 300ms debounce; shell tab refresh gated by stock list TTL / home soft refresh / reports 3min; analytics providers keepAlive 3min; foreground+realtime warehouse dedupe (8s global guard)
 - [x] **PERF-P1** Tiered `invalidateStockRowSaveSurfaces` + migrate quick stock / scan sheets; `lastWarehouseGlobalInvalidateAtProvider`
-- [x] **PERF-P2** Backend: `purchased_in_period` SQL whitelist pagination (no 10k Python filter); batch `_last_purchase_expected_qty_map`; Alembic **062** trade report indexes; stock list keepAlive aligned to 3min TTL; home pending delivery reads `home_operational` bundle; purchase history drops eager `catalogItemsListProvider`
+- [x] **PERF-P2** Backend: `purchased_in_period` SQL whitelist pagination (no 10k Python filter); batch `_last_purchase_expected_qty_map`; Alembic **065** archive legacy entries + performance indexes; stock list keepAlive aligned to 3min TTL; home pending delivery reads `home_operational` bundle; purchase history drops eager `catalogItemsListProvider`
 - [x] **PERF-P3** Sheet `_saving` guards (reorder/barcode/item code); catalog search 300ms debounce
-- [x] **Alembic 062 on Render** — applied via `backend/scripts/apply_render_upgrade_062.py`; `/health/ready` → `schema_ok: true`
+- [x] **Alembic 065 on Render** — migrations `064_critical_performance_indexes` + `065_archive_legacy_entries_tables`; verify `/health/ready` → `schema_ok: true`, head `065`
 
 ## Production bugs (2026-06-01)
 
@@ -37,10 +37,12 @@
 
 ## Live DB (Render harisree-db 2026-06-13)
 
-- [x] **Alembic head (code + Render):** `062_trade_report_indexes` (`/health/ready` → `schema_ok: true`)
+- [x] **Alembic head (code + Render):** `065_archive_legacy_entries_tables` (`/health/ready` → `schema_ok: true`)
 - [x] **Full audit pass (2026-06-05):** purchase race guards, duplicate line/share guards, barcode desktop split + web camera gesture, advisory locks, structured 409 stock conflicts, keepalive 8min+retry, activity WhatsApp dedupe
 
 ## Manual QA handoff (post-deploy)
+
+**Phase 3 (2026-06-06):** Code complete — verify on https://purchase-assiastant.vercel.app after Render+Vercel deploy. API smoke: `cd backend && python -m scripts.smoke_production_api`.
 
 - [x] Alembic **061** applied on Render; Flutter web **`e630e47`** on Vercel (hard-refresh PWA after deploy)
 - [ ] **G2 — Physical count:** save from stock sheet → PHYS column updates immediately; no revert after 3s (iOS/Android PWA)

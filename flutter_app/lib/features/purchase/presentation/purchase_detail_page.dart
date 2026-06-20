@@ -634,9 +634,7 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
   }
 
   bool _canCommitStock() {
-    final session = ref.read(sessionProvider);
-    if (session == null) return false;
-    return _isOwnerOrManager() || sessionCanStockEdit(session);
+    return _isOwnerOrManager();
   }
 
   bool _isStaff() {

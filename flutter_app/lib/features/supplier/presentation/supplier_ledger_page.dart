@@ -167,7 +167,7 @@ class SupplierLedgerPage extends ConsumerWidget {
                 data: (m) {
                   final name = (m['name'] ?? m['display_name'])?.toString().trim();
                   final phone =
-                      (m['phone'] ?? m['mobile'] ?? m['whatsapp'])?.toString().trim();
+                      (m['phone'] ?? m['mobile'])?.toString().trim();
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Column(

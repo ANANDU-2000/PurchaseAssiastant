@@ -79,7 +79,6 @@ _GST_IN_RE = re.compile(r"^[0-9A-Z]{15}$")
 class SupplierCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     phone: str | None = None
-    whatsapp_number: str | None = Field(default=None, max_length=32)
     location: str | None = None
     broker_id: uuid.UUID | None = None
     broker_ids: list[uuid.UUID] | None = None
@@ -108,7 +107,7 @@ class SupplierCreate(BaseModel):
             raise ValueError("name must not be empty or whitespace")
         return " ".join(v.split())
 
-    @field_validator("phone", "whatsapp_number", mode="before")
+    @field_validator("phone", mode="before")
     @classmethod
     def _strip_phoneish(cls, v: object) -> object:
         if v is None or (isinstance(v, str) and not v.strip()):
@@ -118,7 +117,7 @@ class SupplierCreate(BaseModel):
             return s or None
         return v
 
-    @field_validator("phone", "whatsapp_number")
+    @field_validator("phone")
     @classmethod
     def _phone_format(cls, v: str | None) -> str | None:
         if v is None:
@@ -150,7 +149,6 @@ class SupplierOut(BaseModel):
     id: uuid.UUID
     name: str
     phone: str | None = None
-    whatsapp_number: str | None = None
     location: str | None = None
     broker_id: uuid.UUID | None = None
     broker_ids: list[uuid.UUID] = Field(default_factory=list)
@@ -175,7 +173,6 @@ class SupplierOutCompact(BaseModel):
     id: uuid.UUID
     name: str
     phone: str | None = None
-    whatsapp_number: str | None = None
     location: str | None = None
     broker_id: uuid.UUID | None = None
     broker_ids: list[uuid.UUID] = Field(default_factory=list)
@@ -195,7 +192,6 @@ class SupplierOutCompact(BaseModel):
 class SupplierUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     phone: str | None = None
-    whatsapp_number: str | None = Field(default=None, max_length=32)
     location: str | None = None
     broker_id: uuid.UUID | None = None
     broker_ids: list[uuid.UUID] | None = None
@@ -229,7 +225,7 @@ class SupplierUpdate(BaseModel):
             raise ValueError("name must not be empty or whitespace")
         return " ".join(v.split())
 
-    @field_validator("phone", "whatsapp_number", mode="before")
+    @field_validator("phone", mode="before")
     @classmethod
     def _strip_phoneish_u(cls, v: object) -> object:
         if v is None or (isinstance(v, str) and not v.strip()):
@@ -239,7 +235,7 @@ class SupplierUpdate(BaseModel):
             return s or None
         return v
 
-    @field_validator("phone", "whatsapp_number")
+    @field_validator("phone")
     @classmethod
     def _phone_format_u(cls, v: str | None) -> str | None:
         if v is None:
@@ -355,7 +351,6 @@ async def list_suppliers(
                     Supplier.default_discount,
                     Supplier.default_delivered_rate,
                     Supplier.default_billty_rate,
-                    Supplier.whatsapp_number,
                     Supplier.location,
                     Supplier.freight_type,
                     Supplier.ai_memory_enabled,
@@ -390,7 +385,6 @@ async def list_suppliers(
                     id=s.id,
                     name=s.name,
                     phone=s.phone,
-                    whatsapp_number=s.whatsapp_number,
                     location=s.location,
                     broker_id=s.broker_id,
                     broker_ids=list(broker_map.get(s.id, [])),
@@ -467,7 +461,6 @@ async def create_supplier(
         business_id=business_id,
         name=body.name.strip(),
         phone=body.phone,
-        whatsapp_number=body.whatsapp_number,
         location=body.location,
         broker_id=dedup_brokers[0] if dedup_brokers else body.broker_id,
         gst_number=body.gst_number,
@@ -525,9 +518,6 @@ async def update_supplier(
         s.name = data["name"].strip()
     if "phone" in data:
         s.phone = data["phone"]
-    if "whatsapp_number" in data:
-        v = data["whatsapp_number"]
-        s.whatsapp_number = None if v is None or (isinstance(v, str) and not str(v).strip()) else str(v).strip()
     if "location" in data:
         s.location = data["location"]
     if "address" in data:
@@ -623,14 +613,12 @@ class LinkedSupplierOut(BaseModel):
     id: uuid.UUID
     name: str
     phone: str | None = None
-    whatsapp_number: str | None = None
 
 
 class BrokerOut(BaseModel):
     id: uuid.UUID
     name: str
     phone: str | None = None
-    whatsapp_number: str | None = None
     location: str | None = None
     notes: str | None = None
     commission_type: str
@@ -651,7 +639,6 @@ class BrokerOut(BaseModel):
 class BrokerUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     phone: str | None = Field(default=None, max_length=15)
-    whatsapp_number: str | None = Field(default=None, max_length=32)
     location: str | None = None
     notes: str | None = None
     commission_type: str | None = Field(default=None, pattern="^(percent|flat)$")
@@ -735,7 +722,6 @@ async def list_brokers(
 class BrokerCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     phone: str | None = Field(default=None, max_length=15)
-    whatsapp_number: str | None = Field(default=None, max_length=32)
     location: str | None = None
     notes: str | None = None
     commission_type: str = Field(default="percent", pattern="^(percent|flat)$")
@@ -767,7 +753,6 @@ async def create_broker(
         business_id=business_id,
         name=body.name.strip(),
         phone=body.phone,
-        whatsapp_number=body.whatsapp_number,
         location=body.location,
         notes=body.notes,
         commission_type=body.commission_type,
@@ -833,8 +818,6 @@ async def update_broker(
         b.commission_value = data["commission_value"]
     if "phone" in data:
         b.phone = data["phone"]
-    if "whatsapp_number" in data:
-        b.whatsapp_number = data["whatsapp_number"]
     if "location" in data:
         b.location = data["location"]
     if "notes" in data:
@@ -959,7 +942,7 @@ async def broker_linked_suppliers(
         .distinct()
     )
     q = (
-        select(Supplier.id, Supplier.name, Supplier.phone, Supplier.whatsapp_number)
+        select(Supplier.id, Supplier.name, Supplier.phone)
         .where(Supplier.business_id == business_id, Supplier.id.in_(supplier_ids_subq))
         .order_by(func.lower(Supplier.name))
         .limit(200)
@@ -970,7 +953,6 @@ async def broker_linked_suppliers(
             id=row[0],
             name=row[1],
             phone=row[2],
-            whatsapp_number=row[3],
         )
         for row in r2.all()
     ]

@@ -10,7 +10,6 @@ class BusinessBrief {
     this.address,
     this.phone,
     this.contactEmail,
-    this.accountsWhatsappNumber,
   });
 
   final String id;
@@ -30,9 +29,6 @@ class BusinessBrief {
   final String? phone;
   /// Purchase order / contact (optional).
   final String? contactEmail;
-
-  /// Accounts staff WhatsApp (10-digit India mobile, optional).
-  final String? accountsWhatsappNumber;
 
   /// Title for MaterialApp / chrome — not the OS store name.
   String get effectiveDisplayTitle {
@@ -61,7 +57,6 @@ class BusinessBrief {
       address: j['address'] as String?,
       phone: j['phone'] as String?,
       contactEmail: j['contact_email'] as String?,
-      accountsWhatsappNumber: j['accounts_whatsapp_number'] as String?,
     );
   }
 
@@ -76,8 +71,6 @@ class BusinessBrief {
         if (address != null) 'address': address,
         if (phone != null) 'phone': phone,
         if (contactEmail != null) 'contact_email': contactEmail,
-        if (accountsWhatsappNumber != null)
-          'accounts_whatsapp_number': accountsWhatsappNumber,
       };
 }
 

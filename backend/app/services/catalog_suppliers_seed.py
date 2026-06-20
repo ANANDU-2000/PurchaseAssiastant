@@ -86,7 +86,7 @@ def _clean_phone(p: str | None) -> str | None:
     t = " ".join(p.replace("\n", " ").replace("\r", " ").split()).strip()
     if not t:
         return None
-    # Supplier.phone / whatsapp_number columns are VARCHAR(32) in model/schema.
+    # Supplier.phone column is VARCHAR(32) in model/schema.
     return t[:32]
 
 
@@ -291,7 +291,6 @@ def run_catalog_suppliers_seed(
             gst_number=gst,
             location=(s.get("address") or "").strip() or None,
             address=(s.get("address") or "").strip() or None,
-            whatsapp_number=_clean_phone(s.get("whatsapp")),
             notes=_supplier_seed_notes(s),
             default_payment_days=_opt_int(s.get("default_payment_days")),
             default_delivered_rate=_opt_float(s.get("default_delivered_rate")),

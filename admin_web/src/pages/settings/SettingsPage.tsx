@@ -5,17 +5,17 @@ const SHORTCUTS: { to: string; title: string; desc: string }[] = [
   {
     to: '/api-keys',
     title: 'Access keys',
-    desc: 'Override AI, 360dialog, and Razorpay secrets in the database (no redeploy).',
+    desc: 'Override AI and Razorpay secrets in the database (no redeploy).',
   },
   {
     to: '/integrations',
     title: 'Integrations',
-    desc: 'Read-only status for OpenAI, OCR, STT, S3, Razorpay, Sentry, Redis, and WhatsApp.',
+    desc: 'Read-only status for OpenAI, OCR, STT, S3, Razorpay, Sentry, and Redis.',
   },
   {
     to: '/feature-flags',
     title: 'Feature flags',
-    desc: 'Toggle AI, voice, OCR, realtime, and WhatsApp bot features.',
+    desc: 'Toggle AI, voice, OCR, and realtime features.',
   },
   {
     to: '/logs',

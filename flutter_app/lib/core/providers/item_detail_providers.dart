@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/provider_api_guard.dart';
@@ -21,6 +22,60 @@ Future<T> _fetchWithRetry<T>(Future<T> Function() load) async {
     }
   }
   throw StateError('Unreachable');
+}
+
+bool _bundleEndpointUnavailable(Object error) {
+  if (error is DioException) {
+    final code = error.response?.statusCode;
+    return code == 404 || code == 405 || code == 501;
+  }
+  return false;
+}
+
+Future<ItemDetailBundle> _fetchItemDetailFallback({
+  required Ref ref,
+  required String businessId,
+  required String itemId,
+}) async {
+  final api = ref.read(hexaApiProvider);
+  Object? catalogError;
+  Map<String, dynamic> catalog = {};
+  Object? stockError;
+  Map<String, dynamic> stock = {};
+  Object? activityError;
+  Map<String, dynamic> activity = {};
+
+  try {
+    catalog = await api.getCatalogItem(businessId: businessId, itemId: itemId);
+  } catch (e, st) {
+    logSilencedApiError(e, st);
+    catalogError = e;
+  }
+  try {
+    stock = await api.getStockItem(businessId: businessId, itemId: itemId);
+  } catch (e, st) {
+    logSilencedApiError(e, st);
+    stockError = e;
+  }
+  try {
+    activity = await api.getStockItemActivity(
+      businessId: businessId,
+      itemId: itemId,
+    );
+  } catch (e, st) {
+    logSilencedApiError(e, st);
+    activityError = e;
+  }
+
+  return ItemDetailBundle(
+    catalogItem: catalog,
+    stockDetail: stock,
+    activity: activity,
+    tradePurchases: const [],
+    catalogError: catalogError,
+    stockError: stockError,
+    activityError: activityError,
+  );
 }
 
 class ItemDetailBundle {
@@ -61,8 +116,7 @@ const _emptyItemDetailBundle = ItemDetailBundle(
   tradePurchases: [],
 );
 
-/// Parallel fetch for item detail warm-up (catalog + stock only).
-/// Activity / purchases load lazily when their tabs open.
+/// Bundled fetch for item detail warm-up (single API round-trip).
 final itemDetailBundleProvider =
     FutureProvider.autoDispose.family<ItemDetailBundle, String>((ref, itemId) async {
   final disposed = registerProviderDisposeGuard(ref);
@@ -85,33 +139,44 @@ final itemDetailBundleProvider =
   Map<String, dynamic> catalog = {};
   Object? stockError;
   Map<String, dynamic> stock = {};
+  Object? activityError;
+  Map<String, dynamic> activity = {};
 
-  await Future.wait<void>([
-    () async {
-      try {
-        catalog = Map<String, dynamic>.from(
-          await _fetchWithRetry(
-            () => ref.read(catalogItemDetailProvider(itemId).future),
+  try {
+    final raw = await _fetchWithRetry(
+      () => ref.read(hexaApiProvider).getStockItemBundle(
+            businessId: session.primaryBusiness.id,
+            itemId: itemId,
           ),
-        );
-      } catch (e, st) {
-        logSilencedApiError(e, st);
-        catalogError = e;
-      }
-    }(),
-    () async {
-      try {
-        stock = Map<String, dynamic>.from(
-          await _fetchWithRetry(
-            () => ref.read(stockItemDetailProvider(itemId).future),
-          ),
-        );
-      } catch (e, st) {
-        logSilencedApiError(e, st);
-        stockError = e;
-      }
-    }(),
-  ]);
+    );
+    if (providerWasDisposed(disposed)) {
+      return _emptyItemDetailBundle;
+    }
+    final detail = raw['detail'];
+    final catalogSnap = raw['catalog_snapshot'];
+    final activityRaw = raw['activity'];
+    if (detail is Map) {
+      stock = Map<String, dynamic>.from(detail);
+    }
+    if (catalogSnap is Map) {
+      catalog = Map<String, dynamic>.from(catalogSnap);
+    }
+    if (activityRaw is Map) {
+      activity = Map<String, dynamic>.from(activityRaw);
+    }
+  } catch (e, st) {
+    logSilencedApiError(e, st);
+    if (_bundleEndpointUnavailable(e)) {
+      return _fetchItemDetailFallback(
+        ref: ref,
+        businessId: session.primaryBusiness.id,
+        itemId: itemId,
+      );
+    }
+    catalogError = e;
+    stockError = e;
+    activityError = e;
+  }
 
   if (providerWasDisposed(disposed)) {
     return _emptyItemDetailBundle;
@@ -120,10 +185,11 @@ final itemDetailBundleProvider =
   return ItemDetailBundle(
     catalogItem: catalog,
     stockDetail: stock,
-    activity: const {},
+    activity: activity,
     tradePurchases: const [],
     catalogError: catalogError,
     stockError: stockError,
+    activityError: activityError,
   );
 });
 
@@ -162,11 +228,16 @@ final itemStockIntelligenceProvider =
 });
 
 /// Stock map for item detail sections — merges optimistic patches (no flash on save).
-/// Use [stockItemDetailProvider] for loading/error; this is data-only.
 final itemDetailStockProvider =
     Provider.autoDispose.family<Map<String, dynamic>?, String>((ref, itemId) {
   final patch = ref.watch(stockItemDetailPatchProvider(itemId));
-  final base = ref.watch(stockItemDetailProvider(itemId)).valueOrNull;
+  final bundle = ref.watch(itemDetailBundleProvider(itemId)).valueOrNull;
+  Map<String, dynamic>? base;
+  if (bundle != null && bundle.stockDetail.isNotEmpty) {
+    base = bundle.stockDetail;
+  } else {
+    base = ref.watch(stockItemDetailProvider(itemId)).valueOrNull;
+  }
   if (patch.isEmpty) return base;
   if (base != null) return {...base, ...patch};
   return Map<String, dynamic>.from(patch);
@@ -175,11 +246,19 @@ final itemDetailStockProvider =
 /// Catalog map for item detail sections (leaf provider).
 final itemDetailCatalogProvider =
     Provider.autoDispose.family<Map<String, dynamic>?, String>((ref, itemId) {
+  final bundle = ref.watch(itemDetailBundleProvider(itemId)).valueOrNull;
+  if (bundle != null && bundle.catalogItem.isNotEmpty) {
+    return bundle.catalogItem;
+  }
   return ref.watch(catalogItemDetailProvider(itemId)).valueOrNull;
 });
 
 /// Activity map for item detail timeline sections.
 final itemDetailActivityProvider =
     Provider.autoDispose.family<Map<String, dynamic>?, String>((ref, itemId) {
+  final bundle = ref.watch(itemDetailBundleProvider(itemId)).valueOrNull;
+  if (bundle != null && bundle.activity.isNotEmpty) {
+    return bundle.activity;
+  }
   return ref.watch(stockItemActivityProvider(itemId)).valueOrNull;
 });

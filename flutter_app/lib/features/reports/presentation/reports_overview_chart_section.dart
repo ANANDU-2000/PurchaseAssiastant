@@ -161,12 +161,6 @@ class ReportsOverviewChartSection extends ConsumerWidget {
             FilledButton.tonal(onPressed: canRetry ? onRetry : null, child: const Text('Retry')),
             const SizedBox(height: 8),
             OutlinedButton(onPressed: canRetry ? onPickRange : null, child: const Text('Change period')),
-            const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: () => context.pushNamed('purchase_scan'),
-              icon: const Icon(Icons.document_scanner_outlined, size: 18),
-              label: const Text('Scan purchase bill'),
-            ),
           ],
         ),
       );

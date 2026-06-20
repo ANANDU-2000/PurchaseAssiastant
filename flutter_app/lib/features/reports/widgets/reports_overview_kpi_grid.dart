@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/providers/analytics_breakdown_providers.dart';
+import '../../../core/providers/home_owner_dashboard_providers.dart'
+    show homeLowStockAttentionCountProvider;
 import '../../../core/providers/operations_providers.dart';
-import '../../../core/providers/stock_providers.dart';
 import '../../../core/reporting/trade_report_aggregate.dart';
 import '../../../core/theme/hexa_colors.dart';
 import 'reports_qty_unit_strip.dart';
@@ -41,15 +42,7 @@ class ReportsOverviewKpiGrid extends ConsumerWidget {
     final ops = ref.watch(operationalReportsProvider).valueOrNull;
     final dead = (ops?['dead_stock'] as List?)?.length ?? 0;
     final fast = (ops?['fast_moving'] as List?)?.length ?? 0;
-    final lowCount = ref.watch(lowStockByCategoryProvider).maybeWhen(
-          data: (m) => m.values.fold<int>(
-            0,
-            (s, cat) =>
-                s +
-                cat.values.fold<int>(0, (a, items) => a + items.length),
-          ),
-          orElse: () => 0,
-        );
+    final lowCount = ref.watch(homeLowStockAttentionCountProvider);
     final cats = ref.watch(analyticsCategoriesTableProvider).valueOrNull ?? [];
     String topCat = '—';
     if (cats.isNotEmpty) {

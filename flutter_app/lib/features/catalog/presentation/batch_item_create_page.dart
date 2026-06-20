@@ -210,9 +210,6 @@ class _BatchItemCreatePageState extends ConsumerState<BatchItemCreatePage> {
           const SizedBox(height: 16),
           ...List.generate(_lines.length, (i) {
             final line = _lines[i];
-            final typesAsync = line.categoryId == null
-                ? const AsyncValue<List<Map<String, dynamic>>>.data([])
-                : ref.watch(categoryTypesListProvider(line.categoryId!));
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
               child: Padding(
@@ -279,48 +276,59 @@ class _BatchItemCreatePageState extends ConsumerState<BatchItemCreatePage> {
                       },
                     ),
                     const SizedBox(height: 8),
-                    typesAsync.whenForm(
-                      initialLoading: () => line.categoryId == null
-                          ? const SizedBox.shrink()
-                          : const LinearProgressIndicator(),
-                      error: (e, st) {
-                        logSilencedApiError(e, st);
-                        return InlineLoadError(
-                          title: 'Could not load subcategories',
-                          error: e,
-                          onRetry: () => ref.invalidate(
-                            categoryTypesListProvider(line.categoryId!),
-                          ),
-                        );
-                      },
-                      data: (types) {
-                        if (line.categoryId == null) {
-                          return const SizedBox.shrink();
-                        }
-                        if (types.isEmpty) {
-                          return const Text('No subcategories in this category.');
-                        }
-                        return DropdownButtonFormField<String>(
-                          key: ValueKey('type_${i}_${line.typeId}'),
-                          menuMaxHeight: dropdownMenuMax,
-                          decoration: const InputDecoration(
-                            labelText: 'Subcategory *',
-                            border: OutlineInputBorder(),
-                          ),
-                          initialValue: line.typeId,
-                          hint: const Text('Select type'),
-                          items: [
-                            for (final t in types)
-                              DropdownMenuItem(
-                                value: t['id']?.toString(),
-                                child: Text(
-                                  t['name']?.toString() ?? '—',
-                                  style: const TextStyle(fontSize: 13),
-                                ),
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final typesAsync = line.categoryId == null
+                            ? const AsyncValue<List<Map<String, dynamic>>>.data([])
+                            : ref.watch(
+                                categoryTypesListProvider(line.categoryId!),
+                              );
+                        return typesAsync.whenForm(
+                          initialLoading: () => line.categoryId == null
+                              ? const SizedBox.shrink()
+                              : const LinearProgressIndicator(),
+                          error: (e, st) {
+                            logSilencedApiError(e, st);
+                            return InlineLoadError(
+                              title: 'Could not load subcategories',
+                              error: e,
+                              onRetry: () => ref.invalidate(
+                                categoryTypesListProvider(line.categoryId!),
                               ),
-                          ],
-                          onChanged: (v) =>
-                              setState(() => line.typeId = v),
+                            );
+                          },
+                          data: (types) {
+                            if (line.categoryId == null) {
+                              return const SizedBox.shrink();
+                            }
+                            if (types.isEmpty) {
+                              return const Text(
+                                'No subcategories in this category.',
+                              );
+                            }
+                            return DropdownButtonFormField<String>(
+                              key: ValueKey('type_${i}_${line.typeId}'),
+                              menuMaxHeight: dropdownMenuMax,
+                              decoration: const InputDecoration(
+                                labelText: 'Subcategory *',
+                                border: OutlineInputBorder(),
+                              ),
+                              initialValue: line.typeId,
+                              hint: const Text('Select type'),
+                              items: [
+                                for (final t in types)
+                                  DropdownMenuItem(
+                                    value: t['id']?.toString(),
+                                    child: Text(
+                                      t['name']?.toString() ?? '—',
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                  ),
+                              ],
+                              onChanged: (v) =>
+                                  setState(() => line.typeId = v),
+                            );
+                          },
                         );
                       },
                     ),

@@ -14,7 +14,6 @@ class LocalNotificationsService {
       LocalNotificationsService._();
 
   static const _dailyId = 91001;
-  static const _waReportId = 9001;
   static const int _maintId0 = 92101;
   static const int _maintId1 = 92102;
   static const int _maintId2 = 92103;
@@ -91,7 +90,6 @@ class LocalNotificationsService {
   }
 
   /// Returns whether the OS allows showing scheduled local notifications.
-  /// Call before [scheduleWhatsAppReport] when enabling reminders.
   Future<bool> notificationPermissionGrantedForScheduling() async {
     if (kIsWeb || !_inited) return false;
     if (defaultTargetPlatform == TargetPlatform.android) {
@@ -153,50 +151,6 @@ class LocalNotificationsService {
       title: AppConfig.appName,
       body: 'Review purchases, margins, and alerts for today.',
       matchDateTimeComponents: DateTimeComponents.time,
-    );
-  }
-
-  /// Schedule or cancel WhatsApp report reminders.
-  /// Type: daily | weekly | monthly. Payload is always 'whatsapp_report'.
-  Future<void> scheduleWhatsAppReport({
-    required bool enabled,
-    required String type,
-    required int hour,
-    required int minute,
-  }) async {
-    if (kIsWeb || !_inited) return;
-    await _p.cancel(id: _waReportId);
-    if (!enabled) return;
-
-    final when = _nextAt(hour: hour, minute: minute);
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'wa_reports',
-        'WhatsApp Reports',
-        channelDescription: 'Reminders to send purchase summary to WhatsApp.',
-        importance: Importance.defaultImportance,
-        priority: Priority.defaultPriority,
-      ),
-      iOS: DarwinNotificationDetails(),
-      windows: WindowsNotificationDetails(),
-    );
-
-    final t = type.trim().toLowerCase();
-    final match = switch (t) {
-      'daily' => DateTimeComponents.time,
-      'monthly' => DateTimeComponents.dayOfMonthAndTime,
-      _ => DateTimeComponents.dayOfWeekAndTime,
-    };
-
-    await _p.zonedSchedule(
-      id: _waReportId,
-      scheduledDate: when,
-      notificationDetails: details,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      title: 'WhatsApp Report',
-      body: 'Tap to open WhatsApp with today’s purchase report.',
-      matchDateTimeComponents: match,
-      payload: 'whatsapp_report',
     );
   }
 

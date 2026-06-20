@@ -11,7 +11,6 @@ const navItems = [
   { to: '/feature-flags', label: 'Feature flags', icon: '🚩' },
   { to: '/logs', label: 'Logs', icon: '📜' },
   { to: '/integrations', label: 'Integrations', icon: '🔌' },
-  { to: '/whatsapp', label: 'WhatsApp', icon: '💬' },
   { to: '/settings', label: 'Settings', icon: '⚙️' },
 ]
 

@@ -189,10 +189,12 @@ final staffLowStockAlertsProvider =
   final session = await _waitForSession(ref);
   if (session == null) return [];
   try {
-    final m = await ref.read(hexaApiProvider).listStockLow(
+    final m = await ref.read(hexaApiProvider).listStock(
           businessId: session.primaryBusiness.id,
           page: 1,
           perPage: 8,
+          status: 'low',
+          sort: 'stock_asc',
         );
     final items = m['items'];
     if (items is! List) return [];

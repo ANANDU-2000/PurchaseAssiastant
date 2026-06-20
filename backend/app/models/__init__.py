@@ -1,5 +1,4 @@
 from app.models.base import Base
-from app.models.scanner_support import CatalogAlias, PurchaseScanTrace
 from app.models.business import Business
 from app.models.catalog import CatalogItem, CatalogVariant, CategoryType, ItemCategory
 from app.models.unit_intelligence import (
@@ -48,8 +47,6 @@ __all__ = [
     "WebhookEventLog",
     "ApiUsageLog",
     "AdminAuditLog",
-    "CatalogAlias",
-    "PurchaseScanTrace",
     "Membership",
     "Broker",
     "Supplier",

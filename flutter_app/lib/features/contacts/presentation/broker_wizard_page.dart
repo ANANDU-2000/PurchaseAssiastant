@@ -46,7 +46,6 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
 
   final _name = TextEditingController();
   final _phone = TextEditingController();
-  final _wa = TextEditingController();
   final _location = TextEditingController();
   final _notes = TextEditingController();
   final _commission = TextEditingController();
@@ -84,7 +83,6 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
   @override
   void initState() {
     super.initState();
-    _phone.addListener(_syncWa);
     _name.addListener(_checkDupDebounced);
     bindFocusNodeScrollIntoView(_brkNameFocus);
     bindFocusNodeScrollIntoView(_brkPhoneFocus);
@@ -103,7 +101,6 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
     _itemDebounce?.cancel();
     _name.dispose();
     _phone.dispose();
-    _wa.dispose();
     _location.dispose();
     _notes.dispose();
     _commission.dispose();
@@ -120,12 +117,6 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
     _brkSearchSuppliersFocus.dispose();
     _brkSearchItemsFocus.dispose();
     super.dispose();
-  }
-
-  void _syncWa() {
-    final p = _phone.text.replaceAll(RegExp(r'\D'), '');
-    final w = _wa.text.replaceAll(RegExp(r'\D'), '');
-    if (w.isEmpty || w == p) _wa.text = _phone.text;
   }
 
   Future<void> _loadInitial() async {
@@ -145,7 +136,6 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
         setState(() {
           _name.text = b['name']?.toString() ?? '';
           _phone.text = b['phone']?.toString() ?? '';
-          _wa.text = b['whatsapp_number']?.toString() ?? '';
           _location.text = b['location']?.toString() ?? '';
           _notes.text = b['notes']?.toString() ?? '';
           _commissionType = b['commission_type']?.toString() == 'flat' ? 'flat' : 'percent';
@@ -364,7 +354,6 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
               brokerId: widget.brokerId!,
               name: _name.text.trim(),
               phone: _phone.text.trim().isEmpty ? null : _phone.text.trim(),
-              whatsappNumber: _wa.text.trim().isEmpty ? null : _wa.text.trim(),
               location: _location.text.trim().isEmpty ? null : _location.text.trim(),
               notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
               commissionType: _commissionType,
@@ -384,7 +373,6 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
               businessId: bid,
               name: _name.text.trim(),
               phone: _phone.text.trim().isEmpty ? null : _phone.text.trim(),
-              whatsappNumber: _wa.text.trim().isEmpty ? null : _wa.text.trim(),
               location: _location.text.trim().isEmpty ? null : _location.text.trim(),
               notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
               commissionType: _commissionType,
@@ -521,15 +509,6 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
           focusNode: _brkPhoneFocus,
           scrollPadding: sp,
           decoration: _d('Phone (optional)').copyWith(errorText: _phoneError),
-          keyboardType: const TextInputType.numberWithOptions(signed: false, decimal: false),
-          onChanged: (_) => _markDirty(),
-          textInputAction: TextInputAction.next,
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _wa,
-          scrollPadding: sp,
-          decoration: _d('WhatsApp (optional)'),
           keyboardType: const TextInputType.numberWithOptions(signed: false, decimal: false),
           onChanged: (_) => _markDirty(),
           textInputAction: TextInputAction.next,

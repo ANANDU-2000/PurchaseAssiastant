@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/config/app_config.dart';
 import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/design_system/hexa_web_page_frame.dart';
 import '../../../core/router/shell_navigation.dart';
@@ -402,8 +403,8 @@ class _HomePageState extends ConsumerState<HomePage>
         SnackBar(
           content: Text(
             offline
-                ? 'Cloud API is offline. Resume my-purchases-api on Render, '
-                    'wait ~1 min, then tap Retry.'
+                ? 'Cloud API is offline (${AppConfig.apiHostLabel}). '
+                    'Wait ~1 min for the server to wake, then tap Retry.'
                 : 'Cannot reach API right now. Check network and try again.',
           ),
         ),

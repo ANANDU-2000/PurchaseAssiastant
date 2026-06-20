@@ -7,11 +7,9 @@ type Flags = {
   enable_ocr: boolean
   enable_voice: boolean
   enable_realtime: boolean
-  whatsapp_bot: boolean
 }
 
 const LABELS: { key: keyof Flags; label: string; hint: string }[] = [
-  { key: 'whatsapp_bot', label: 'WhatsApp assistant', hint: 'Automated replies on WhatsApp' },
   { key: 'enable_ai', label: 'AI assist', hint: 'Smarter purchase entry and chat' },
   { key: 'enable_voice', label: 'Voice', hint: 'Voice notes and transcription' },
   { key: 'enable_ocr', label: 'Scan bills', hint: 'Read text from photos' },

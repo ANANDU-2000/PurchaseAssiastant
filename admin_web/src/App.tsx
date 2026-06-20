@@ -11,7 +11,6 @@ import OverviewPage from './pages/overview/OverviewPage'
 import SettingsPage from './pages/settings/SettingsPage'
 import SubscriptionsPage from './pages/subscriptions/SubscriptionsPage'
 import UsersPage from './pages/users/UsersPage'
-import WhatsAppPage from './pages/whatsapp/WhatsAppPage'
 import './App.css'
 
 export default function App() {
@@ -31,7 +30,6 @@ export default function App() {
           <Route path="feature-flags" element={<FeatureFlagsPage />} />
           <Route path="logs" element={<LogsPage />} />
           <Route path="integrations" element={<IntegrationsPage />} />
-          <Route path="whatsapp" element={<WhatsAppPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

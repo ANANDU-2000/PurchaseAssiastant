@@ -59,14 +59,13 @@ String _initials(String name) {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
-/// Supplier row — name, phone, WhatsApp and a ⋮ menu. No analytics clutter.
+/// Supplier row — name, phone and a ⋮ menu. No analytics clutter.
 class _SupplierCard extends StatelessWidget {
   const _SupplierCard({
     required this.data,
     required this.metrics,
     required this.onOpen,
     required this.onDial,
-    required this.onWhatsApp,
     required this.onEdit,
     required this.onDelete,
     this.highlightQuery = '',
@@ -77,7 +76,6 @@ class _SupplierCard extends StatelessWidget {
   final String highlightQuery;
   final VoidCallback onOpen;
   final void Function(String? phone) onDial;
-  final void Function(String? wa) onWhatsApp;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -88,7 +86,6 @@ class _SupplierCard extends StatelessWidget {
     final id = data['id']?.toString();
     final nm = data['name']?.toString() ?? '—';
     final phone = data['phone']?.toString();
-    final wa = data['whatsapp_number']?.toString();
     final loc = data['location']?.toString() ?? '';
     final titleBase =
         tt.titleMedium?.copyWith(fontWeight: FontWeight.w800) ?? const TextStyle(fontWeight: FontWeight.w800);
@@ -193,29 +190,6 @@ class _SupplierCard extends StatelessWidget {
                                   ),
                                   const SizedBox(width: 6),
                                   Text(phone, style: tt.bodySmall),
-                                ],
-                              ),
-                            ),
-                          ),
-                        if (wa != null && wa.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: InkWell(
-                              onTap: () => onWhatsApp(wa),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.chat_rounded,
-                                      size: 16, color: Color(0xFF25D366)),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'WhatsApp',
-                                    style: tt.labelLarge?.copyWith(
-                                      color: const Color(0xFF128C7E),
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(wa, style: tt.bodySmall),
                                 ],
                               ),
                             ),
@@ -463,15 +437,12 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     return keys.any((key) => (row[key]?.toString().toLowerCase() ?? '').contains(q));
   }
 
-  Map<String, dynamic> _localSearchSnapshot() {
-    if (!_isSearching) return {};
-    final suppliers = ref.watch(contactsSuppliersEnrichedProvider).valueOrNull ??
-        const <Map<String, dynamic>>[];
-    final brokers = ref.watch(contactsBrokersEnrichedProvider).valueOrNull ??
-        const <Map<String, dynamic>>[];
-    final cats = ref.watch(itemCategoriesListProvider).valueOrNull ?? const [];
-    final items = ref.watch(catalogItemsListProvider).valueOrNull ??
-        const <Map<String, dynamic>>[];
+  Map<String, dynamic> _buildLocalSearchSnapshot({
+    required List<Map<String, dynamic>> suppliers,
+    required List<Map<String, dynamic>> brokers,
+    required List<dynamic> cats,
+    required List<Map<String, dynamic>> items,
+  }) {
     final q = _searchQuery.toLowerCase();
     final categoryNames = [
       for (final c in cats)
@@ -493,10 +464,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     }
     return {
       'suppliers': suppliers
-          .where((s) => _matchesQuery(s, const ['name', 'phone', 'whatsapp_number', 'location']))
+          .where((s) => _matchesQuery(s, const ['name', 'phone', 'location']))
           .toList(),
       'brokers': brokers
-          .where((b) => _matchesQuery(b, const ['name', 'phone', 'whatsapp_number', 'location']))
+          .where((b) => _matchesQuery(b, const ['name', 'phone', 'location']))
           .toList(),
       'categories': categoryNames,
       'catalog_subcategories': typeById.values.toList(),
@@ -540,16 +511,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     final uri = Uri(scheme: 'tel', path: phone.replaceAll(RegExp(r'\s'), ''));
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
-    }
-  }
-
-  Future<void> _openWhatsApp(String? raw) async {
-    if (raw == null || raw.trim().isEmpty) return;
-    final d = raw.replaceAll(RegExp(r'\D'), '');
-    if (d.isEmpty) return;
-    final uri = Uri.parse('https://wa.me/$d');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -832,7 +793,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
               highlightQuery: _searchQuery,
               onOpen: id == null ? () {} : () => context.push('/supplier/$id'),
               onDial: _dial,
-              onWhatsApp: _openWhatsApp,
               onEdit: () => _editSupplier(m),
               onDelete: () => _deleteSupplier(m),
             );
@@ -1126,7 +1086,21 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final searchSnapshot = _localSearchSnapshot();
+    final searchSuppliers = ref.watch(contactsSuppliersEnrichedProvider);
+    final searchBrokers = ref.watch(contactsBrokersEnrichedProvider);
+    final searchCats = ref.watch(itemCategoriesListProvider);
+    final searchItems = ref.watch(catalogItemsListProvider);
+    final searchSnapshot = _isSearching
+        ? _buildLocalSearchSnapshot(
+            suppliers:
+                searchSuppliers.valueOrNull ?? const <Map<String, dynamic>>[],
+            brokers:
+                searchBrokers.valueOrNull ?? const <Map<String, dynamic>>[],
+            cats: searchCats.valueOrNull ?? const [],
+            items:
+                searchItems.valueOrNull ?? const <Map<String, dynamic>>[],
+          )
+        : <String, dynamic>{};
     final searchBusy = _searchFocus.hasFocus ||
         _searchCtrl.text.trim().isNotEmpty ||
         _isSearching;
@@ -1251,7 +1225,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                     children: [
                       _SuppliersTab(
                         onDial: _dial,
-                        onWhatsApp: _openWhatsApp,
                         onEdit: _editSupplier,
                         onDelete: _deleteSupplier,
                       ),
@@ -1314,13 +1287,11 @@ class _CatalogTypesBrowseHint extends StatelessWidget {
 class _SuppliersTab extends ConsumerStatefulWidget {
   const _SuppliersTab({
     required this.onDial,
-    required this.onWhatsApp,
     required this.onEdit,
     required this.onDelete,
   });
 
   final void Function(String?) onDial;
-  final void Function(String?) onWhatsApp;
   final Future<void> Function(Map<String, dynamic>) onEdit;
   final Future<void> Function(Map<String, dynamic>) onDelete;
 
@@ -1380,7 +1351,6 @@ class _SuppliersTabState extends ConsumerState<_SuppliersTab> {
                     ? () {}
                     : () => context.push('/supplier/$id'),
                 onDial: widget.onDial,
-                onWhatsApp: widget.onWhatsApp,
                 onEdit: () => widget.onEdit(s),
                 onDelete: () => widget.onDelete(s),
               );

@@ -375,6 +375,11 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       setState(() {
         _filterQuery = widget.controller.text.trim().toLowerCase();
       });
+      final lock = widget.lockedSelectionLabel?.trim();
+      if (lock != null && lock.isNotEmpty) {
+        // Locked selection: do not reopen suggestions until user clears.
+        return;
+      }
       WidgetsBinding.instance
           .addPostFrameCallback((_) => _maybeRevealAfterFilter());
       _scheduleOverlaySync();
@@ -1024,39 +1029,35 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
           borderRadius: BorderRadius.circular(widget.fieldBorderRadius),
           border: Border.all(color: borderColor, width: 1),
         ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(widget.fieldBorderRadius),
-          onTap: () => widget.focusNode.requestFocus(),
-          child: Padding(
-            padding: EdgeInsets.only(left: hPad, right: 2),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.check_circle,
-                  color: HexaColors.brandPrimary,
-                  size: widget.dense ? 20 : 22,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    lockLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: widget.dense ? 14 : 15,
-                      color: cs.onSurface,
-                    ),
+        child: Padding(
+          padding: EdgeInsets.only(left: hPad, right: 2),
+          child: Row(
+            children: [
+              Icon(
+                Icons.check_circle,
+                color: HexaColors.brandPrimary,
+                size: widget.dense ? 20 : 22,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  lockLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: widget.dense ? 14 : 15,
+                    color: cs.onSurface,
                   ),
                 ),
-                IconButton(
-                  tooltip: 'Clear',
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(Icons.close, color: Colors.grey.shade700, size: 20),
-                  onPressed: clearCb,
-                ),
-              ],
-            ),
+              ),
+              IconButton(
+                tooltip: 'Clear',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.close, color: Colors.grey.shade700, size: 20),
+                onPressed: clearCb,
+              ),
+            ],
           ),
         ),
       );

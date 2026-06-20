@@ -18,10 +18,10 @@ class ItemDeliveryStatusCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(sessionProvider);
     final stock = ref.watch(itemDetailStockProvider(itemId));
     if (stock == null || stock.isEmpty) return const SizedBox.shrink();
 
-    final session = ref.watch(sessionProvider);
     final isStaff = session != null && sessionIsStaff(session);
     final unit =
         (stock['stock_unit'] ?? stock['unit'] ?? 'piece').toString().trim();

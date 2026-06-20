@@ -313,17 +313,24 @@ void invalidatePurchaseMetadataLight(
   invalidateBusinessAggregates(ref);
 }
 
-/// Purchase mutations: warehouse lists + financial aggregates (debounced).
+/// Purchase mutations: targeted list/home refresh (no full warehouse storm).
 void invalidatePurchaseWorkspace(
   dynamic ref, {
   Set<String>? affectedItemIds,
+  bool createOnly = false,
 }) {
   final ids = affectedItemIds ?? const <String>{};
-  invalidateWarehouseSurfacesLight(ref);
+  if (createOnly) {
+    invalidatePurchaseListSurfacesLight(ref);
+    emitBusinessWriteEvent(ref, kind: 'purchase', affectedItemIds: ids);
+    forceRefreshOwnerHomeDashboard(ref);
+    return;
+  }
   for (final id in ids) {
     if (id.isEmpty) continue;
     invalidateWarehouseItemSurfacesLight(ref, itemId: id);
   }
+  invalidatePurchaseListSurfacesLight(ref);
   emitBusinessWriteEvent(ref, kind: 'purchase', affectedItemIds: ids);
   invalidateBusinessAggregates(ref);
   forceRefreshOwnerHomeDashboard(ref);
@@ -423,6 +430,7 @@ void invalidateWarehouseSurfacesLight(dynamic ref, {String? itemId}) {
   ref.invalidate(homeInventorySummaryProvider);
   ref.invalidate(lowStockOperationsSummaryProvider);
   ref.invalidate(lowStockOperationsPageProvider);
+  ref.invalidate(lowStockOperationsGroupedProvider);
   if (itemId != null && itemId.isNotEmpty) {
     invalidateWarehouseItemSurfacesLight(ref, itemId: itemId);
   }
@@ -576,6 +584,7 @@ void invalidateAfterDeliveryCommit(
   Set<String>? affectedItemIds,
 }) {
   invalidatePurchaseWorkspace(ref, affectedItemIds: affectedItemIds);
+  invalidateWarehouseSurfacesLight(ref);
   ref.invalidate(tradePurchaseDetailProvider(purchaseId));
   invalidateStaffDeliverySurfaces(ref);
   ref.invalidate(homeStockAttentionCountProvider);

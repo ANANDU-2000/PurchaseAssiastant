@@ -12,17 +12,26 @@ import '../auth/session_notifier.dart';
 import '../errors/user_facing_errors.dart';
 import '../json_coerce.dart';
 import '../navigation/surface_refresh_policy.dart' show kStockListCacheTtl;
-import '../debug/agent_debug_log.dart';
 import '../../features/shell/shell_branch_provider.dart';
 import 'api_read_snapshots.dart';
 import '../../features/stock/stock_list_row_patch.dart'
     show
         kStockListPatchAtKey,
         serverRowNewerThanPatch,
+        stockListPatchFromPhysicalCount,
         stockListPatchFromStockDetail;
 import 'app_period_provider.dart';
 import 'deferred_invalidation.dart';
-import 'home_dashboard_provider.dart';
+import 'home_dashboard_provider.dart'
+    show
+        HomePeriod,
+        homePeriodRange,
+        homePeriodProvider,
+        homeBundledStockStatusCounts,
+        homeOverviewReadyForSatellites,
+        homeLowStockDetailFetchEnabledProvider,
+        lowStockDashboardMountedProvider;
+import '../providers/analytics_kpi_provider.dart' show analyticsDateRangeProvider;
 import 'stock_list_exceptions.dart';
 
 /// Public alias for providers outside this file (e.g. warehouse alerts).
@@ -287,18 +296,6 @@ void _writeStockListRamCache(
         ref.read(stockListCacheQueryKeyProvider.notifier).state = queryKey;
         ref.read(stockListLastFetchedAtProvider.notifier).state = DateTime.now();
         ref.read(stockListLiveSnapshotProvider.notifier).state = next;
-        // #region agent log
-        agentDebugLog(
-          hypothesisId: 'H2',
-          location: 'stock_providers.dart:_writeStockListRamCache',
-          message: 'stock RAM cache written',
-          data: {
-            'queryKey': queryKey,
-            'total': coerceToInt(next['total']),
-            'items': (next['items'] as List?)?.length ?? 0,
-          },
-        );
-        // #endregion
       } else if (query.page == 1 && res['_not_modified'] != true) {
         ref.read(stockListLastFetchedAtProvider.notifier).state = DateTime.now();
       }
@@ -544,19 +541,7 @@ final stockListProvider = FutureProvider<Map<String, dynamic>>((ref) async {
           )
           .whenComplete(() => _stockListInflight.remove(inflightKey)),
     );
-  } on DioException catch (e) {
-    // #region agent log
-    agentDebugLog(
-      hypothesisId: 'H1',
-      location: 'stock_providers.dart:stockListProvider:dio',
-      message: 'stock list dio error',
-      data: {
-        'status': e.response?.statusCode,
-        'msg': e.message,
-        'disposed': providerWasDisposed(disposed),
-      },
-    );
-    // #endregion
+  } on DioException {
     if (providerWasDisposed(disposed)) {
       if (stockListCacheBodyIsUsable(cachedBody)) {
         return Map<String, dynamic>.from(cachedBody!);
@@ -601,19 +586,6 @@ final stockListProvider = FutureProvider<Map<String, dynamic>>((ref) async {
     queryKey: queryKey,
     disposed: disposed,
   );
-  // #region agent log
-  agentDebugLog(
-    hypothesisId: 'H1',
-    location: 'stock_providers.dart:stockListProvider:done',
-    message: 'stock list provider done',
-    data: {
-      'queryKey': queryKey,
-      'total': coerceToInt(finalized['total']),
-      'items': (finalized['items'] as List?)?.length ?? 0,
-      'disposed': providerWasDisposed(disposed),
-    },
-  );
-  // #endregion
   return finalized;
 });
 
@@ -836,7 +808,10 @@ Future<void> patchStockItemInCache(
           businessId: session.primaryBusiness.id,
           itemId: itemId,
         );
-    final patch = stockListPatchFromStockDetail(detail);
+    final patch = <String, dynamic>{
+      ...stockListPatchFromStockDetail(detail),
+      ...stockListPatchFromPhysicalCount(detail),
+    };
     if (patch.isNotEmpty) {
       applyStockListRowPatch(ref, itemId: itemId, patch: patch);
     }
@@ -1072,25 +1047,36 @@ final stockFilteredStatusCountsProvider =
 typedef LowStockByCategoryMap
     = Map<String, Map<String, List<Map<String, dynamic>>>>;
 
-Future<List<Map<String, dynamic>>> _fetchStockListAllPages({
+({String periodStart, String periodEnd}) _lowStockOpsPeriodStrings(Ref ref) {
+  final period = ref.watch(homePeriodProvider);
+  final customRange = ref.watch(analyticsDateRangeProvider);
+  final range = homePeriodRange(
+    period,
+    now: DateTime.now(),
+    custom: period == HomePeriod.custom
+        ? (start: customRange.from, endInclusive: customRange.to)
+        : null,
+  );
+  String iso(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  return (periodStart: iso(range.start), periodEnd: iso(range.end));
+}
+
+Future<List<Map<String, dynamic>>> _fetchLowStockOperationsAllPages({
   required HexaApi api,
   required String businessId,
-  required String status,
+  required String periodStart,
+  required String periodEnd,
   int maxPages = 10,
-  bool includePeriod = false,
-  String? periodStart,
-  String? periodEnd,
 }) async {
   var page = 1;
   final merged = <Map<String, dynamic>>[];
   while (page <= maxPages) {
-    final res = await api.listStock(
+    final res = await api.listLowStockOperations(
       businessId: businessId,
       page: page,
-      perPage: 50,
-      status: status,
-      sort: 'stock_asc',
-      includePeriod: includePeriod,
+      perPage: 100,
+      filter: 'all',
       periodStart: periodStart,
       periodEnd: periodEnd,
     );
@@ -1120,28 +1106,14 @@ final lowStockByCategoryProvider =
   if (session == null) return {};
   final api = ref.read(hexaApiProvider);
   final bid = session.primaryBusiness.id;
-  final lowRows = <Map<String, dynamic>>[];
-  final seen = <String>{};
-  for (final st in ['low', 'critical', 'out']) {
-    final chunk = await _fetchStockListAllPages(
-      api: api,
-      businessId: bid,
-      status: st,
-      maxPages: 20,
-    );
-    if (providerWasDisposed(disposed)) return {};
-    for (final item in chunk) {
-      final id = item['id']?.toString();
-      if (id != null && id.isNotEmpty) {
-        if (seen.add(id)) lowRows.add(item);
-      } else {
-        lowRows.add(item);
-      }
-    }
-  }
-  if (providerWasDisposed(disposed)) {
-    return {};
-  }
+  final periods = _lowStockOpsPeriodStrings(ref);
+  final lowRows = await _fetchLowStockOperationsAllPages(
+    api: api,
+    businessId: bid,
+    periodStart: periods.periodStart,
+    periodEnd: periods.periodEnd,
+  );
+  if (providerWasDisposed(disposed)) return {};
   final byId = <String, Map<String, dynamic>>{};
   for (final item in lowRows) {
     final id = item['id']?.toString();

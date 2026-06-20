@@ -53,6 +53,8 @@ data/*.webp
 .cursor/settings.json
 .cursor/KICHU
 flutter_app/clean_analyze.txt
+flutter_app/analyze_errors.txt
+flutter_app/build_log.txt
 
 # IDE
 .idea/
@@ -60,6 +62,9 @@ flutter_app/clean_analyze.txt
 
 # Cursor — local MCP secrets (use committed config/supabase.mcp.template.json as source)
 .cursor/mcp.json
+
+# Agent debug artifacts
+debug-*.log
 
 # OS
 Thumbs.db

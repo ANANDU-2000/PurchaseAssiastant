@@ -2,22 +2,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:intl/intl.dart';
 import 'dart:async';
 
 import 'core/notifications/post_login_notification_prompt.dart';
-import 'core/providers/reports_provider.dart';
-import 'core/providers/analytics_kpi_provider.dart';
-import 'features/reports/reports_prefs.dart';
-import 'core/reporting/trade_report_aggregate.dart';
-import 'core/notifications/local_notifications_service.dart';
 import 'core/platform/launcher_quick_actions.dart';
 import 'core/platform/app_foreground_listener.dart';
 import 'core/platform/remove_boot_overlay.dart';
 import 'core/providers/api_degraded_provider.dart';
 import 'core/providers/home_breakdown_tab_providers.dart';
 import 'core/providers/home_dashboard_provider.dart';
+import 'core/providers/reports_provider.dart';
 import 'core/auth/session_notifier.dart';
 import 'core/config/app_config.dart';
 import 'core/providers/trade_purchases_provider.dart'
@@ -26,97 +20,6 @@ import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/hexa_colors.dart';
 import 'core/widgets/hexa_page_error_boundary.dart';
-
-String _n0(double v) =>
-    (v - v.roundToDouble()).abs() < 1e-6 ? '${v.round()}' : v.toStringAsFixed(1);
-
-String _qtyLine(TradeReportTotals t) {
-  final p = <String>[];
-  if (t.kg > 1e-9) p.add('${_n0(t.kg)} KG');
-  if (t.bags > 1e-9) p.add('${_n0(t.bags)} BAGS');
-  if (t.boxes > 1e-9) p.add('${_n0(t.boxes)} BOX');
-  if (t.tins > 1e-9) p.add('${_n0(t.tins)} TIN');
-  return p.join(' • ');
-}
-
-class _NotificationTapHandler extends ConsumerStatefulWidget {
-  const _NotificationTapHandler({required this.child});
-  final Widget child;
-
-  @override
-  ConsumerState<_NotificationTapHandler> createState() =>
-      _NotificationTapHandlerState();
-}
-
-class _NotificationTapHandlerState extends ConsumerState<_NotificationTapHandler> {
-  StreamSubscription<String>? _sub;
-  bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _sub = LocalNotificationsService.instance.payloadStream.listen((payload) {
-      if (payload.trim() == 'whatsapp_report') {
-        _onWhatsAppReportTapped();
-      }
-    });
-  }
-
-  Future<void> _onWhatsAppReportTapped() async {
-    if (_busy) return;
-    _busy = true;
-    try {
-      final enabled = await ReportsPrefs.getScheduleEnabled();
-      final phone = await ReportsPrefs.getSchedulePhone();
-      final type = await ReportsPrefs.getScheduleType();
-      if (!enabled || phone.trim().isEmpty) return;
-
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final (from, to) = switch (type) {
-        'daily' => (today, today),
-        'monthly' => (today.subtract(const Duration(days: 29)), today),
-        _ => (today.subtract(const Duration(days: 6)), today),
-      };
-
-      ref.read(analyticsDateRangeProvider.notifier).state = (from: from, to: to);
-      // WidgetRef is distinct from riverpod's Ref; implementation supports .read.
-      final payload = await fetchReportsPurchasesLiveForAnalytics(ref as Ref);
-      ref.invalidate(reportsPurchasesPayloadProvider);
-      final purchases = payload.items;
-      final agg = buildTradeReportAgg(purchases);
-
-      final df = DateFormat('d MMM');
-      final t = agg.totals;
-      final parts = <String>[
-        'Purchase Report (${df.format(from)} → ${df.format(to)})',
-        '',
-        'Total: ${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(t.inr)}',
-        _qtyLine(t),
-      ]..removeWhere((e) => e.trim().isEmpty);
-
-      final msg = Uri.encodeComponent(parts.join('\n'));
-      final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
-      final uri = Uri.parse('https://wa.me/$digits?text=$msg');
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (_) {
-      // Ignore: best-effort convenience entrypoint.
-    } finally {
-      _busy = false;
-    }
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
-}
 
 class _HexaScrollBehavior extends ScrollBehavior {
   @override
@@ -440,9 +343,7 @@ class HexaApp extends ConsumerWidget {
               onGoHome: () => ref.read(appRouterProvider).go('/home'),
               child: AppForegroundListener(
                 child: _LauncherShortcutsBootstrap(
-                  child: _NotificationTapHandler(
-                    child: PostLoginNotificationPrompt(child: shell),
-                  ),
+                  child: PostLoginNotificationPrompt(child: shell),
                 ),
               ),
             ),

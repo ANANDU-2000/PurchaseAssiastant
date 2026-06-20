@@ -7,7 +7,6 @@ type SubRow = {
   business_name: string
   plan_code: string
   status: string
-  whatsapp_addon: boolean
   ai_addon: boolean
   admin_exempt: boolean
   monthly_base_paise: number
@@ -113,7 +112,7 @@ export default function SubscriptionsPage() {
                     <th>Business</th>
                     <th>Plan</th>
                     <th>Status</th>
-                    <th>WA / AI</th>
+                    <th>AI add-on</th>
                     <th>Exempt</th>
                   </tr>
                 </thead>
@@ -124,9 +123,7 @@ export default function SubscriptionsPage() {
                       <td className="admin-table-mono">{r.plan_code}</td>
                       <td>{r.status}</td>
                       <td className="admin-table-muted">
-                        {r.whatsapp_addon ? 'WA ' : ''}
-                        {r.ai_addon ? 'AI' : ''}
-                        {!r.whatsapp_addon && !r.ai_addon ? '—' : ''}
+                        {r.ai_addon ? 'AI' : '—'}
                       </td>
                       <td>{r.admin_exempt ? 'yes' : 'no'}</td>
                     </tr>

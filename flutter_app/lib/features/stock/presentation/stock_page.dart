@@ -8,9 +8,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/config/app_config.dart';
 import '../../../core/auth/auth_failure_policy.dart';
 import '../../../core/auth/provider_api_guard.dart';
-import '../../../core/debug/agent_debug_log.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/api_degraded_provider.dart';
 import '../../../core/models/session.dart';
@@ -307,8 +307,8 @@ class _StockPageState extends ConsumerState<StockPage>
         SnackBar(
           content: Text(
             offline
-                ? 'Cloud API is offline. In Render Dashboard resume '
-                    '"my-purchases-api", wait ~1 min, then tap Retry.'
+                ? 'Cloud API is offline (${AppConfig.apiHostLabel}). '
+                    'Wait ~1 min for the server to wake, then tap Retry.'
                 : 'Cannot reach API right now. Check network and try again.',
           ),
           duration: const Duration(seconds: 8),
@@ -962,23 +962,6 @@ class _StockPageState extends ConsumerState<StockPage>
       );
     } else if (showInitialSkeleton &&
         (listAsync.isLoading || listAsync.isRefreshing)) {
-      // #region agent log
-      agentDebugLog(
-        hypothesisId: 'H1',
-        location: 'stock_page.dart:build',
-        message: 'stock skeleton branch',
-        data: {
-          'loading': listAsync.isLoading,
-          'refreshing': listAsync.isRefreshing,
-          'hasValue': listAsync.hasValue,
-          'hasError': listAsync.hasError,
-          'err': listAsync.error?.runtimeType.toString(),
-          'ramCache': ramCache != null,
-          'queryKey': listQ.toCacheKey(),
-          'cacheKey': ref.read(stockListCacheQueryKeyProvider),
-        },
-      );
-      // #endregion
       body = const ListSkeleton(rowCount: 12);
     } else if (listAsync.hasError && data == null) {
       final err = listAsync.error;

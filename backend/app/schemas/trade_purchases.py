@@ -319,7 +319,6 @@ class TradePurchaseOut(DecimalModel):
     supplier_gst: str | None = None
     supplier_address: str | None = None
     supplier_phone: str | None = None
-    supplier_whatsapp: str | None = None
     broker_phone: str | None = None
     broker_location: str | None = None
     broker_image_url: str | None = None
@@ -345,6 +344,13 @@ class TradePurchaseOut(DecimalModel):
     driver_contact: str | None = None
     dispatch_note: str | None = None
     stock_updates: list[StockUpdateOut] = Field(default_factory=list)
+
+
+class TradePurchaseListItemOut(TradePurchaseOut):
+    """List row without embedded line payloads (use GET /{id} for full lines)."""
+
+    lines: list[TradePurchaseLineOut] = Field(default_factory=list, exclude=True)
+    stock_updates: list[StockUpdateOut] = Field(default_factory=list, exclude=True)
 
 
 class TradePurchaseDeliveryPatch(DecimalModel):

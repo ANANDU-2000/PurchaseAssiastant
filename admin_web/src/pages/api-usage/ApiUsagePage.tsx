@@ -6,7 +6,6 @@ type PerUser = {
   user_id: string
   email: string
   entries_total: number
-  whatsapp_messages_24h: number | null
   ai_calls_24h: number | null
   voice_minutes_24h: number | null
   estimated_cost_inr: number
@@ -105,7 +104,6 @@ export default function ApiUsagePage() {
                   <tr>
                     <th>Email</th>
                     <th className="admin-table-num">Entries</th>
-                    <th className="admin-table-num">WA msg</th>
                     <th className="admin-table-num">AI</th>
                     <th className="admin-table-num">Voice</th>
                     <th className="admin-table-num">Est. ₹</th>
@@ -116,7 +114,6 @@ export default function ApiUsagePage() {
                     <tr key={u.user_id}>
                       <td>{u.email}</td>
                       <td className="admin-table-num">{u.entries_total}</td>
-                      <td className="admin-table-num admin-table-muted">{u.whatsapp_messages_24h ?? '—'}</td>
                       <td className="admin-table-num admin-table-muted">{u.ai_calls_24h ?? '—'}</td>
                       <td className="admin-table-num admin-table-muted">{u.voice_minutes_24h ?? '—'}</td>
                       <td className="admin-table-num">{u.estimated_cost_inr.toFixed(2)}</td>

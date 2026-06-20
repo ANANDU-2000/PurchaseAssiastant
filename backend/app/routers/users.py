@@ -38,6 +38,7 @@ from app.schemas.users import (
 from app.services.passwords import hash_password
 from app.services.permissions import (
     PERMISSION_KEYS,
+    ROLE_DEFAULTS,
     actor_can_manage_target,
     effective_permissions,
     membership_permissions,
@@ -412,7 +413,9 @@ async def bulk_users(
                 failed.append(str(uid))
                 continue
             mem.role = body.role
-            mem.permissions_json = effective_permissions(body.role, mem.permissions_json)
+            mem.permissions_json = dict(
+                ROLE_DEFAULTS.get(body.role, ROLE_DEFAULTS["staff"])
+            )
         updated += 1
     await db.commit()
     return UserBulkOut(updated=updated, failed=failed)
@@ -465,7 +468,9 @@ async def patch_user(
         if actor.role == "admin" and body.role == "owner":
             raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Cannot assign owner role")
         mem.role = body.role
-        mem.permissions_json = effective_permissions(body.role, mem.permissions_json)
+        mem.permissions_json = dict(
+            ROLE_DEFAULTS.get(body.role, ROLE_DEFAULTS["staff"])
+        )
     if body.is_active is not None:
         user.is_active = body.is_active
         if body.is_active:
@@ -794,25 +799,6 @@ async def post_activity(
     user: Annotated[User, Depends(get_current_user)],
     _m: Annotated[Membership, Depends(require_membership)],
 ):
-    if body.action_type == "PURCHASE_WHATSAPP_SENT":
-        purchase_id = str((body.details or {}).get("purchase_id") or "").strip()
-        if purchase_id:
-            cutoff = datetime.now(timezone.utc) - timedelta(seconds=30)
-            recent = await db.execute(
-                select(StaffActivityLog)
-                .where(
-                    StaffActivityLog.business_id == business_id,
-                    StaffActivityLog.user_id == user.id,
-                    StaffActivityLog.action_type == "PURCHASE_WHATSAPP_SENT",
-                    StaffActivityLog.created_at >= cutoff,
-                )
-                .order_by(desc(StaffActivityLog.created_at))
-                .limit(8)
-            )
-            for existing in recent.scalars():
-                details = existing.details or {}
-                if str(details.get("purchase_id") or "").strip() == purchase_id:
-                    return ActivityLogOut.model_validate(existing)
     display = user.name or user.username
     row = StaffActivityLog(
         business_id=business_id,

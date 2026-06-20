@@ -1203,14 +1203,6 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                     contentPadding: EdgeInsets.zero,
                   ),
                 ),
-                const PopupMenuItem(
-                  value: 'scan',
-                  child: ListTile(
-                    leading: Icon(Icons.document_scanner_outlined),
-                    title: Text('Scan bill'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
               ],
               onSelected: (v) {
                 if (v == 'period') {
@@ -1219,8 +1211,6 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                   unawaited(_refreshHistory());
                 } else if (v == 'select') {
                   setState(() => _selectMode = true);
-                } else if (v == 'scan') {
-                  context.push('/purchase/scan');
                 }
               },
             ),
@@ -1332,14 +1322,6 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                     EdgeInsets.fromLTRB(10, 4, 10, 4),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton.filledTonal(
-                            visualDensity: VisualDensity.compact,
-                            tooltip: 'Scanner',
-                            onPressed: () => context.push('/purchase/scan'),
-                            icon: const Icon(Icons.document_scanner_outlined,
-                                size: 18),
                           ),
                         ],
                       ),

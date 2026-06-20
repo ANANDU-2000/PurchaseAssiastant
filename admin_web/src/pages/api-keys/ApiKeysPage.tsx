@@ -31,15 +31,6 @@ const GROUPS: { title: string; hint?: string; keys: { key: string; label: string
     ],
   },
   {
-    title: '360dialog (WhatsApp)',
-    keys: [
-      { key: 'dialog360_api_key', label: 'API key (D360-API-KEY)' },
-      { key: 'dialog360_phone_number_id', label: 'Phone number ID' },
-      { key: 'dialog360_base_url', label: 'API base URL' },
-      { key: 'dialog360_webhook_secret', label: 'Webhook verify secret' },
-    ],
-  },
-  {
     title: 'Razorpay (billing)',
     keys: [
       { key: 'razorpay_key_id', label: 'Key ID' },

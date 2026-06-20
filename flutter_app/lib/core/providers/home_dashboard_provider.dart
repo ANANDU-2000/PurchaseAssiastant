@@ -185,12 +185,14 @@ class HomeOperationalBundle {
     required this.warehouseAlerts,
     required this.deliveryPipeline,
     required this.notificationsUnread,
+    this.lowStockTop = const [],
   });
 
   final Map<String, int> stockStatusCounts;
   final WarehouseAlerts warehouseAlerts;
   final Map<String, dynamic> deliveryPipeline;
   final int notificationsUnread;
+  final List<Map<String, dynamic>> lowStockTop;
 
   bool get hasStockCounts => stockStatusCounts.isNotEmpty;
 
@@ -228,11 +230,19 @@ class HomeOperationalBundle {
     final pipe = m['delivery_pipeline'] is Map
         ? Map<String, dynamic>.from(m['delivery_pipeline'] as Map)
         : <String, dynamic>{};
+    final lowTopRaw = m['low_stock_top'];
+    final lowTop = <Map<String, dynamic>>[];
+    if (lowTopRaw is List) {
+      for (final e in lowTopRaw) {
+        if (e is Map) lowTop.add(Map<String, dynamic>.from(e));
+      }
+    }
     return HomeOperationalBundle(
       stockStatusCounts: counts,
       warehouseAlerts: wh,
       deliveryPipeline: pipe,
       notificationsUnread: coerceToInt(m['notifications_unread']),
+      lowStockTop: lowTop,
     );
   }
 }
@@ -1066,9 +1076,6 @@ final homeDashboardDataProvider =
     NotifierProvider.autoDispose<HomeDashboardDataNotifier, HomeDashboardDashState>(
   HomeDashboardDataNotifier.new,
 );
-
-/// Spec alias: single bundled home dashboard read (60s client cache).
-final dashboardProvider = homeDashboardDataProvider;
 
 /// Notification bell on Home — from shell bundle when available.
 final homeBundledNotificationsUnreadProvider = Provider<int>((ref) {

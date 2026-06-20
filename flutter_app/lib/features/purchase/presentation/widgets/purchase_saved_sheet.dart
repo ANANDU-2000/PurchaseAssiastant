@@ -6,7 +6,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/models/trade_purchase_models.dart';
 import '../../../../core/providers/business_profile_provider.dart';
-import '../../../../core/services/purchase_accounts_share.dart';
 import '../../../../core/services/purchase_pdf.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/design_system/hexa_responsive.dart';
@@ -16,7 +15,7 @@ String _inr(num n) =>
         .format(n);
 
 /// Merges wizard-local display fields when the create/update payload omits them
-/// (e.g. minimal API rows) so PDF filename, WhatsApp, and email stay accurate.
+/// (e.g. minimal API rows) so PDF filename and email stay accurate.
 Map<String, dynamic> enrichSavedTradePurchaseJson(
   Map<String, dynamic> saved, {
   String? supplierNameFallback,
@@ -47,6 +46,7 @@ Future<String?> showPurchaseSavedSheet(
   WidgetRef ref, {
   required Map<String, dynamic> savedJson,
   required bool wasEdit,
+  bool showDeliveryPrompt = false,
   String? displaySupplierName,
   String? displayBrokerName,
   DateTime? displayPurchaseDate,
@@ -99,6 +99,39 @@ Future<String?> showPurchaseSavedSheet(
           style: const TextStyle(color: HexaColors.neutral, fontSize: 13),
         ),
         const Divider(height: 24),
+        if (showDeliveryPrompt && !wasEdit) ...[
+          const Icon(
+            Icons.local_shipping_outlined,
+            size: 32,
+            color: Colors.orange,
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Has this shipment arrived at your warehouse?',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context, 'delivery_no'),
+                  child: const Text('Not yet'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(context, 'delivery_yes'),
+                  style: FilledButton.styleFrom(backgroundColor: Colors.green),
+                  child: const Text('Yes, received'),
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 24),
+        ],
         ListTile(
           leading: const Icon(Icons.add_shopping_cart_rounded),
           title: const Text('Add more items'),
@@ -268,17 +301,6 @@ Future<String?> showPurchaseSavedSheet(
               },
             ),
             ListTile(
-              leading: const Icon(Icons.chat_rounded),
-              title: const Text('WhatsApp (summary)'),
-              subtitle: const Text(
-                'Opens WhatsApp with a text summary — use Share PDF to send the actual bill file',
-              ),
-              onTap: () async {
-                Navigator.pop(context, 'home');
-                await openWhatsAppSummaryMessage(p, biz: biz);
-              },
-            ),
-            ListTile(
               leading: const Icon(Icons.email_outlined),
               title: const Text('Email'),
               subtitle: const Text(
@@ -311,7 +333,7 @@ Future<String?> showPurchaseSavedSheet(
               const Padding(
                 padding: EdgeInsets.only(top: 8),
                 child: Text(
-                  'Share / WhatsApp may use browser download on web.',
+                  'Share may use browser download on web.',
                   style: TextStyle(fontSize: 11, color: HexaColors.neutral),
                 ),
               ),

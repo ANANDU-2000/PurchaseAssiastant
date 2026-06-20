@@ -5,6 +5,7 @@ import '../auth/session_notifier.dart';
 import '../providers/analytics_kpi_provider.dart' show analyticsDateRangeProvider;
 import '../providers/home_dashboard_provider.dart'
     show HomePeriod, homePeriodRange, homePeriodProvider;
+import 'stock_providers.dart' show LowStockByCategoryMap;
 
 /// Query state for `/stock/low-stock/operations`.
 ///
@@ -130,6 +131,35 @@ final lowStockOperationsPageProvider =
     periodStart: periods.periodStart,
     periodEnd: periods.periodEnd,
   );
+});
+
+/// Groups flat operations rows into the category tree shape used by the dashboard.
+LowStockByCategoryMap groupLowStockOperationItems(
+  Iterable<Map<String, dynamic>> items,
+) {
+  final result = <String, Map<String, List<Map<String, dynamic>>>>{};
+  for (final item in items) {
+    final cat = item['category_name']?.toString().trim();
+    final catKey = (cat != null && cat.isNotEmpty) ? cat : 'Unknown';
+    final sub = item['subcategory_name']?.toString().trim();
+    final subKey = (sub != null && sub.isNotEmpty) ? sub : 'Other';
+    result.putIfAbsent(catKey, () => {});
+    result[catKey]!.putIfAbsent(subKey, () => []);
+    result[catKey]![subKey]!.add(item);
+  }
+  return result;
+}
+
+/// Category tree for [LowStockDashboardPage] — one operations list call + summary.
+final lowStockOperationsGroupedProvider =
+    FutureProvider.autoDispose<LowStockByCategoryMap>((ref) async {
+  final page = await ref.watch(lowStockOperationsPageProvider.future);
+  final raw = (page['items'] as List?) ?? const [];
+  final items = <Map<String, dynamic>>[
+    for (final e in raw)
+      if (e is Map) Map<String, dynamic>.from(e),
+  ];
+  return groupLowStockOperationItems(items);
 });
 
 /// Merged stock activity for low-stock expanded rows / desktop context panel.

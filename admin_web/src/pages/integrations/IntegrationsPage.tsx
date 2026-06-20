@@ -8,7 +8,6 @@ type IntegEntry = { configured?: boolean; provider?: string; base_url?: string }
 type Integ = Record<string, IntegEntry>
 
 const ORDER: { key: string; title: string }[] = [
-  { key: 'dialog360', title: '360dialog / WhatsApp' },
   { key: 'openai', title: 'OpenAI' },
   { key: 'ocr', title: 'OCR' },
   { key: 'stt', title: 'Speech-to-text' },

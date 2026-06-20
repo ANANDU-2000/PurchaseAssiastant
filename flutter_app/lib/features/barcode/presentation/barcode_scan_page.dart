@@ -31,7 +31,6 @@ import '../../stock/presentation/stock_undo_snackbar.dart';
 import '../barcode_camera_session.dart';
 import '../barcode_lookup_cache.dart';
 import '../services/camera_permission_cache.dart';
-import 'warehouse_scan_action_sheet.dart';
 import 'barcode_scan_web_stub.dart'
     if (dart.library.html) 'barcode_scan_web.dart';
 import 'web_live_barcode_scanner.dart' show WebLiveBarcodeScanner;
@@ -606,15 +605,15 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
       return;
     }
     try {
-      final saved = await showWarehouseScanActionSheet(
+      final saved = await openQuickStockWithFreshItem(
         context: context,
         ref: ref,
-        item: Map<String, dynamic>.from(row),
+        itemId: id,
+        itemName: name,
+        fallbackRow: Map<String, dynamic>.from(row),
+        skipFreshFetch: true,
       );
       if (saved && mounted) {
-        ref.invalidate(catalogItemsListProvider);
-        ref.invalidate(catalogItemDetailProvider(id));
-        ref.invalidate(stockItemIntelligenceProvider(id));
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Scan update saved')),
         );

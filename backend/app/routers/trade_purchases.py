@@ -24,6 +24,7 @@ from app.schemas.trade_purchases import (
     TradeNextHumanIdOut,
     TradePurchaseCreateRequest,
     TradePurchaseOut,
+    TradePurchaseListItemOut,
     TradePurchaseDeliveryPatch,
     TradePurchaseDispatchIn,
     TradePurchaseArriveIn,
@@ -38,6 +39,7 @@ from app.schemas.trade_purchases import (
 )
 from app.services import trade_purchase_service as tps
 from app.services.staff_view import (
+    redact_trade_purchase_dict,
     should_redact_financials,
     trade_purchase_to_staff_dict,
     trade_purchases_to_staff_dicts,
@@ -93,10 +95,12 @@ _LEGACY_TRADE_LIST_STATUS_INT = {
 
 
 def _purchase_list_response(
-    role: str, rows: list[TradePurchaseOut]
-) -> list[TradePurchaseOut] | JSONResponse:
+    role: str, rows: list[TradePurchaseOut] | list[TradePurchaseListItemOut]
+) -> list[TradePurchaseOut] | list[TradePurchaseListItemOut] | JSONResponse:
     if should_redact_financials(role):
-        return JSONResponse(trade_purchases_to_staff_dicts(rows))
+        return JSONResponse(
+            [redact_trade_purchase_dict(r.model_dump(mode="json")) for r in rows]
+        )
     return rows
 
 
@@ -277,12 +281,16 @@ async def next_trade_human_id(
     return TradeNextHumanIdOut(human_id=hid)
 
 
-@router.get("", response_model=list[TradePurchaseOut])
+@router.get("")
 async def list_trade_purchases(
     business_id: uuid.UUID,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     _m: Annotated[Membership, Depends(require_membership)],
+    include_lines: bool = Query(
+        False,
+        description="When false (default), omit line payloads for lighter list responses.",
+    ),
     # Accept large client `limit` values (legacy apps) and clamp in-handler — FastAPI
     # must not 422 here or those clients never reach `limit_v = min(limit, 50)`.
     limit: int = Query(20, ge=1, le=2000),
@@ -332,6 +340,7 @@ async def list_trade_purchases(
         catalog_item_id=catalog_item_id,
         purchase_from=purchase_from,
         purchase_to=purchase_to,
+        include_lines=include_lines,
     ),
     )
     return _purchase_list_response(_m.role, rows)
@@ -507,6 +516,7 @@ async def commit_trade_purchase_delivery(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     _m: Annotated[Membership, Depends(require_role("owner", "manager", "admin", "super_admin"))],
+    _perm: Annotated[None, Depends(require_permission("stock_edit"))],
 ):
     try:
         out = await tps.commit_trade_purchase_delivery(
@@ -538,6 +548,7 @@ async def auto_commit_trade_purchase_delivery(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     _m: Annotated[Membership, Depends(require_role("owner", "manager", "admin", "super_admin"))],
+    _perm: Annotated[None, Depends(require_permission("stock_edit"))],
 ):
     out = await tps.try_auto_commit_trade_purchase_delivery(
         db, business_id, purchase_id, user

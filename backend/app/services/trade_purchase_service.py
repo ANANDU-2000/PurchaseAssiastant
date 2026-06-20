@@ -38,6 +38,7 @@ from app.schemas.trade_purchases import (
     TradePurchaseLineOut,
     StockUpdateOut,
     TradePurchaseOut,
+    TradePurchaseListItemOut,
     TradePurchaseDeliveryPatch,
     TradePurchaseDispatchIn,
     TradePurchaseArriveIn,
@@ -393,14 +394,32 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _trade_purchase_load_opts() -> tuple:
-    return (
-        selectinload(TradePurchase.lines).selectinload(TradePurchaseLine.catalog_item),
+def _trade_purchase_load_opts(*, include_lines: bool = True) -> tuple:
+    opts: list = [
         selectinload(TradePurchase.supplier_row),
         selectinload(TradePurchase.broker_row),
         selectinload(TradePurchase.creator_user),
         selectinload(TradePurchase.staff_verifier_user),
+    ]
+    if include_lines:
+        opts.insert(
+            0,
+            selectinload(TradePurchase.lines).selectinload(TradePurchaseLine.catalog_item),
+        )
+    return tuple(opts)
+
+
+async def _purchase_line_counts(
+    db: AsyncSession, purchase_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    if not purchase_ids:
+        return {}
+    res = await db.execute(
+        select(TradePurchaseLine.trade_purchase_id, func.count())
+        .where(TradePurchaseLine.trade_purchase_id.in_(purchase_ids))
+        .group_by(TradePurchaseLine.trade_purchase_id)
     )
+    return {row[0]: int(row[1] or 0) for row in res.all()}
 
 def _verified_by_from_delivery_notes(notes: str | None) -> str | None:
     if not notes or not notes.strip():
@@ -997,7 +1016,8 @@ async def list_trade_purchases(
     purchase_from: date | None = None,
     purchase_to: date | None = None,
     reports_eligible_only: bool = False,
-) -> list[TradePurchaseOut]:
+    include_lines: bool = True,
+) -> list[TradePurchaseOut] | list[TradePurchaseListItemOut]:
     """List purchases; optional status_filter: all|draft|due_soon|overdue|paid and search q.
 
     When ``reports_eligible_only`` is True, restrict to the same status set as dashboards
@@ -1025,7 +1045,7 @@ async def list_trade_purchases(
             TradePurchase.business_id == business_id,
             TradePurchase.status != "deleted",
         )
-        .options(*_trade_purchase_load_opts())
+        .options(*_trade_purchase_load_opts(include_lines=include_lines))
         .order_by(TradePurchase.purchase_date.desc(), TradePurchase.created_at.desc())
     )
     if reports_eligible_only:
@@ -1073,7 +1093,21 @@ async def list_trade_purchases(
     off = min(max(int(offset or 0), 0), 10_000)
     stmt = stmt.offset(off).limit(fetch_cap)
     res = await execute_with_retry(lambda: db.execute(stmt))
-    rows = [trade_purchase_to_out(p) for p in res.scalars().unique().all()]
+    purchases = list(res.scalars().unique().all())
+    line_counts: dict[uuid.UUID, int] = {}
+    if not include_lines and purchases:
+        line_counts = await _purchase_line_counts(db, [p.id for p in purchases])
+    if include_lines:
+        rows: list[TradePurchaseOut] = [
+            trade_purchase_to_out(p) for p in purchases
+        ]
+    else:
+        rows = [
+            trade_purchase_to_list_item_out(
+                p, items_count=line_counts.get(p.id, 0)
+            )
+            for p in purchases
+        ]
     sf = (status_filter or "all").strip().lower()
     if sf == "draft":
         rows = [r for r in rows if (r.status or "").lower() in ("draft", "saved")]
@@ -1115,7 +1149,7 @@ async def list_trade_purchases(
             r for r in rows if (r.delivery_status or "pending").lower() == sf
         ]
     needle = (q or "").strip().lower()
-    if needle:
+    if needle and not search_sql:
         out: list[TradePurchaseOut] = []
         for r in rows:
             if needle in (r.human_id or "").lower():
@@ -1127,10 +1161,11 @@ async def list_trade_purchases(
             if needle in (r.broker_name or "").lower():
                 out.append(r)
                 continue
-            for li in r.lines:
-                if needle in (li.item_name or "").lower():
-                    out.append(r)
-                    break
+            if include_lines and hasattr(r, "lines"):
+                for li in r.lines:
+                    if needle in (li.item_name or "").lower():
+                        out.append(r)
+                        break
         rows = out
     return rows[: min(limit, 500)]
 
@@ -2518,89 +2553,92 @@ def trade_purchase_to_out(
     tp: TradePurchase,
     *,
     stock_updates: list[dict] | None = None,
+    include_lines: bool = True,
+    items_count_override: int | None = None,
 ) -> TradePurchaseOut:
     lines = []
     sum_land = Decimal("0")
     sum_sell = Decimal("0")
-    for li in tp.lines:
-        du_s, kpb_f, dpu_s = _catalog_item_unit_hints(li)
-        li_in = _trade_purchase_line_in_from_db(li)
-        lg = dp.total(_line_gross_base(li_in))
-        lpm = _line_purchase_money_db(li, li_in)
-        sg = _line_selling_gross_db(li)
-        sum_land += lg
-        sum_sell += sg
-        stored_profit = getattr(li, "profit", None)
-        if stored_profit is not None:
-            lp = dp.total(stored_profit)
-        elif getattr(li, "selling_rate", None) is not None or li.selling_cost is not None:
-            lp = _line_profit(li_in, _line_profit_dummy_trade_req())
-        else:
-            lp = None
-        kpu_raw = getattr(li, "weight_per_unit", None)
-        if kpu_raw is None:
-            kpu_raw = getattr(li, "kg_per_unit", None)
-        kpu_val = dp.weight(kpu_raw) if kpu_raw is not None else None
-        total_weight_raw = getattr(li, "total_weight", None)
-        total_weight = dp.total_weight(total_weight_raw) if total_weight_raw is not None else (
-            dp.total_weight(_dec(li.qty) * kpu_val) if kpu_val is not None else (
-                dp.total_weight(li.qty) if str(li.unit or "").strip().lower() == "kg" else None
+    if include_lines:
+        for li in tp.lines:
+            du_s, kpb_f, dpu_s = _catalog_item_unit_hints(li)
+            li_in = _trade_purchase_line_in_from_db(li)
+            lg = dp.total(_line_gross_base(li_in))
+            lpm = _line_purchase_money_db(li, li_in)
+            sg = _line_selling_gross_db(li)
+            sum_land += lg
+            sum_sell += sg
+            stored_profit = getattr(li, "profit", None)
+            if stored_profit is not None:
+                lp = dp.total(stored_profit)
+            elif getattr(li, "selling_rate", None) is not None or li.selling_cost is not None:
+                lp = _line_profit(li_in, _line_profit_dummy_trade_req())
+            else:
+                lp = None
+            kpu_raw = getattr(li, "weight_per_unit", None)
+            if kpu_raw is None:
+                kpu_raw = getattr(li, "kg_per_unit", None)
+            kpu_val = dp.weight(kpu_raw) if kpu_raw is not None else None
+            total_weight_raw = getattr(li, "total_weight", None)
+            total_weight = dp.total_weight(total_weight_raw) if total_weight_raw is not None else (
+                dp.total_weight(_dec(li.qty) * kpu_val) if kpu_val is not None else (
+                    dp.total_weight(li.qty) if str(li.unit or "").strip().lower() == "kg" else None
+                )
             )
-        )
-        purchase_rate = getattr(li, "purchase_rate", None) or li.landing_cost
-        selling_rate = getattr(li, "selling_rate", None) or li.selling_cost
-        raw_ut = getattr(li, "unit_type", None)
-        out_ut = (
-            raw_ut.strip().lower()
-            if isinstance(raw_ut, str) and raw_ut.strip()
-            else derive_trade_unit_type(li.unit)
-        )
-        urd = resolve_from_text(li.item_name or "").as_dict()
-        rctx = build_rate_context(li_in, resolved_labels=urd)
-        lines.append(
-            TradePurchaseLineOut(
-                id=li.id,
-                catalog_item_id=li.catalog_item_id,
-                item_name=li.item_name,
-                qty=dp.qty(li.qty),
-                unit=li.unit,
-                unit_type=out_ut,
-                landing_cost=dp.rate(li.landing_cost),
-                purchase_rate=dp.rate(purchase_rate),
-                kg_per_unit=kpu_val,
-                weight_per_unit=kpu_val,
-                landing_cost_per_kg=dp.rate(li.landing_cost_per_kg)
-                if getattr(li, "landing_cost_per_kg", None) is not None
-                else None,
-                selling_cost=dp.rate(selling_rate) if selling_rate is not None else None,
-                selling_rate=dp.rate(selling_rate) if selling_rate is not None else None,
-                freight_type=getattr(li, "freight_type", None),
-                freight_value=dp.money(getattr(li, "freight_value", None)) if getattr(li, "freight_value", None) is not None else None,
-                delivered_rate=dp.money(getattr(li, "delivered_rate", None)) if getattr(li, "delivered_rate", None) is not None else None,
-                billty_rate=dp.money(getattr(li, "billty_rate", None)) if getattr(li, "billty_rate", None) is not None else None,
-                total_weight=total_weight,
-                line_total=lpm,
-                profit=lp,
-                box_mode=getattr(li, "box_mode", None),
-                items_per_box=dp.qty(getattr(li, "items_per_box", None)) if getattr(li, "items_per_box", None) is not None else None,
-                weight_per_item=dp.weight(getattr(li, "weight_per_item", None)) if getattr(li, "weight_per_item", None) is not None else None,
-                kg_per_box=dp.weight(getattr(li, "kg_per_box", None)) if getattr(li, "kg_per_box", None) is not None else None,
-                weight_per_tin=dp.weight(getattr(li, "weight_per_tin", None)) if getattr(li, "weight_per_tin", None) is not None else None,
-                discount=dp.percent(li.discount) if li.discount is not None else None,
-                tax_percent=dp.percent(li.tax_percent) if li.tax_percent is not None else None,
-                payment_days=getattr(li, "payment_days", None),
-                hsn_code=_line_hsn(li),
-                item_code=_line_item_code(li),
-                description=getattr(li, "description", None),
-                default_unit=du_s,
-                default_kg_per_bag=kpb_f,
-                default_purchase_unit=dpu_s,
-                line_landing_gross=lg,
-                line_selling_gross=sg,
-                line_profit=lp,
-                rate_context=rctx,
+            purchase_rate = getattr(li, "purchase_rate", None) or li.landing_cost
+            selling_rate = getattr(li, "selling_rate", None) or li.selling_cost
+            raw_ut = getattr(li, "unit_type", None)
+            out_ut = (
+                raw_ut.strip().lower()
+                if isinstance(raw_ut, str) and raw_ut.strip()
+                else derive_trade_unit_type(li.unit)
             )
-        )
+            urd = resolve_from_text(li.item_name or "").as_dict()
+            rctx = build_rate_context(li_in, resolved_labels=urd)
+            lines.append(
+                TradePurchaseLineOut(
+                    id=li.id,
+                    catalog_item_id=li.catalog_item_id,
+                    item_name=li.item_name,
+                    qty=dp.qty(li.qty),
+                    unit=li.unit,
+                    unit_type=out_ut,
+                    landing_cost=dp.rate(li.landing_cost),
+                    purchase_rate=dp.rate(purchase_rate),
+                    kg_per_unit=kpu_val,
+                    weight_per_unit=kpu_val,
+                    landing_cost_per_kg=dp.rate(li.landing_cost_per_kg)
+                    if getattr(li, "landing_cost_per_kg", None) is not None
+                    else None,
+                    selling_cost=dp.rate(selling_rate) if selling_rate is not None else None,
+                    selling_rate=dp.rate(selling_rate) if selling_rate is not None else None,
+                    freight_type=getattr(li, "freight_type", None),
+                    freight_value=dp.money(getattr(li, "freight_value", None)) if getattr(li, "freight_value", None) is not None else None,
+                    delivered_rate=dp.money(getattr(li, "delivered_rate", None)) if getattr(li, "delivered_rate", None) is not None else None,
+                    billty_rate=dp.money(getattr(li, "billty_rate", None)) if getattr(li, "billty_rate", None) is not None else None,
+                    total_weight=total_weight,
+                    line_total=lpm,
+                    profit=lp,
+                    box_mode=getattr(li, "box_mode", None),
+                    items_per_box=dp.qty(getattr(li, "items_per_box", None)) if getattr(li, "items_per_box", None) is not None else None,
+                    weight_per_item=dp.weight(getattr(li, "weight_per_item", None)) if getattr(li, "weight_per_item", None) is not None else None,
+                    kg_per_box=dp.weight(getattr(li, "kg_per_box", None)) if getattr(li, "kg_per_box", None) is not None else None,
+                    weight_per_tin=dp.weight(getattr(li, "weight_per_tin", None)) if getattr(li, "weight_per_tin", None) is not None else None,
+                    discount=dp.percent(li.discount) if li.discount is not None else None,
+                    tax_percent=dp.percent(li.tax_percent) if li.tax_percent is not None else None,
+                    payment_days=getattr(li, "payment_days", None),
+                    hsn_code=_line_hsn(li),
+                    item_code=_line_item_code(li),
+                    description=getattr(li, "description", None),
+                    default_unit=du_s,
+                    default_kg_per_bag=kpb_f,
+                    default_purchase_unit=dpu_s,
+                    line_landing_gross=lg,
+                    line_selling_gross=sg,
+                    line_profit=lp,
+                    rate_context=rctx,
+                )
+            )
     total_dec = _dec(tp.total_amount)
     paid_dec = _dec(getattr(tp, "paid_amount", None))
     remaining = dp.money(max(total_dec - paid_dec, Decimal("0")))
@@ -2617,7 +2655,6 @@ def trade_purchase_to_out(
     supplier_gst: str | None = None
     supplier_address: str | None = None
     supplier_phone: str | None = None
-    supplier_whatsapp: str | None = None
     broker_phone: str | None = None
     broker_location: str | None = None
     broker_image_url: str | None = None
@@ -2627,14 +2664,17 @@ def trade_purchase_to_out(
         supplier_gst = getattr(sr, "gst_number", None) or None
         supplier_address = getattr(sr, "address", None) or None
         supplier_phone = getattr(sr, "phone", None) or None
-        supplier_whatsapp = getattr(sr, "whatsapp_number", None) or None
     br = getattr(tp, "broker_row", None)
     if br is not None:
         bro_name = getattr(br, "name", None)
         broker_phone = getattr(br, "phone", None) or None
         broker_location = getattr(br, "location", None) or None
         broker_image_url = getattr(br, "image_url", None) or None
-    items_count = len(tp.lines) if tp.lines is not None else 0
+    items_count = (
+        items_count_override
+        if items_count_override is not None
+        else (len(tp.lines) if tp.lines is not None else 0)
+    )
     tls = getattr(tp, "total_landing_subtotal", None)
     tss = getattr(tp, "total_selling_subtotal", None)
     tlp = getattr(tp, "total_line_profit", None)
@@ -2677,7 +2717,6 @@ def trade_purchase_to_out(
         supplier_gst=supplier_gst,
         supplier_address=supplier_address,
         supplier_phone=supplier_phone,
-        supplier_whatsapp=supplier_whatsapp,
         broker_phone=broker_phone,
         broker_location=broker_location,
         broker_image_url=broker_image_url,
@@ -2719,6 +2758,23 @@ def trade_purchase_to_out(
             )
             for u in (stock_updates or [])
         ],
+    )
+
+
+def trade_purchase_to_list_item_out(
+    tp: TradePurchase,
+    *,
+    items_count: int = 0,
+    stock_updates: list[dict] | None = None,
+) -> TradePurchaseListItemOut:
+    full = trade_purchase_to_out(
+        tp,
+        stock_updates=stock_updates or [],
+        include_lines=False,
+        items_count_override=items_count,
+    )
+    return TradePurchaseListItemOut.model_validate(
+        full.model_dump(exclude={"lines", "stock_updates"})
     )
 
 

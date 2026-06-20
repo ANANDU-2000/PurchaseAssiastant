@@ -11,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.membership import Membership
 from app.models.notification import AppNotification
-from app.routers.stock import stock_alerts_summary, warehouse_alerts_from_stock
+from app.routers.stock import (
+    fetch_low_stock_top_rows,
+    stock_alerts_summary,
+    warehouse_alerts_from_stock,
+)
 from app.services import trade_purchase_service as tps
 
 
@@ -54,7 +58,7 @@ async def build_home_operational_bundle(
     membership: Membership,
 ) -> dict[str, Any]:
     """Stock chips, warehouse alerts, delivery pipeline, and notification unread for Home."""
-    stock, pipeline, unread = await asyncio.gather(
+    stock, pipeline, unread, low_top = await asyncio.gather(
         stock_alerts_summary(
             business_id=business_id,
             db=db,
@@ -62,6 +66,7 @@ async def build_home_operational_bundle(
         ),
         tps.get_trade_purchase_delivery_pipeline(db, business_id),
         _unread_notification_count(db, business_id, membership.user_id),
+        fetch_low_stock_top_rows(db, business_id, limit=6),
     )
     warehouse = await warehouse_alerts_from_stock(db, business_id, stock)
     return {
@@ -69,4 +74,5 @@ async def build_home_operational_bundle(
         "warehouse_alerts": warehouse.model_dump(),
         "delivery_pipeline": pipeline.model_dump(mode="json"),
         "notifications_unread": unread,
+        "low_stock_top": low_top,
     }

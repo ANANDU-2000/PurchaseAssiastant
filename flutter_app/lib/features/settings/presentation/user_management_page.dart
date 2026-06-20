@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
@@ -227,7 +226,6 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
   }) async {
     final name = user['name']?.toString() ?? 'User';
     final phone = user['phone']?.toString() ?? '';
-    final digits = phone.replaceAll(RegExp(r'\D'), '');
     final lines = <String>[
       'Harisree workspace login',
       'Name: $name',
@@ -235,8 +233,6 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
       'Password: $password',
       if (phone.isNotEmpty) 'Phone: $phone',
     ];
-    final msg = Uri.encodeComponent(lines.join('\n'));
-    final wa = digits.length >= 10 ? Uri.parse('https://wa.me/$digits?text=$msg') : null;
     final copyText = lines.join('\n');
 
     await showDialog<void>(
@@ -265,15 +261,6 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
             },
             child: const Text('Copy'),
           ),
-          if (wa != null)
-            TextButton(
-              onPressed: () async {
-                if (await canLaunchUrl(wa)) {
-                  await launchUrl(wa, mode: LaunchMode.externalApplication);
-                }
-              },
-              child: const Text('WhatsApp'),
-            ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Done'),

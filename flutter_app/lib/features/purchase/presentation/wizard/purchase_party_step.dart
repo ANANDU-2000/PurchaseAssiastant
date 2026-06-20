@@ -149,7 +149,6 @@ class PurchasePartyStep extends ConsumerWidget {
     final parts = <String>[
       supplierMapLabel(m),
       m['phone']?.toString().trim() ?? '',
-      m['whatsapp_number']?.toString().trim() ?? '',
       m['location']?.toString().trim() ?? '',
       m['gst_number']?.toString().trim() ?? '',
     ].where((s) => s.isNotEmpty);
@@ -529,7 +528,7 @@ class PurchasePartyStep extends ConsumerWidget {
                   focusNode: brokerFocusNode,
                   hintText: 'Search broker by name…',
                   prefixIcon: const Icon(Icons.person_outline_rounded),
-                  minQueryLength: 0,
+                  minQueryLength: 1,
                   maxMatches: 8,
                   dense: true,
                   fieldBorderRadius: 12,
@@ -571,7 +570,7 @@ class PurchasePartyStep extends ConsumerWidget {
                     focusNode: brokerFocusNode,
                     hintText: 'Search broker by name…',
                     prefixIcon: const Icon(Icons.person_outline_rounded),
-                    minQueryLength: 0,
+                    minQueryLength: 1,
                     maxMatches: 8,
                     dense: true,
                     fieldBorderRadius: 12,

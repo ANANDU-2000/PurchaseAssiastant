@@ -188,16 +188,6 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
     if (await canLaunchUrl(uri)) await launchUrl(uri);
   }
 
-  Future<void> _openWhatsApp(String? raw) async {
-    if (raw == null || raw.trim().isEmpty) return;
-    final d = raw.replaceAll(RegExp(r'\D'), '');
-    if (d.isEmpty) return;
-    final uri = Uri.parse('https://wa.me/$d');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
   Future<void> _exportCsv() async {
     final buf = StringBuffer(
         'date,pur_id,item,qty,unit,landing_per_unit,selling,total_line\n');
@@ -314,7 +304,6 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
         ),
         data: (s) {
           final phone = s['phone']?.toString();
-          final wa = s['whatsapp_number']?.toString();
           final bid = s['broker_id']?.toString();
           final loc = s['location']?.toString() ?? '';
           final name = s['name']?.toString() ?? 'n/a';
@@ -432,36 +421,6 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
                                         style: const TextStyle(
                                           fontSize: 12,
                                           color: chipTeal,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            if (wa != null && wa.isNotEmpty)
-                              InkWell(
-                                onTap: () => _openWhatsApp(wa),
-                                borderRadius: BorderRadius.circular(20),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 5),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.message,
-                                          size: 14,
-                                          color: Colors.green.shade700),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        'WhatsApp',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.green.shade700,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),

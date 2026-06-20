@@ -12,11 +12,10 @@ import '../../../../core/providers/home_owner_dashboard_providers.dart'
         homePendingDeliveryCountProvider,
         homeStaffReorderRequestCountProvider,
         stockVariancesTodayProvider;
-import '../../../../core/providers/stock_providers.dart'
-    show lowStockByCategoryProvider;
 import '../../../../core/providers/notification_center_provider.dart'
     show homeWarehouseAlertsProvider, notificationCenterCoordinatorProvider;
-import '../../../../core/providers/warehouse_alerts_provider.dart';
+import '../../../../core/providers/warehouse_alerts_provider.dart'
+    show WarehouseAlerts;
 import '../../../../core/theme/hexa_colors.dart';
 import 'home_formatters.dart';
 
@@ -35,12 +34,13 @@ class HomeLiveStatusBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!isOwner) return const SizedBox.shrink();
-
     final attention = ref.watch(homeLowStockAttentionCountProvider);
     final pendingDel = ref.watch(homePendingDeliveryCountProvider);
     final reorderN = ref.watch(homeStaffReorderRequestCountProvider);
     final warehouse = ref.watch(homeWarehouseAlertsProvider);
+
+    if (!isOwner) return const SizedBox.shrink();
+
     final mismatchN =
         warehouse?.pendingVerifications ??
         ref.watch(stockVariancesTodayProvider).valueOrNull?.length ??
@@ -159,9 +159,6 @@ class _HomeStockStatusSheet extends ConsumerWidget {
     final mismatchN = warehouse.pendingVerifications;
     final missingBarcode = warehouse.missingBarcode;
 
-    final lowAsync = ref.watch(lowStockByCategoryProvider);
-    final warehouseAsync = ref.watch(warehouseAlertsProvider);
-
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -174,12 +171,6 @@ class _HomeStockStatusSheet extends ConsumerWidget {
                     style: HexaDsType.heading(18),
                   ),
                 ),
-                if (lowAsync.isLoading || warehouseAsync.isLoading)
-                  const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
               ],
             ),
             const SizedBox(height: 4),

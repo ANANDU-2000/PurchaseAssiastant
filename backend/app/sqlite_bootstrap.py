@@ -44,7 +44,6 @@ def apply_sqlite_bootstrap(sync_conn) -> None:
         ],
     )
     _ensure_entries_place(sync_conn)
-    _ensure_suppliers_whatsapp_number(sync_conn)
     _ensure_entry_line_items_stock_note(sync_conn)
     _ensure_businesses_branding(sync_conn)
     _ensure_users_ai_budget_columns(sync_conn)
@@ -85,16 +84,6 @@ def _ensure_entries_place(sync_conn):
     sync_conn.exec_driver_sql("ALTER TABLE entries ADD COLUMN place VARCHAR(512)")
 
 
-def _ensure_suppliers_whatsapp_number(sync_conn):
-    insp = inspect(sync_conn)
-    if not insp.has_table("suppliers"):
-        return
-    cols = {c["name"] for c in insp.get_columns("suppliers")}
-    if "whatsapp_number" in cols:
-        return
-    sync_conn.exec_driver_sql("ALTER TABLE suppliers ADD COLUMN whatsapp_number VARCHAR(32)")
-
-
 def _ensure_entry_line_items_stock_note(sync_conn):
     insp = inspect(sync_conn)
     if not insp.has_table("entry_line_items"):
@@ -128,10 +117,6 @@ def _ensure_businesses_branding(sync_conn):
             )
         else:
             sync_conn.exec_driver_sql("ALTER TABLE businesses ADD COLUMN contact_email VARCHAR(255) NULL")
-    if "accounts_whatsapp_number" not in cols:
-        sync_conn.exec_driver_sql(
-            "ALTER TABLE businesses ADD COLUMN accounts_whatsapp_number VARCHAR(20) NULL"
-        )
     if "default_currency" not in cols:
         if dialect == "postgresql":
             sync_conn.exec_driver_sql(
@@ -514,8 +499,6 @@ def _ensure_broker_phone_column(sync_conn):
     alters: list[str] = []
     if "phone" not in cols:
         alters.append("ALTER TABLE brokers ADD COLUMN phone VARCHAR(15)")
-    if "whatsapp_number" not in cols:
-        alters.append("ALTER TABLE brokers ADD COLUMN whatsapp_number VARCHAR(32)")
     if "location" not in cols:
         alters.append("ALTER TABLE brokers ADD COLUMN location TEXT")
     if "notes" not in cols:

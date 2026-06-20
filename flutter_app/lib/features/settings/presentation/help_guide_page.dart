@@ -111,17 +111,6 @@ class HelpGuidePage extends StatelessWidget {
             ),
             const _GuideSection(
               role: 'Owner',
-              icon: Icons.share_outlined,
-              titleEn: 'Share purchase on WhatsApp',
-              titleAr: 'مشاركة الشراء',
-              bodyEn:
-                  'Open a purchase → Share. Set Accounts WhatsApp in Settings → Business profile first.',
-              bodyAr: 'افتح الشراء ثم شارك. أضف رقم واتساب الحسابات في الإعدادات أولاً.',
-              actionLabel: 'Settings',
-              route: '/settings',
-            ),
-            const _GuideSection(
-              role: 'Owner',
               icon: Icons.people_outline,
               titleEn: 'Add staff user',
               titleAr: 'إضافة موظف',

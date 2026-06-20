@@ -81,7 +81,6 @@ def test_supplier_create_full_payload_and_list_get():
     body = {
         "name": "Wizard Supplier Full",
         "phone": "9876543210",
-        "whatsapp_number": "9876543210",
         "location": "Indore",
         "broker_ids": [broker_a, broker_b],
         "gst_number": "22AAAAA0000A1Z5",
@@ -104,7 +103,6 @@ def test_supplier_create_full_payload_and_list_get():
     data = sr.json()
     assert data["name"] == "Wizard Supplier Full"
     assert data["phone"] == "9876543210"
-    assert data["whatsapp_number"] == "9876543210"
     assert data["location"] == "Indore"
     assert data["gst_number"] == "22AAAAA0000A1Z5"
     assert data["address"] == "Warehouse Rd"

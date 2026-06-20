@@ -40,12 +40,6 @@
   ],
   "shortcuts": [
     {
-      "name": "Scan bill",
-      "short_name": "Scan",
-      "description": "Capture a purchase bill",
-      "url": "/purchase/scan"
-    },
-    {
       "name": "New purchase",
       "short_name": "New",
       "description": "Start a new purchase entry",

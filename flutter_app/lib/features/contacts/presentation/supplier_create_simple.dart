@@ -27,7 +27,6 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _placeCtrl = TextEditingController();
-  final _whatsappCtrl = TextEditingController();
   final _gstCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
   final _defaultRateCtrl = TextEditingController();
@@ -47,7 +46,6 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _placeCtrl.dispose();
-    _whatsappCtrl.dispose();
     _gstCtrl.dispose();
     _addressCtrl.dispose();
     _defaultRateCtrl.dispose();
@@ -231,29 +229,6 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
-                      controller: _whatsappCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'WhatsApp Number',
-                        hintText: '+91 98765 43210',
-                        prefixIcon: const Icon(Icons.chat_rounded),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: Colors.grey[300]!),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(color: HexaColors.brandPrimary, width: 2),
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[50],
-                      ),
-                      keyboardType: TextInputType.phone,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
                       controller: _gstCtrl,
                       decoration: InputDecoration(
                         labelText: 'GST Number',
@@ -373,13 +348,11 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
         }
         return;
       }
-      final whatsapp = _whatsappCtrl.text.trim();
       final phone = _phoneCtrl.text.trim();
       final created = await ref.read(hexaApiProvider).createSupplier(
             businessId: session.primaryBusiness.id,
             name: _nameCtrl.text.trim(),
             phone: phone,
-            whatsappNumber: whatsapp.isNotEmpty ? whatsapp : phone,
             location: _placeCtrl.text.trim(),
             gstNumber: _gstCtrl.text.trim(),
             address: _addressCtrl.text.trim(),

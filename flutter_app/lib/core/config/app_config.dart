@@ -137,6 +137,13 @@ class AppConfig {
   static const String packageVersion = '0.1.4+5';
 
   /// Flutter web origin for QR label URLs (public scan route).
+  /// Human-readable API host for offline messages (no hardcoded PaaS service names).
+  static String get apiHostLabel {
+    final host = Uri.tryParse(apiBaseUrl)?.host;
+    if (host == null || host.isEmpty) return 'API server';
+    return host;
+  }
+
   static String get webAppBaseUrl {
     if (kIsWeb) {
       final page = Uri.base;
@@ -146,7 +153,7 @@ class AppConfig {
     }
     return const String.fromEnvironment(
       'WEB_APP_BASE_URL',
-      defaultValue: 'https://harisree.app',
+      defaultValue: productionWebUrl,
     );
   }
 }

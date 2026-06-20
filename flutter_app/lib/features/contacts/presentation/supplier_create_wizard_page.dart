@@ -87,7 +87,6 @@ class _SupplierCreateWizardPageState
 
   final _name = TextEditingController();
   final _phone = TextEditingController();
-  final _wa = TextEditingController();
   final _loc = TextEditingController();
   final _gst = TextEditingController();
   final _addr = TextEditingController();
@@ -96,7 +95,6 @@ class _SupplierCreateWizardPageState
 
   final _nameFocus = FocusNode();
   final _phoneFocus = FocusNode();
-  final _waFocus = FocusNode();
   final _locFocus = FocusNode();
   final _gstFocus = FocusNode();
   final _addrFocus = FocusNode();
@@ -125,12 +123,10 @@ class _SupplierCreateWizardPageState
   @override
   void initState() {
     super.initState();
-    _phone.addListener(_syncWaFromPhone);
     _name.addListener(_scheduleDupCheck);
     for (final n in <FocusNode>[
       _nameFocus,
       _phoneFocus,
-      _waFocus,
       _locFocus,
       _gstFocus,
       _addrFocus,
@@ -221,7 +217,6 @@ class _SupplierCreateWizardPageState
           setState(() {
             _name.text = s['name']?.toString() ?? '';
             _phone.text = s['phone']?.toString() ?? '';
-            _wa.text = s['whatsapp_number']?.toString() ?? '';
             _loc.text = s['location']?.toString() ?? '';
             _gst.text = s['gst_number']?.toString() ?? '';
             _addr.text = s['address']?.toString() ?? '';
@@ -259,14 +254,6 @@ class _SupplierCreateWizardPageState
     }
     if (widget.supplierId == null || widget.supplierId!.isEmpty) {
       await _loadDraft(session.primaryBusiness.id);
-    }
-  }
-
-  void _syncWaFromPhone() {
-    final p = _phone.text.replaceAll(RegExp(r'\D'), '');
-    final w = _wa.text.replaceAll(RegExp(r'\D'), '');
-    if (w.isEmpty || w == p) {
-      _wa.text = _phone.text;
     }
   }
 
@@ -314,7 +301,6 @@ class _SupplierCreateWizardPageState
         _step = _mapLegacyDraftStep(rawStep).clamp(0, 4);
         _name.text = m['name']?.toString() ?? '';
         _phone.text = m['phone']?.toString() ?? '';
-        _wa.text = m['whatsapp']?.toString() ?? '';
         _loc.text = m['location']?.toString() ?? '';
         _gst.text = m['gst']?.toString() ?? '';
         _addr.text = m['address']?.toString() ?? '';
@@ -352,7 +338,6 @@ class _SupplierCreateWizardPageState
       'step': _step,
       'name': _name.text,
       'phone': _phone.text,
-      'whatsapp': _wa.text,
       'location': _loc.text,
       'gst': _gst.text,
       'address': _addr.text,
@@ -541,7 +526,6 @@ class _SupplierCreateWizardPageState
               supplierId: widget.supplierId!,
               name: _name.text.trim(),
               phone: _phone.text.trim(),
-              whatsappNumber: _wa.text.trim().isEmpty ? null : _wa.text.trim(),
               location: _loc.text.trim().isEmpty ? null : _loc.text.trim(),
               brokerIds: _brokerIds.toList(),
               brokerId: _brokerIds.isEmpty ? null : _brokerIds.first,
@@ -557,7 +541,6 @@ class _SupplierCreateWizardPageState
               businessId: bid,
               name: _name.text.trim(),
               phone: _phone.text.trim(),
-              whatsappNumber: _wa.text.trim().isEmpty ? null : _wa.text.trim(),
               location: _loc.text.trim().isEmpty ? null : _loc.text.trim(),
               brokerIds: _brokerIds.isEmpty ? null : _brokerIds.toList(),
               gstNumber: _gst.text.trim().isEmpty ? null : _gst.text.trim(),
@@ -791,20 +774,6 @@ class _SupplierCreateWizardPageState
             _markDirty();
             if (_phoneError != null) setState(() => _phoneError = null);
           },
-          onSubmitted: (_) => _waFocus.requestFocus(),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _wa,
-          focusNode: _waFocus,
-          scrollPadding: _fieldScrollPad(context),
-          keyboardType: TextInputType.phone,
-          decoration: _dec(
-            'WhatsApp',
-            hint: 'Defaults to phone — edit if different',
-          ),
-          textInputAction: TextInputAction.next,
-          onChanged: (_) => _markDirty(),
           onSubmitted: (_) => _locFocus.requestFocus(),
         ),
         const SizedBox(height: 12),
@@ -1190,11 +1159,6 @@ class _SupplierCreateWizardPageState
                     child: _miniFact('Phone',
                         _phone.text.trim().isEmpty ? '—' : _phone.text.trim()),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _miniFact('WhatsApp',
-                        _wa.text.trim().isEmpty ? '—' : _wa.text.trim()),
-                  ),
                 ],
               ),
               const SizedBox(height: 6),
@@ -1485,7 +1449,6 @@ class _SupplierCreateWizardPageState
     _itemSearchDebounce?.cancel();
     _name.dispose();
     _phone.dispose();
-    _wa.dispose();
     _loc.dispose();
     _gst.dispose();
     _addr.dispose();
@@ -1493,7 +1456,6 @@ class _SupplierCreateWizardPageState
     _itemSearch.dispose();
     _nameFocus.dispose();
     _phoneFocus.dispose();
-    _waFocus.dispose();
     _locFocus.dispose();
     _gstFocus.dispose();
     _addrFocus.dispose();

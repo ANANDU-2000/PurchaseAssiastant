@@ -16,7 +16,6 @@ import '../../../core/router/post_auth_route.dart'
     show sessionCanAdminUsers, sessionIsStaff;
 import '../../../core/theme/theme_context_ext.dart';
 import '../../../shared/widgets/desktop_page_shell.dart';
-import '../widgets/accounts_whatsapp_settings_card.dart';
 import '../widgets/backup_monthly_banner.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -86,11 +85,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             _SectionTitle('Quick Actions'),
             _SettingsCard(
               children: [
-                _NavTile(
-                  icon: Icons.document_scanner_outlined,
-                  title: 'Scan purchase bill',
-                  onTap: () => context.pushNamed('purchase_scan'),
-                ),
                 _NavTile(
                   icon: Icons.add_shopping_cart_outlined,
                   title: 'New purchase',
@@ -163,8 +157,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ],
           ),
           _SectionTitle('Business'),
-          if (isOwner) const AccountsWhatsappSettingsCard(),
-          if (isOwner) const SizedBox(height: 12),
           _BusinessCard(
             session: session,
             canManageUsers: canManageUsers,
@@ -480,8 +472,8 @@ class _BusinessCard extends StatelessWidget {
           icon: Icons.receipt_long_outlined,
           title: 'Purchase order / business profile',
           subtitle: businessProfileReadOnly
-              ? 'View GSTIN, address, phone, accounts WhatsApp (read-only)'
-              : 'GSTIN, address, phone, accounts WhatsApp for PO sharing',
+              ? 'View GSTIN, address, phone (read-only)'
+              : 'GSTIN, address, phone for purchase order PDFs',
           onTap: () => context.push(
             businessProfileReadOnly
                 ? '/settings/business?readonly=1'

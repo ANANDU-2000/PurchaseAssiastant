@@ -34,10 +34,8 @@ from app.routers import (
     catalog,
     contacts,
     dashboard,
-    entries,
     exports,
     health,
-    internal_cron,
     me,
     media,
     price_intelligence,
@@ -672,11 +670,8 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
-if (settings.whatsapp_reports_cron_secret or "").strip():
-    app.include_router(internal_cron.router)
 app.include_router(auth.router)
 app.include_router(me.router)
-app.include_router(entries.router)
 app.include_router(exports.router)
 app.include_router(trade_purchases.router)
 app.include_router(damage_reports.router)

@@ -392,7 +392,6 @@ class TradePurchase {
     this.supplierGst,
     this.supplierAddress,
     this.supplierPhone,
-    this.supplierWhatsapp,
     this.brokerPhone,
     this.brokerLocation,
     this.brokerImageUrl,
@@ -448,7 +447,6 @@ class TradePurchase {
   final String? supplierGst;
   final String? supplierAddress;
   final String? supplierPhone;
-  final String? supplierWhatsapp;
   final String? brokerPhone;
   final String? brokerLocation;
   final String? brokerImageUrl;
@@ -548,7 +546,6 @@ class TradePurchase {
       supplierGst: j['supplier_gst']?.toString(),
       supplierAddress: j['supplier_address']?.toString(),
       supplierPhone: j['supplier_phone']?.toString(),
-      supplierWhatsapp: j['supplier_whatsapp']?.toString(),
       brokerPhone: j['broker_phone']?.toString(),
       brokerLocation: j['broker_location']?.toString(),
       brokerImageUrl: j['broker_image_url']?.toString(),
@@ -608,7 +605,6 @@ class TradePurchase {
     String? supplierGst,
     String? supplierAddress,
     String? supplierPhone,
-    String? supplierWhatsapp,
     String? brokerPhone,
     String? brokerLocation,
     String? brokerImageUrl,
@@ -669,7 +665,6 @@ class TradePurchase {
       supplierGst: supplierGst ?? this.supplierGst,
       supplierAddress: supplierAddress ?? this.supplierAddress,
       supplierPhone: supplierPhone ?? this.supplierPhone,
-      supplierWhatsapp: supplierWhatsapp ?? this.supplierWhatsapp,
       brokerPhone: brokerPhone ?? this.brokerPhone,
       brokerLocation: brokerLocation ?? this.brokerLocation,
       brokerImageUrl: brokerImageUrl ?? this.brokerImageUrl,

@@ -313,7 +313,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
           supplierName: first.supplierName ?? 'Supplier',
           supplierAddress: first.supplierAddress,
           supplierGst: first.supplierGst,
-          supplierPhone: first.supplierPhone ?? first.supplierWhatsapp,
+          supplierPhone: first.supplierPhone,
           purchases: data,
           fromDate: _from,
           toDate: _to,
@@ -481,7 +481,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
     };
 
     final supplierPhoneStrip = widget.kind == TradeLedgerKind.supplier
-        ? (firstInAll?.supplierPhone ?? firstInAll?.supplierWhatsapp)
+        ? firstInAll?.supplierPhone
         : null;
     final brokerPhoneStrip =
         widget.kind == TradeLedgerKind.broker ? firstInAll?.brokerPhone : null;
@@ -524,7 +524,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
             ),
           if (widget.kind == TradeLedgerKind.broker)
             IconButton(
-              tooltip: 'Share PDF (WhatsApp, etc.)',
+              tooltip: 'Share PDF',
               onPressed: (_loading || data.isEmpty)
                   ? null
                   : () => _shareBrokerStatementForChat(data),
@@ -682,8 +682,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                                         context: context,
                                         label: 'Supplier',
                                         name: catalogLead.supplierName,
-                                        phoneRaw: catalogLead.supplierPhone ??
-                                            catalogLead.supplierWhatsapp,
+                                        phoneRaw: catalogLead.supplierPhone,
                                       ),
                                       _ledgerCatalogPartyBlock(
                                         context: context,

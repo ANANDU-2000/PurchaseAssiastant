@@ -7,9 +7,6 @@ import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/providers/business_write_event.dart';
 import '../../../core/providers/deferred_invalidation.dart';
 import '../../../core/providers/item_detail_providers.dart';
-import '../../../core/providers/catalog_providers.dart' show catalogItemDetailProvider;
-import '../../../core/providers/stock_providers.dart'
-    show stockItemDetailProvider;
 import '../../../core/providers/trade_purchases_provider.dart'
     show tradePurchasesForItemProvider;
 import '../../../core/theme/hexa_colors.dart';
@@ -45,29 +42,26 @@ class ItemDetailPage extends ConsumerWidget {
           next.kind == 'purchase' || next.kind == 'stock';
       if (purchaseOrStock &&
           (next.affectsItem(itemId) || next.isGlobal)) {
-        deferInvalidateDelayed(ref, stockItemDetailProvider(itemId));
+        deferInvalidateDelayed(ref, itemDetailBundleProvider(itemId));
         if (next.kind == 'purchase') {
           deferInvalidateDelayed(ref, tradePurchasesForItemProvider(itemId));
         }
       }
     });
 
-    final catalogAsync = ref.watch(catalogItemDetailProvider(itemId));
-    final stockFetch = ref.watch(stockItemDetailProvider(itemId));
-    final stockRow = ref.watch(itemDetailStockProvider(itemId));
-    final catalog = catalogAsync.valueOrNull ?? const <String, dynamic>{};
-    final stock = stockRow ?? stockFetch.valueOrNull ?? const <String, dynamic>{};
+    ref.watch(itemDetailBundleProvider(itemId));
+    final bundleAsync = ref.watch(itemDetailBundleProvider(itemId));
+    final catalog = ref.watch(itemDetailCatalogProvider(itemId)) ??
+        const <String, dynamic>{};
+    final stock = ref.watch(itemDetailStockProvider(itemId)) ??
+        const <String, dynamic>{};
     final hasAnyData = catalog.isNotEmpty || stock.isNotEmpty;
     final gutter = HexaResponsive.pageGutter(context, operational: true);
     final desktop = HexaBreakpoints.isDesktop(context);
 
     Future<void> doRefresh() async {
-      ref.invalidate(catalogItemDetailProvider(itemId));
-      ref.invalidate(stockItemDetailProvider(itemId));
-      await Future.wait<void>([
-        ref.read(catalogItemDetailProvider(itemId).future).then((_) {}),
-        ref.read(stockItemDetailProvider(itemId).future).then((_) {}),
-      ]);
+      ref.invalidate(itemDetailBundleProvider(itemId));
+      await ref.read(itemDetailBundleProvider(itemId).future).then((_) {});
     }
 
     Widget buildDetail({
@@ -136,11 +130,8 @@ class ItemDetailPage extends ConsumerWidget {
     final itemName = (catalog['name']?.toString() ?? '').trim();
 
     if (!hasAnyData &&
-        catalogAsync.isLoading &&
-        stockFetch.isLoading &&
-        stockRow == null &&
-        !catalogAsync.hasError &&
-        !stockFetch.hasError) {
+        bundleAsync.isLoading &&
+        !bundleAsync.hasError) {
       return const Scaffold(
         backgroundColor: HexaColors.brandBackground,
         body: SafeArea(
@@ -149,15 +140,14 @@ class ItemDetailPage extends ConsumerWidget {
       );
     }
 
-    if (!hasAnyData && catalogAsync.hasError && stockFetch.hasError) {
+    if (!hasAnyData && bundleAsync.hasError) {
       return Scaffold(
         backgroundColor: HexaColors.brandBackground,
         body: SafeArea(
           child: FriendlyLoadError(
             message: 'Could not load item. Tap to retry.',
             onRetry: () {
-              ref.invalidate(catalogItemDetailProvider(itemId));
-              ref.invalidate(stockItemDetailProvider(itemId));
+              ref.invalidate(itemDetailBundleProvider(itemId));
             },
           ),
         ),

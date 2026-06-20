@@ -6,7 +6,6 @@ import '../../features/shell/shell_branch_provider.dart';
 import '../auth/provider_api_guard.dart';
 import '../auth/session_notifier.dart' show activeSessionProvider, hexaApiProvider;
 import '../json_coerce.dart';
-import '../utils/report_date_params.dart';
 import '../utils/stock_audit_rows.dart';
 import '../utils/home_activity_units.dart';
 import 'stock_providers.dart'
@@ -16,69 +15,18 @@ import 'home_dashboard_provider.dart'
     show
         homeActivityFeedFetchEnabledProvider,
         homeDashboardDataProvider,
-        homeOverviewSnapForKey,
         homeTabHasOperationalBundle,
         homePeriodProvider,
         homeCustomDateRangeProvider,
         homeStockMovementSectionVisibleProvider,
         homeLowStockTopFetchEnabledProvider,
         homeStaffSessionsFetchEnabledProvider,
-        HomePeriod,
         HomeDashboardData,
-        homeDashboardDataFromApiSnapshot,
         homePeriodRange;
 import 'api_read_snapshots.dart';
 import 'delivery_pipeline_provider.dart';
 import 'notifications_provider.dart' show mergedNotificationFeedProvider;
 import 'warehouse_alerts_provider.dart';
-
-const _ownerOverviewTtl = Duration(minutes: 3);
-final Map<String, Map<String, dynamic>> _ownerOverviewSnapCache = {};
-final Map<String, DateTime> _ownerOverviewFetchedAt = {};
-final Map<String, Future<Map<String, dynamic>>> _ownerOverviewInflight = {};
-
-String _ownerOverviewKey(String businessId, String from, String to) =>
-    '$businessId|$from|$to';
-
-Future<Map<String, dynamic>> _fetchOwnerOverviewSnapshot({
-  required Ref ref,
-  required String businessId,
-  required String from,
-  required String to,
-}) {
-  if (providerSkipApi(ref)) {
-    return Future.value(<String, dynamic>{});
-  }
-  final key = _ownerOverviewKey(businessId, from, to);
-  final shared = homeOverviewSnapForKey(key);
-  if (shared != null) {
-    return Future.value(Map<String, dynamic>.from(shared));
-  }
-  final fetchedAt = _ownerOverviewFetchedAt[key];
-  if (fetchedAt != null &&
-      DateTime.now().difference(fetchedAt) < _ownerOverviewTtl) {
-    final cached = _ownerOverviewSnapCache[key];
-    if (cached != null) return Future.value(cached);
-  }
-  final existing = _ownerOverviewInflight[key];
-  if (existing != null) return existing;
-  final future = (() async {
-    final snap = await ref.read(hexaApiProvider).reportsHomeOverview(
-          businessId: businessId,
-          from: from,
-          to: to,
-          compact: true,
-          shellBundle: false,
-          tzOffsetMinutes: localTzOffsetMinutes,
-        );
-    final normalized = Map<String, dynamic>.from(snap);
-    _ownerOverviewSnapCache[key] = normalized;
-    _ownerOverviewFetchedAt[key] = DateTime.now();
-    return normalized;
-  })().whenComplete(() => _ownerOverviewInflight.remove(key));
-  _ownerOverviewInflight[key] = future;
-  return future;
-}
 
 String? _activityUnitsOrNull(String? raw) {
   final u = dedupeActivityUnitsLine(raw);
@@ -174,28 +122,6 @@ final homeInventorySummaryProvider =
   } catch (_) {
     return HomeInventorySummary.empty;
   }
-});
-
-/// Today-only dashboard row — unused; period stats come from [homeDashboardDataProvider].
-@Deprecated('Use homeDashboardDataProvider with HomePeriod.today')
-final homeTodayDashboardDataProvider =
-    FutureProvider.autoDispose<HomeDashboardData>((ref) async {
-  final disposed = registerProviderDisposeGuard(ref);
-  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
-  final session = ref.watch(activeSessionProvider);
-  if (session == null) return HomeDashboardData.empty;
-  final now = DateTime.now();
-  final day = DateTime(now.year, now.month, now.day);
-  final from = _apiDate(day);
-  final to = from;
-  final snap = await _fetchOwnerOverviewSnapshot(
-    ref: ref,
-    businessId: session.primaryBusiness.id,
-    from: from,
-    to: to,
-  );
-  if (providerWasDisposed(disposed)) return HomeDashboardData.empty;
-  return homeDashboardDataFromApiSnapshot(HomePeriod.today, snap);
 });
 
 /// Single parallel fetch for low + critical counts (avoids duplicate sequential home polls).
@@ -305,14 +231,27 @@ final stockLowTopHomeProvider =
   if (!ref.watch(homeLowStockTopFetchEnabledProvider)) {
     return [];
   }
+  if (homeTabHasOperationalBundle(ref)) {
+    final bundled = ref
+        .watch(homeDashboardDataProvider)
+        .snapshot
+        .data
+        .operational
+        ?.lowStockTop;
+    if (bundled != null && bundled.isNotEmpty) {
+      return bundled;
+    }
+  }
   final disposed = registerProviderDisposeGuard(ref);
   registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
-  final m = await ref.read(hexaApiProvider).listStockLow(
+  final m = await ref.read(hexaApiProvider).listStock(
         businessId: session.primaryBusiness.id,
         page: 1,
         perPage: 6,
+        status: 'low',
+        sort: 'stock_asc',
       );
   if (providerWasDisposed(disposed)) return [];
   final items = m['items'];
@@ -423,29 +362,6 @@ final activeSessionsCountProvider = FutureProvider.autoDispose<int>((ref) async 
   final rows = await ref.watch(activeStaffSessionsProvider.future);
   if (providerWasDisposed(disposed)) return 0;
   return rows.length;
-});
-
-/// Rolling calendar month (1st → today) for owner home quick stats.
-final homeMonthDashboardDataProvider =
-    FutureProvider.autoDispose<HomeDashboardData>((ref) async {
-  final disposed = registerProviderDisposeGuard(ref);
-  registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
-  if (!shellBranchIsVisible(ref, ShellBranch.home)) {
-    return HomeDashboardData.empty;
-  }
-  final session = ref.watch(activeSessionProvider);
-  if (session == null) return HomeDashboardData.empty;
-  final now = DateTime.now();
-  final start = DateTime(now.year, now.month, 1);
-  final end = DateTime(now.year, now.month, now.day);
-  final snap = await _fetchOwnerOverviewSnapshot(
-    ref: ref,
-    businessId: session.primaryBusiness.id,
-    from: _apiDate(start),
-    to: _apiDate(end),
-  );
-  if (providerWasDisposed(disposed)) return HomeDashboardData.empty;
-  return homeDashboardDataFromApiSnapshot(HomePeriod.month, snap);
 });
 
 /// Unified owner feed: recent purchases + today's stock adjustments.

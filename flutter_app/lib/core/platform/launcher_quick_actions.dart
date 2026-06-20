@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 import 'package:quick_actions/quick_actions.dart';
 
 /// Types for home-screen / launcher shortcuts (must match [ShortcutItem.type]).
-const String qaLauncherScan = 'qa_scan';
 const String qaLauncherNewPurchase = 'qa_new_purchase';
 const String qaLauncherResumeDraft = 'qa_resume_draft';
 const String qaLauncherHistory = 'qa_history';
@@ -21,9 +20,6 @@ void _dispatchLauncherShortcut(String type) {
   final r = _launcherShortcutsRouter;
   if (r == null) return;
   switch (type) {
-    case qaLauncherScan:
-      r.pushNamed('purchase_scan');
-      break;
     case qaLauncherNewPurchase:
       r.go('/purchase/new');
       break;
@@ -48,11 +44,6 @@ Future<void> setupLauncherQuickActions() async {
     _quickActionsInitialized = true;
   }
   await qa.setShortcutItems(const [
-    ShortcutItem(
-      type: qaLauncherScan,
-      localizedTitle: 'Scan bill',
-      localizedSubtitle: 'Camera or gallery',
-    ),
     ShortcutItem(
       type: qaLauncherNewPurchase,
       localizedTitle: 'New purchase',

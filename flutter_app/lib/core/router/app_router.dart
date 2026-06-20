@@ -52,8 +52,6 @@ import '../../features/purchase/domain/purchase_draft.dart';
 import '../../features/purchase/presentation/purchase_detail_page.dart';
 import '../../features/purchase/presentation/purchase_home_page.dart';
 import '../../features/purchase/presentation/purchase_entry_wizard_v2.dart';
-import '../../features/purchase/presentation/purchase_scan_draft_wizard_page.dart';
-import '../../features/purchase/presentation/scan_purchase_v2_page.dart';
 import '../../features/reports/presentation/sales_comparison_page.dart';
 import '../../features/reports/presentation/reports_category_drill_page.dart';
 import '../../features/reports/presentation/reports_subcategory_drill_page.dart';
@@ -865,8 +863,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           bool resumeDraft =
               state.uri.queryParameters['resumeDraft'] == 'true' ||
                   state.uri.queryParameters['resume'] == '1';
-          String? aiScanToken;
-          Map<String, dynamic>? aiScanBaseJson;
           final ex = state.extra;
           if (ex is PurchaseDraft) {
             seed = ex;
@@ -885,47 +881,28 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   );
                 } catch (_) {}
               }
-              final ai = m['aiScan'];
-              if (ai is Map) {
-                final tok = ai['token']?.toString().trim();
-                if (tok != null && tok.isNotEmpty) aiScanToken = tok;
-                final bs = ai['baseScan'];
-                if (bs is Map) {
-                  aiScanBaseJson = Map<String, dynamic>.from(bs);
-                }
-              }
             } catch (_) {}
           }
           return iosPushPage(
             key: ValueKey(
-              'purchase_new_${seed != null ? 'seed' : resumeDraft ? 'resume' : 'fresh'}_${(cid != null && cid.isNotEmpty) ? cid : 'none'}_${aiScanToken ?? 'noai'}',
+              'purchase_new_${seed != null ? 'seed' : resumeDraft ? 'resume' : 'fresh'}_${(cid != null && cid.isNotEmpty) ? cid : 'none'}',
             ),
             child: PurchaseEntryWizardV2(
               initialCatalogItemId:
                   (cid != null && cid.isNotEmpty) ? cid : null,
               initialDraft: seed,
               resumeDraft: resumeDraft && seed == null,
-              aiScanToken: aiScanToken,
-              aiScanBaseJson: aiScanBaseJson,
             ),
           );
         },
       ),
       GoRoute(
         path: '/purchase/scan',
-        name: 'purchase_scan',
-        pageBuilder: (context, state) => iosPushPage(
-          key: state.pageKey,
-          child: const ScanPurchaseV2Page(),
-        ),
+        redirect: (_, __) => '/purchase/new',
       ),
       GoRoute(
         path: '/purchase/scan-draft',
-        name: 'purchase_scan_draft',
-        pageBuilder: (context, state) => iosPushPage(
-          key: state.pageKey,
-          child: const PurchaseScanDraftWizardPage(),
-        ),
+        redirect: (_, __) => '/purchase/new',
       ),
       GoRoute(
         path: '/purchase/edit/:purchaseId',

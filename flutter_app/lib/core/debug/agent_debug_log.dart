@@ -16,6 +16,7 @@ void agentDebugLog({
   Map<String, dynamic>? data,
   String runId = 'pre-fix',
 }) {
+  if (!kDebugMode) return;
   final payload = <String, dynamic>{
     'sessionId': _sessionId,
     'hypothesisId': hypothesisId,
@@ -25,10 +26,8 @@ void agentDebugLog({
     'timestamp': DateTime.now().millisecondsSinceEpoch,
     'runId': runId,
   };
-  // #region agent log
   unawaited(_postLog(payload));
   debugPrint('[DBG5843f1] ${jsonEncode(payload)}');
-  // #endregion
 }
 
 Future<void> _postLog(Map<String, dynamic> payload) async {

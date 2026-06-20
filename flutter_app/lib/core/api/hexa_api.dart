@@ -12,7 +12,6 @@ import 'dio_auto_retry_interceptor.dart';
 import 'hexa_connection_timeout_retry_interceptor.dart';
 import '../auth/auth_error_messages.dart' show dioIsAutoRetryableTransport;
 import '../config/app_config.dart';
-import '../debug/agent_debug_log.dart';
 import '../json_coerce.dart';
 import '../models/session.dart';
 import '../stock/stock_version_retry.dart';
@@ -46,17 +45,7 @@ List<Map<String, dynamic>> _parseJsonMapList(dynamic data) {
   return [];
 }
 
-/// Bill scans upload multi‑MB images and may wait on OCR/LLM — avoid false timeouts.
-Options get _scanMultipartOptions => Options(
-      sendTimeout: const Duration(seconds: 120),
-      receiveTimeout: const Duration(seconds: 120),
-    );
-
-Options get _scanPollOptions => Options(
-      receiveTimeout: const Duration(seconds: 45),
-    );
-
-/// Stock PATCH can wait on notifications + detail rebuild on Render — avoid false timeouts.
+/// Bill scans removed — keep stock write timeouts only.
 Options get _stockWriteOptions => Options(
       sendTimeout: const Duration(seconds: 45),
       receiveTimeout: const Duration(seconds: 90),
@@ -180,18 +169,6 @@ class HexaApi {
             return handler.next(options);
           }
           if (_blockBusinessApi?.call() == true) {
-            // #region agent log
-            if (path.contains('/stock/list') ||
-                path.contains('/suppliers') ||
-                path.contains('/brokers')) {
-              agentDebugLog(
-                hypothesisId: 'H3',
-                location: 'hexa_api.dart:onRequest',
-                message: 'dio auth_blocked reject',
-                data: {'path': path},
-              );
-            }
-            // #endregion
             return handler.reject(
               DioException(
                 requestOptions: options,
@@ -912,10 +889,6 @@ class HexaApi {
     /// When true, always sends [contactEmail] (use empty string to clear).
     bool includeContactEmail = false,
     String? contactEmail,
-
-    /// When true, always sends [accountsWhatsappNumber] (use empty string to clear).
-    bool includeAccountsWhatsapp = false,
-    String? accountsWhatsappNumber,
   }) async {
     final res = await _dio.patch<Map<String, dynamic>>(
       '/v1/me/businesses/$businessId/branding',
@@ -927,8 +900,6 @@ class HexaApi {
         if (address != null) 'address': address,
         if (phone != null) 'phone': phone,
         if (includeContactEmail) 'contact_email': (contactEmail ?? '').trim(),
-        if (includeAccountsWhatsapp)
-          'accounts_whatsapp_number': (accountsWhatsappNumber ?? '').trim(),
       },
     );
     return res.data ?? {};
@@ -973,141 +944,6 @@ class HexaApi {
       data: formData,
     );
     return res.data ?? {};
-  }
-
-  /// Bill image → structured preview (legacy wire shape; server uses same Vision pipeline as v2).
-  Future<Map<String, dynamic>> scanPurchaseBillMultipart({
-    required String businessId,
-    required List<int> imageBytes,
-    String filename = 'bill.jpg',
-  }) async {
-    final lower = filename.toLowerCase();
-    final MediaType ct;
-    if (lower.endsWith('.png')) {
-      ct = MediaType('image', 'png');
-    } else if (lower.endsWith('.webp')) {
-      ct = MediaType('image', 'webp');
-    } else {
-      ct = MediaType('image', 'jpeg');
-    }
-    final formData = FormData.fromMap({
-      'image': MultipartFile.fromBytes(imageBytes,
-          filename: filename, contentType: ct),
-    });
-    final res = await _dio.post<Map<String, dynamic>>(
-      '/v1/me/scan-purchase',
-      queryParameters: {'business_id': businessId},
-      data: formData,
-      options: _scanMultipartOptions,
-    );
-    return Map<String, dynamic>.from(res.data ?? {});
-  }
-
-  /// Scanner v2: Bill image → OpenAI Vision → LLM parse → matching → validated preview table.
-  Future<Map<String, dynamic>> scanPurchaseBillV2Multipart({
-    required String businessId,
-    required List<int> imageBytes,
-    String filename = 'bill_scan.jpg',
-  }) async {
-    final lower = filename.toLowerCase();
-    final MediaType ct;
-    if (lower.endsWith('.png')) {
-      ct = MediaType('image', 'png');
-    } else if (lower.endsWith('.webp')) {
-      ct = MediaType('image', 'webp');
-    } else {
-      ct = MediaType('image', 'jpeg');
-    }
-    final formData = FormData.fromMap({
-      'image': MultipartFile.fromBytes(imageBytes,
-          filename: filename, contentType: ct),
-    });
-    final res = await _dio.post<Map<String, dynamic>>(
-      '/v1/me/scan-purchase-v2',
-      queryParameters: {'business_id': businessId},
-      data: formData,
-      options: _scanMultipartOptions,
-    );
-    return Map<String, dynamic>.from(res.data ?? {});
-  }
-
-  /// Scanner v3: start async scan and return a scan_token immediately.
-  Future<Map<String, dynamic>> scanPurchaseBillV3StartMultipart({
-    required String businessId,
-    required List<int> imageBytes,
-    String filename = 'bill_scan.jpg',
-  }) async {
-    final lower = filename.toLowerCase();
-    final MediaType ct;
-    if (lower.endsWith('.png')) {
-      ct = MediaType('image', 'png');
-    } else if (lower.endsWith('.webp')) {
-      ct = MediaType('image', 'webp');
-    } else {
-      ct = MediaType('image', 'jpeg');
-    }
-    final formData = FormData.fromMap({
-      'image': MultipartFile.fromBytes(imageBytes,
-          filename: filename, contentType: ct),
-    });
-    final res = await _dio.post<Map<String, dynamic>>(
-      '/v1/me/scan-purchase-v3/start',
-      queryParameters: {'business_id': businessId},
-      data: formData,
-      options: _scanMultipartOptions,
-    );
-    return Map<String, dynamic>.from(res.data ?? {});
-  }
-
-  /// Scanner v3: poll current scan status/result.
-  Future<Map<String, dynamic>> scanPurchaseBillV3Status({
-    required String businessId,
-    required String scanToken,
-  }) async {
-    final res = await _dio.get<Map<String, dynamic>>(
-      '/v1/me/scan-purchase-v3/status',
-      queryParameters: {'business_id': businessId, 'scan_token': scanToken},
-      options: _scanPollOptions,
-    );
-    return Map<String, dynamic>.from(res.data ?? {});
-  }
-
-  Future<Map<String, dynamic>> scanPurchaseBillV2Correct({
-    required String businessId,
-    required Map<String, dynamic> body,
-  }) async {
-    final res = await _dio.post<Map<String, dynamic>>(
-      '/v1/me/scan-purchase-v2/correct',
-      queryParameters: {'business_id': businessId},
-      data: body,
-    );
-    return Map<String, dynamic>.from(res.data ?? {});
-  }
-
-  Future<Map<String, dynamic>> scanPurchaseBillV2Confirm({
-    required String businessId,
-    required Map<String, dynamic> body,
-  }) async {
-    final res = await _dio.post<dynamic>(
-      '/v1/me/scan-purchase-v2/confirm',
-      queryParameters: {'business_id': businessId},
-      data: body,
-    );
-    final d = res.data;
-    if (d is Map) return Map<String, dynamic>.from(d);
-    return {};
-  }
-
-  Future<Map<String, dynamic>> scanPurchaseBillV2Update({
-    required String businessId,
-    required Map<String, dynamic> body,
-  }) async {
-    final res = await _dio.post<Map<String, dynamic>>(
-      '/v1/me/scan-purchase-v2/update',
-      queryParameters: {'business_id': businessId},
-      data: body,
-    );
-    return Map<String, dynamic>.from(res.data ?? {});
   }
 
   Future<Map<String, dynamic>> analyticsSummary(
@@ -1177,30 +1013,6 @@ class HexaApi {
     return Map<String, dynamic>.from(res.data ?? {});
   }
 
-  Future<List<dynamic>> listEntries({
-    required String businessId,
-    String? from,
-    String? to,
-    String? item,
-    String? supplierId,
-    String? brokerId,
-  }) async {
-    final res = await _dio.get<Map<String, dynamic>>(
-      '/v1/businesses/$businessId/entries',
-      queryParameters: {
-        if (from != null) 'from': from,
-        if (to != null) 'to': to,
-        if (item != null && item.isNotEmpty) 'item': item,
-        if (supplierId != null && supplierId.isNotEmpty)
-          'supplier_id': supplierId,
-        if (brokerId != null && brokerId.isNotEmpty) 'broker_id': brokerId,
-      },
-    );
-    final items = res.data?['items'];
-    if (items is List) return items;
-    return [];
-  }
-
   /// Unified catalog items + suppliers + entries (server-side substring match).
   Future<Map<String, dynamic>> unifiedSearch({
     required String businessId,
@@ -1234,11 +1046,13 @@ class HexaApi {
     String? catalogItemId,
     String? purchaseFrom,
     String? purchaseTo,
+    bool includeLines = false,
   }) async {
     final path = '/v1/businesses/$businessId/trade-purchases';
     final queryParameters = <String, dynamic>{
       'limit': limit,
       'offset': offset,
+      'include_lines': includeLines,
       if (statusParam != null) 'status': statusParam,
       if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
       if (supplierId != null && supplierId.trim().isNotEmpty)
@@ -1291,6 +1105,7 @@ class HexaApi {
     String? catalogItemId,
     String? purchaseFrom,
     String? purchaseTo,
+    bool includeLines = false,
   }) async {
     final s = status?.trim().toLowerCase();
     final statusNorm = (s == null ||
@@ -1322,6 +1137,7 @@ class HexaApi {
         catalogItemId: catalogItemId,
         purchaseFrom: purchaseFrom,
         purchaseTo: purchaseTo,
+        includeLines: includeLines,
       );
       if (page.isEmpty) break;
       out.addAll(page);
@@ -1955,38 +1771,6 @@ class HexaApi {
     return Map<String, dynamic>.from(res.data ?? {});
   }
 
-  Future<Map<String, dynamic>> getWhatsAppReportSchedule({
-    required String businessId,
-  }) async {
-    final res = await _dio.get<Map<String, dynamic>>(
-      '/v1/businesses/$businessId/whatsapp-reports/schedule',
-    );
-    return Map<String, dynamic>.from(res.data ?? {});
-  }
-
-  Future<void> patchWhatsAppReportSchedule({
-    required String businessId,
-    bool? enabled,
-    String? scheduleType, // daily|weekly|monthly
-    int? hour,
-    int? minute,
-    String? timezone,
-    String? toE164,
-  }) async {
-    final data = <String, dynamic>{
-      if (enabled != null) 'enabled': enabled,
-      if (scheduleType != null) 'schedule_type': scheduleType,
-      if (hour != null) 'hour': hour,
-      if (minute != null) 'minute': minute,
-      if (timezone != null) 'timezone': timezone,
-      if (toE164 != null) 'to_e164': toE164,
-    };
-    await _dio.patch<dynamic>(
-      '/v1/businesses/$businessId/whatsapp-reports/schedule',
-      data: data,
-    );
-  }
-
   Future<List<Map<String, dynamic>>> listSuppliers({
     required String businessId,
 
@@ -2012,7 +1796,6 @@ class HexaApi {
     required String businessId,
     required String name,
     String? phone,
-    String? whatsappNumber,
     String? location,
     String? brokerId,
     List<String>? brokerIds,
@@ -2030,8 +1813,6 @@ class HexaApi {
     final data = <String, dynamic>{
       'name': name,
       if (phone != null && phone.isNotEmpty) 'phone': phone,
-      if (whatsappNumber != null && whatsappNumber.isNotEmpty)
-        'whatsapp_number': whatsappNumber,
       if (location != null && location.isNotEmpty) 'location': location,
       if (brokerId != null && brokerId.isNotEmpty) 'broker_id': brokerId,
       if (brokerIds != null && brokerIds.isNotEmpty) 'broker_ids': brokerIds,
@@ -2107,7 +1888,6 @@ class HexaApi {
     required String businessId,
     required String name,
     String? phone,
-    String? whatsappNumber,
     String? location,
     String? notes,
     String commissionType = 'percent',
@@ -2125,8 +1905,6 @@ class HexaApi {
       data: {
         'name': name,
         if (phone != null && phone.isNotEmpty) 'phone': phone,
-        if (whatsappNumber != null && whatsappNumber.isNotEmpty)
-          'whatsapp_number': whatsappNumber,
         if (location != null && location.isNotEmpty) 'location': location,
         if (notes != null && notes.isNotEmpty) 'notes': notes,
         'commission_type': commissionType,
@@ -2151,7 +1929,6 @@ class HexaApi {
     required String supplierId,
     String? name,
     String? phone,
-    String? whatsappNumber,
     String? location,
     String? brokerId,
     List<String>? brokerIds,
@@ -2171,7 +1948,6 @@ class HexaApi {
       data: {
         if (name != null) 'name': name,
         if (phone != null) 'phone': phone,
-        if (whatsappNumber != null) 'whatsapp_number': whatsappNumber,
         if (location != null) 'location': location,
         if (brokerId != null) 'broker_id': brokerId,
         if (brokerIds != null) 'broker_ids': brokerIds,
@@ -2202,7 +1978,6 @@ class HexaApi {
     required String brokerId,
     String? name,
     String? phone,
-    String? whatsappNumber,
     String? location,
     String? notes,
     String? commissionType,
@@ -2220,7 +1995,6 @@ class HexaApi {
       data: {
         if (name != null) 'name': name,
         if (phone != null) 'phone': phone,
-        if (whatsappNumber != null) 'whatsapp_number': whatsappNumber,
         if (location != null) 'location': location,
         if (notes != null) 'notes': notes,
         if (commissionType != null) 'commission_type': commissionType,
@@ -2623,6 +2397,23 @@ class HexaApi {
     return res.data ?? {};
   }
 
+  Future<Map<String, dynamic>> getStockItemBundle({
+    required String businessId,
+    required String itemId,
+    String? periodStart,
+    String? periodEnd,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/stock/$itemId/bundle',
+      queryParameters: {
+        if (periodStart != null && periodStart.isNotEmpty)
+          'period_start': periodStart,
+        if (periodEnd != null && periodEnd.isNotEmpty) 'period_end': periodEnd,
+      },
+    );
+    return res.data ?? {};
+  }
+
   Future<Map<String, dynamic>> getStockIntelligence({
     required String businessId,
     required String itemId,
@@ -2785,28 +2576,6 @@ class HexaApi {
           'tins': 0,
           'kg': 0,
           'item_count': 0,
-        };
-  }
-
-  /// Low-stock list (current below reorder when reorder is set), sorted by urgency.
-  Future<Map<String, dynamic>> listStockLow({
-    required String businessId,
-    int page = 1,
-    int perPage = 50,
-  }) async {
-    final res = await _dio.get<Map<String, dynamic>>(
-      '/v1/businesses/$businessId/stock/low',
-      queryParameters: {
-        'page': page,
-        'per_page': perPage,
-      },
-    );
-    return res.data ??
-        <String, dynamic>{
-          'items': <dynamic>[],
-          'total': 0,
-          'page': page,
-          'per_page': perPage,
         };
   }
 
@@ -3786,19 +3555,6 @@ class HexaApi {
     final data = res.data;
     if (data is! List) return [];
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-  }
-
-  /// Legacy entry-based home KPIs (top item profit, MTD vs prior month, alerts).
-  Future<Map<String, dynamic>> homeInsights({
-    required String businessId,
-    required String from,
-    required String to,
-  }) async {
-    final res = await _dio.get<Map<String, dynamic>>(
-      '/v1/businesses/$businessId/analytics/insights',
-      queryParameters: {'from': from, 'to': to},
-    );
-    return res.data ?? {};
   }
 
   Future<List<Map<String, dynamic>>> analyticsItems(

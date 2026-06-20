@@ -18,7 +18,6 @@ enum NotificationType {
   profitLow,
   reminder,
   system,
-  whatsapp,
   purchaseDue,
   purchaseOverdue,
   serverInApp,
@@ -189,7 +188,6 @@ NotificationCategoryFilter notificationCategoryForItem(NotificationItem n) {
   }
   if (n.type == NotificationType.system ||
       n.type == NotificationType.reminder ||
-      n.type == NotificationType.whatsapp ||
       kind == 'delivery_received' ||
       kind == 'duplicate_item') {
     return NotificationCategoryFilter.system;

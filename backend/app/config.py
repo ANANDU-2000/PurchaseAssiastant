@@ -138,20 +138,12 @@ class Settings(BaseSettings):
     # Comma-separated OAuth 2.0 client IDs whose ID tokens we accept (usually one Web client used as serverClientId in Flutter).
     google_oauth_client_ids: str = ""
 
-    # Legacy BSP fields — super-admin platform integration / forks. Harisree app assistant uses /ai/chat only.
+    # Legacy BSP fields — super-admin platform integration / forks.
     dialog360_api_key: str | None = None
     dialog360_base_url: str = "https://waba-v2.360dialog.io"
     dialog360_phone_number_id: str | None = None
     dialog360_webhook_secret: str | None = None
     dialog360_template_namespace: str | None = None
-
-    # Optional: Authkey.io WhatsApp (outbound). If set, outbound text may route here instead of 360dialog.
-    authkey_api_key: str | None = None
-    authkey_base_url: str = "https://manage.authkey.io"
-    authkey_sender_label: str = "HARISREE"
-    authkey_from_number: str | None = None
-    # E.164 number to show in the app (“chat with this assistant”). Falls back to authkey_from_number if unset.
-    whatsapp_assistant_e164: str | None = None
 
     openai_api_key: str | None = None
     openai_model_parse: str = Field(
@@ -164,15 +156,6 @@ class Settings(BaseSettings):
     enable_ai_extraction: bool = True
     # stub | openai | groq | gemini — intent extraction uses matching key (env or platform_integration DB).
     ai_provider: str = "stub"
-    # Second LLM call for WhatsApp *query* replies: rephrase server-computed FACTS (adds API cost).
-    whatsapp_llm_reply: bool = False
-    # Broader agent polish: previews, save/update acks, clarify/help (adds API cost per message when enabled).
-    whatsapp_llm_agent: bool = False
-    # Optional shared secret: Authkey must send header X-Authkey-Webhook-Secret matching this value (empty = disabled).
-    authkey_webhook_secret: str | None = None
-    # Inbound Authkey webhook rate limits (per phone; in-process — use Redis + single worker or tune for multi-instance).
-    webhook_max_per_minute: int = 20
-    webhook_max_per_hour: int = 120
     groq_model: str = "llama-3.3-70b-versatile"
     gemini_model: str = "gemini-2.0-flash"
     groq_api_key: str | None = None
@@ -194,11 +177,10 @@ class Settings(BaseSettings):
     plan_basic_price_inr: int = 49900
     plan_pro_price_inr: int = 99900
     plan_premium_price_inr: int = 199900
-    # When true, WhatsApp/AI routes check BusinessSubscription (grandfather: no row = allowed).
+    # When true, subscription routes check BusinessSubscription (grandfather: no row = allowed).
     billing_enforce: bool = False
-    # Default bundle pricing hints (paise): base cloud + optional WhatsApp+AI add-on (admin can override per business).
+    # Default bundle pricing hints (paise): base cloud (admin can override per business).
     billing_cloud_infra_paise: int = 230_000  # ₹2,300 (paise)
-    billing_whatsapp_ai_addon_paise: int = 250_000  # ₹2,500 (paise)
 
     sentry_dsn: str | None = None
     log_level: str = "INFO"
@@ -212,11 +194,6 @@ class Settings(BaseSettings):
     enable_ai: bool = True
     enable_ocr: bool = False
 
-    # WhatsApp Cloud API (server-side scheduled auto-send; optional)
-    whatsapp_cloud_access_token: str | None = None
-    whatsapp_cloud_phone_number_id: str | None = None
-    # Secret for Render cron → internal sender endpoint (set long random value in production)
-    whatsapp_reports_cron_secret: str | None = None
     enable_voice: bool = False
     enable_realtime: bool = True
 

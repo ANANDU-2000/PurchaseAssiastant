@@ -14,7 +14,7 @@ import '../../../core/providers/notification_center_provider.dart';
 import '../../../core/providers/server_notifications_provider.dart';
 import '../../../core/providers/home_dashboard_provider.dart'
     show homeLowStockDetailFetchEnabledProvider, lowStockDashboardMountedProvider;
-import '../../../core/providers/stock_providers.dart';
+import '../../../core/providers/low_stock_providers.dart';
 import '../../../core/services/stock_list_pdf.dart';
 import '../../../core/services/pdf_actions.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -72,10 +72,14 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
     // Enable fetch before first build — postFrameCallback was too late (All 0 flash).
     ref.read(homeLowStockDetailFetchEnabledProvider.notifier).state = true;
     ref.read(lowStockDashboardMountedProvider.notifier).update((n) => n + 1);
+    ref.read(lowStockOperationsQueryProvider.notifier).update(
+          (q) => q.copyWith(perPage: 500),
+        );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ref.invalidate(lowStockByCategoryProvider);
+      ref.invalidate(lowStockOperationsPageProvider);
+      ref.invalidate(lowStockOperationsSummaryProvider);
       final filter = GoRouterState.of(context).uri.queryParameters['filter'];
       final idx = _tabIndexFromFilter(filter);
       if (idx != null && idx != _tabs.index) {
@@ -97,7 +101,7 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
     _loadSlowTimer?.cancel();
     _loadSlowTimer = Timer(const Duration(seconds: 10), () {
       if (!mounted) return;
-      if (ref.read(lowStockByCategoryProvider).isLoading) {
+      if (ref.read(lowStockOperationsGroupedProvider).isLoading) {
         setState(() => _loadTimedOut = true);
       }
     });
@@ -105,7 +109,8 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
 
   void _refreshLowStock() {
     if (_loadTimedOut && mounted) setState(() => _loadTimedOut = false);
-    ref.invalidate(lowStockByCategoryProvider);
+    ref.invalidate(lowStockOperationsPageProvider);
+    ref.invalidate(lowStockOperationsSummaryProvider);
     _scheduleLoadSlowTimer();
   }
 
@@ -149,7 +154,8 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
           );
       if (!mounted) return;
       setState(() => _informedOwnerIds.add(id));
-      ref.invalidate(lowStockByCategoryProvider);
+      ref.invalidate(lowStockOperationsPageProvider);
+      ref.invalidate(lowStockOperationsSummaryProvider);
       ref.invalidate(appNotificationsListProvider);
       ref.invalidate(notificationCenterCoordinatorProvider);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -178,7 +184,8 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
       currentReorder: reorderLevelFromStockRow(item),
     );
     if (ok && mounted) {
-      ref.invalidate(lowStockByCategoryProvider);
+      ref.invalidate(lowStockOperationsPageProvider);
+      ref.invalidate(lowStockOperationsSummaryProvider);
     }
   }
 
@@ -191,7 +198,8 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
       skipInitialRefresh: true,
     );
     if (ok && mounted) {
-      ref.invalidate(lowStockByCategoryProvider);
+      ref.invalidate(lowStockOperationsPageProvider);
+      ref.invalidate(lowStockOperationsSummaryProvider);
     }
   }
 
@@ -204,7 +212,8 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
       skipInitialRefresh: true,
     );
     if (ok && mounted) {
-      ref.invalidate(lowStockByCategoryProvider);
+      ref.invalidate(lowStockOperationsPageProvider);
+      ref.invalidate(lowStockOperationsSummaryProvider);
     }
   }
 
@@ -314,8 +323,8 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
 
   @override
   Widget build(BuildContext context) {
-    final groupedAsync = ref.watch(lowStockByCategoryProvider);
-    ref.listen(lowStockByCategoryProvider, (prev, next) {
+    final groupedAsync = ref.watch(lowStockOperationsGroupedProvider);
+    ref.listen(lowStockOperationsGroupedProvider, (prev, next) {
       if (!next.isLoading) {
         _loadSlowTimer?.cancel();
         _loadSlowTimer = null;
@@ -550,7 +559,7 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
               final content = RefreshIndicator(
                 onRefresh: () async {
                   _refreshLowStock();
-                  await ref.read(lowStockByCategoryProvider.future);
+                  await ref.read(lowStockOperationsPageProvider.future);
                 },
                 child: desktop
                     ? HexaResponsiveCenter(

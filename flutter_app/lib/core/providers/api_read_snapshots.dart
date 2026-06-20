@@ -5,9 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/hexa_api.dart';
 import '../auth/session_notifier.dart' show activeSessionProvider, hexaApiProvider;
 import '../auth/provider_api_guard.dart';
-import '../debug/agent_debug_log.dart';
-
-int _dbgAuditRecentFetchCount = 0;
 
 final Map<String, Future<List<Map<String, dynamic>>>> _tradePurchasesRecentInflight =
     {};
@@ -23,15 +20,6 @@ final stockAuditRecentSnapshotProvider =
   final session = ref.watch(activeSessionProvider);
   if (session == null) return [];
   final bid = session.primaryBusiness.id;
-  _dbgAuditRecentFetchCount++;
-  // #region agent log
-  agentDebugLog(
-    hypothesisId: 'H5',
-    location: 'api_read_snapshots.dart:auditRecent',
-    message: 'audit recent fetch invoked',
-    data: {'count': _dbgAuditRecentFetchCount},
-  );
-  // #endregion
   final rows = await _auditRecentInflight.putIfAbsent(
     bid,
     () => ref

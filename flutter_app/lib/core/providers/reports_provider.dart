@@ -328,7 +328,7 @@ Future<List<TradePurchase>> _loadReportsPurchases(Ref ref) async {
 }
 
 /// Live `/trade-purchases` pages for the current [analyticsDateRangeProvider],
-/// regardless of shell tab — used by scheduled WhatsApp share and should stay
+/// regardless of shell tab — should stay
 /// consistent with [reportsPurchasesPayloadProvider] network error handling.
 Future<ReportsPurchasePayload> fetchReportsPurchasesLiveForAnalytics(
   Ref ref,

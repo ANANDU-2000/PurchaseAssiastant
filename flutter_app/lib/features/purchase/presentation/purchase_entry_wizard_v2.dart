@@ -14,9 +14,7 @@ import '../../../core/api/fastapi_error.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/auth/provider_api_guard.dart';
-import '../../../core/debug/agent_debug_log.dart';
 import '../../../core/auth/session_notifier.dart';
-import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/json_coerce.dart' show coerceToDoubleNullable;
 import '../../../core/models/trade_purchase_models.dart';
 import '../../../core/widgets/form_field_scroll.dart';
@@ -35,21 +33,18 @@ import '../../../core/providers/business_aggregates_invalidation.dart'
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/home_owner_dashboard_providers.dart';
 import '../../../core/providers/prefs_provider.dart';
-import '../../../core/providers/purchase_whatsapp_prefs.dart';
 import '../../../core/providers/stock_providers.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
-import '../../../core/providers/business_profile_provider.dart';
 import '../../../core/services/offline_store.dart';
-import '../../../core/services/purchase_accounts_share.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/services/offline_sync_service.dart';
 import '../../../core/services/staff_activity_logger.dart';
 import '../../../core/notifications/local_notifications_service.dart';
 import '../../purchase/domain/purchase_draft.dart';
-import '../../purchase/mapping/ai_scan_purchase_draft_map.dart';
 import '../../purchase/state/purchase_draft_provider.dart';
 import '../../purchase/state/purchase_smart_defaults.dart';
 import '../../purchase/state/purchase_trade_preview_provider.dart';
+import '../providers/trade_purchase_detail_provider.dart';
 
 import '../../contacts/presentation/broker_wizard_page.dart';
 import '../../contacts/presentation/supplier_create_simple.dart';
@@ -60,7 +55,6 @@ import 'wizard/purchase_review_tally_step.dart';
 import 'wizard/purchase_terms_only_step.dart';
 import 'widgets/purchase_item_entry_sheet.dart';
 import 'widgets/purchase_saved_sheet.dart';
-import 'scan_purchase_draft_logic.dart';
 
 enum _WizardExitDraftChoice { keepEditing, saveDraft, discard }
 
@@ -71,24 +65,16 @@ class PurchaseEntryWizardV2 extends ConsumerStatefulWidget {
     this.initialCatalogItemId,
     this.initialDraft,
     this.resumeDraft = false,
-    this.aiScanToken,
-    this.aiScanBaseJson,
   });
 
   final String? editingId;
   final String? initialCatalogItemId;
 
-  /// Seeds the wizard after OCR / external flows (skipped when editing).
+  /// Seeds the wizard after external flows (skipped when editing).
   final PurchaseDraft? initialDraft;
 
   /// When true after [reset], restore Hive/prefs draft (explicit “resume” flow).
   final bool resumeDraft;
-
-  /// When set with [aiScanBaseJson], save uses `/scan-purchase-v2/update` + `/confirm` instead of POST trade purchase.
-  final String? aiScanToken;
-
-  /// Original ScanResult JSON for merge-on-save (warnings, meta, token context).
-  final Map<String, dynamic>? aiScanBaseJson;
 
   @override
   ConsumerState<PurchaseEntryWizardV2> createState() =>
@@ -144,12 +130,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
 
   /// 0 party+terms → 1 items → 2 review.
   int _wizStep = 0;
-
-  /// One-shot: AI bill has OCR supplier text but no `supplierId` — focus opens suggestion panel.
-  bool _didAutoFocusPartyFromAiScan = false;
-
-  /// One-shot: AI bill has supplier linked, OCR broker text, but no `brokerId` — focus broker field.
-  bool _didAutoFocusBrokerFromAiScan = false;
 
   final _supplierCtrl = TextEditingController();
   final _brokerCtrl = TextEditingController();
@@ -235,6 +215,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       } catch (_) {
         // Proceed — interceptor may still attach token from store.
       }
+      ref.invalidate(tradePurchaseDetailProvider(widget.editingId!));
       Map<String, dynamic>? raw;
       try {
         raw = await notifier.loadFromEdit(widget.editingId!);
@@ -298,8 +279,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       }
       if (!mounted) return;
       _syncControllersFromDraft();
-      _maybeAutoFocusPartyForAiScan();
-      _maybeAutoFocusBrokerForAiScan();
       Future.microtask(() {
         if (!mounted) return;
         ref.invalidate(catalogItemsListProvider);
@@ -347,45 +326,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     } catch (_) {
       return const [];
     }
-  }
-
-  void _maybeAutoFocusPartyForAiScan() {
-    final tok = widget.aiScanToken?.trim();
-    if (tok == null || tok.isEmpty) return;
-    if (_didAutoFocusPartyFromAiScan) return;
-    if (_wizStep != 0) return;
-    final d = ref.read(purchaseDraftProvider);
-    final noId = d.supplierId == null || d.supplierId!.trim().isEmpty;
-    final nameFromDraft = (d.supplierName ?? '').trim().isNotEmpty;
-    final nameFromCtrl = _supplierCtrl.text.trim().isNotEmpty;
-    if (!noId || (!nameFromDraft && !nameFromCtrl)) return;
-    _didAutoFocusPartyFromAiScan = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _wizStep != 0) return;
-      FocusScope.of(context).requestFocus(_partySupplierFocus);
-    });
-  }
-
-  void _maybeAutoFocusBrokerForAiScan() {
-    final tok = widget.aiScanToken?.trim();
-    if (tok == null || tok.isEmpty) return;
-    if (_didAutoFocusBrokerFromAiScan) return;
-    if (_wizStep != 0) return;
-    final d = ref.read(purchaseDraftProvider);
-    final supplierOk =
-        d.supplierId != null && d.supplierId!.trim().isNotEmpty;
-    if (!supplierOk) return;
-    final noBrokerId =
-        d.brokerId == null || d.brokerId!.trim().isEmpty;
-    if (!noBrokerId) return;
-    final nameFromDraft = (d.brokerName ?? '').trim().isNotEmpty;
-    final nameFromCtrl = _brokerCtrl.text.trim().isNotEmpty;
-    if (!nameFromDraft && !nameFromCtrl) return;
-    _didAutoFocusBrokerFromAiScan = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _wizStep != 0) return;
-      FocusScope.of(context).requestFocus(_partyBrokerFocus);
-    });
   }
 
   void _syncControllersFromDraft() {
@@ -1504,156 +1444,19 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         detail['code']?.toString() == 'DUPLICATE_PURCHASE_DETECTED';
   }
 
-  /// Shows delivery prompt on the next frame (avoids scheduling modals mid-build).
-  Future<void> _scheduleDeliveryPrompt(String purchaseId) async {
-    if (purchaseId.isEmpty) return;
-    final done = Completer<void>();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) {
-        if (!done.isCompleted) done.complete();
-        return;
-      }
-      await _showDeliveryPrompt(purchaseId);
-      if (!done.isCompleted) done.complete();
-    });
-    await done.future;
-  }
-
-  Future<void> _showDeliveryPrompt(String purchaseId) async {
-    if (!mounted) return;
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
-    // business id is already available from session; keep local only when needed
-
-    final delivered = await showHexaBottomSheet<bool>(
-      context: context,
-      compact: true,
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Icon(
-            Icons.local_shipping_outlined,
-            size: 40,
-            color: Colors.orange,
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Has this shipment arrived at your warehouse?',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Not Yet'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.check_circle_outline, size: 18),
-                  label: const Text('Yes, Received'),
-                  onPressed: () => Navigator.pop(context, true),
-                  style: FilledButton.styleFrom(backgroundColor: Colors.green),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-
-    if (delivered == true && mounted) {
-      showTopSnack(
-        context,
-        'Purchase saved — warehouse will receive and verify separately',
-      );
+  bool _isPurchaseCommitted409(DioException e) {
+    if (e.response?.statusCode != 409) return false;
+    final data = e.response?.data;
+    if (data is! Map) return false;
+    final detail = data['detail'];
+    if (detail is Map &&
+        detail['code']?.toString() == 'PURCHASE_ALREADY_COMMITTED') {
+      return true;
     }
+    return data['code']?.toString() == 'PURCHASE_ALREADY_COMMITTED';
   }
 
-  String? _purchaseCreatorDisplayName(Map<String, dynamic> saved) {
-    for (final k in ['created_by_name', 'user_name', 'staff_name']) {
-      final v = saved[k]?.toString().trim();
-      if (v != null && v.isNotEmpty) return v;
-    }
-    return ref.read(sessionProvider)?.primaryBusiness.name;
-  }
-
-  TradePurchase _tradePurchaseFromSaved(
-    Map<String, dynamic> saved,
-    PurchaseDraft draftSnap,
-  ) {
-    final merged = enrichSavedTradePurchaseJson(
-      saved,
-      supplierNameFallback: draftSnap.supplierName,
-      brokerNameFallback: draftSnap.brokerName,
-      purchaseDateFallback: draftSnap.purchaseDate,
-    );
-    return TradePurchase.fromJson(merged);
-  }
-
-  Future<void> _shareToAccountsWhatsapp({
-    required Map<String, dynamic> saved,
-    required PurchaseDraft draftSnap,
-  }) async {
-    final p = _tradePurchaseFromSaved(saved, draftSnap);
-    final biz = ref.read(invoiceBusinessProfileProvider);
-    final phone = normalizedFromStoredAccountsWhatsapp(biz.accountsWhatsappNumber) ??
-        normalizeAccountsWhatsappPhone(biz.accountsWhatsappNumber);
-    final pdfResult = await sharePurchaseToAccountsStaff(
-      p,
-      biz,
-      generatedByName: _purchaseCreatorDisplayName(saved),
-    );
-    final pid = saved['id']?.toString() ?? '';
-    final hid = saved['human_id']?.toString();
-    unawaited(
-      StaffActivityLogger.logPurchaseWhatsappShare(
-        ref,
-        purchaseId: pid,
-        success: pdfResult.ok,
-        humanId: hid,
-        recipientMasked:
-            phone != null ? maskWhatsappRecipient(phone.waMeDigits) : null,
-        errorMessage: pdfResult.ok ? null : pdfResult.message,
-      ),
-    );
-    if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    if (pdfResult.ok) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Purchase saved. Shared to accounts WhatsApp.'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 4),
-        ),
-      );
-    } else {
-      messenger.showSnackBar(
-        SnackBar(
-          content: const Text(
-            'Purchase saved successfully. WhatsApp delivery failed.',
-          ),
-          duration: const Duration(seconds: 8),
-          action: SnackBarAction(
-            label: 'Retry Send',
-            onPressed: () {
-              unawaited(
-                _shareToAccountsWhatsapp(saved: saved, draftSnap: draftSnap),
-              );
-            },
-          ),
-        ),
-      );
-    }
-  }
-
-  Future<void> _validateAndSave({bool shareAfterSave = false}) async {
+  Future<void> _validateAndSave() async {
     if (_isSaving) return;
     setState(() {
       _inlineSaveError = null;
@@ -1700,50 +1503,37 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       return;
     }
 
-    final confirm = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirm purchase save?'),
-        content: Text(
-          shareAfterSave
-              ? (_isEditMode()
-                  ? 'Save changes and share PDF + summary to accounts WhatsApp?'
-                  : 'Save and share purchase PDF + summary to accounts WhatsApp?')
-              : (_isEditMode()
-                  ? 'Save changes to this purchase?'
-                  : 'Saving will submit this purchase to your records. Continue?'),
+    // Review step (step 2) is the confirmation surface — no second AlertDialog.
+    if (_wizStep != 2) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Confirm purchase save?'),
+          content: Text(
+            _isEditMode()
+                ? 'Save changes to this purchase?'
+                : 'Saving will submit this purchase to your records. Continue?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => popOverlay(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => popOverlay(ctx, true),
+              child: const Text('Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => popOverlay(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => popOverlay(ctx, true),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true || !mounted) return;
+      );
+      if (confirm != true || !mounted) return;
+    }
 
     HapticFeedback.mediumImpact();
     await _savePurchaseAttempt(
       forceDuplicate: false,
-      shareAfterSave: shareAfterSave,
     );
-  }
-
-  bool _aiScanWarningsBlock(Map<String, dynamic> scan) {
-    final w = scan['warnings'];
-    if (w is! List) return false;
-    for (final e in w) {
-      if (e is! Map) continue;
-      final sev = e['severity']?.toString().toLowerCase();
-      if (sev == 'block' || sev == 'blocker') return true;
-    }
-    return false;
   }
 
   String _formatTradeValidateErrors(Map<String, dynamic> val) {
@@ -1805,7 +1595,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
 
   Future<void> _savePurchaseAttempt({
     required bool forceDuplicate,
-    bool shareAfterSave = false,
   }) async {
     if (_isSaving) return;
     final session = ref.read(sessionProvider);
@@ -1829,46 +1618,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
 
     try {
       Map<String, dynamic> saved;
-      final aiToken = widget.aiScanToken?.trim();
-      final aiBase = widget.aiScanBaseJson;
-      if (!isEdit &&
-          aiToken != null &&
-          aiToken.isNotEmpty &&
-          aiBase != null) {
-        final d = ref.read(purchaseDraftProvider);
-        final merged = scanResultJsonMergePurchaseDraft(
-          Map<String, dynamic>.from(aiBase),
-          d,
-        );
-        final blocker = _aiScanWarningsBlock(aiBase);
-        if (!scanDraftReadyForCreate(merged, scanIssueBlocker: blocker)) {
-          if (mounted) {
-            setState(() {
-              _isSaving = false;
-              _inlineSaveError =
-                  'Match supplier and catalog items with rates for every line before saving this scan.';
-              _wizStep = 1;
-            });
-          }
-          return;
-        }
-        final tradeBody = ref
-            .read(purchaseDraftProvider.notifier)
-            .buildTradePurchaseBody(forceDuplicate: forceDuplicate);
-        if (!await _runServerTradeValidate(bid, tradeBody)) return;
-        if (!mounted) return;
-        final forceDup = tradeBody['force_duplicate'] == true;
-        final pd = d.purchaseDate ?? DateTime.now();
-        saved = await scanPurchaseUpdateAndConfirm(
-          ref: ref,
-          scanToken: aiToken,
-          scanPayload: merged,
-          purchaseDate: pd,
-          invoiceNumber: d.invoiceNumber,
-          forceDuplicate: forceDup,
-        );
-        if (!mounted) return;
-      } else if (isEdit) {
+      if (isEdit) {
         if (!await _runServerTradeValidate(bid, body)) return;
         if (!mounted) return;
         saved = await api.updateTradePurchase(
@@ -1909,7 +1659,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
           );
         }
       } else {
-        invalidatePurchaseWorkspace(ref, affectedItemIds: savedItemIds);
+        invalidatePurchaseWorkspace(
+          ref,
+          affectedItemIds: savedItemIds,
+          createOnly: true,
+        );
       }
       for (final line in draftSnap.lines) {
         final itemId = line.catalogItemId?.trim();
@@ -1965,47 +1719,18 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         unawaited(StaffActivityLogger.logPurchase(ref, saved));
       }
       if (!mounted) return;
-      if (shareAfterSave && pid.isNotEmpty) {
-        if (!ref.read(autoSharePurchaseWhatsappProvider)) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Purchase saved. Turn on auto WhatsApp share in Settings to send on Save & Share.',
-                ),
-                duration: Duration(seconds: 5),
-              ),
-            );
-          }
-        } else {
-          final configured =
-              await ensureAccountsWhatsappConfigured(context, ref);
-          if (configured && mounted) {
-            await _shareToAccountsWhatsapp(
-              saved: saved,
-              draftSnap: draftSnap,
-            );
-          }
-        }
-      }
-      if (!mounted) return;
       final quick = ref.read(quickSavePurchaseProvider);
       if (quick) {
-        if (!shareAfterSave) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                isEdit
-                    ? 'Purchase updated · history refreshed'
-                    : 'Purchase saved · history refreshed',
-              ),
-              backgroundColor: Colors.green[700],
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isEdit
+                  ? 'Purchase updated · history refreshed'
+                  : 'Purchase saved · history refreshed',
             ),
-          );
-        }
-        if (!isEdit && pid.isNotEmpty) {
-          await _scheduleDeliveryPrompt(pid);
-        }
+            backgroundColor: Colors.green[700],
+          ),
+        );
         if (!mounted) return;
         context.popOrGo('/purchase');
       } else {
@@ -2014,14 +1739,11 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
           ref,
           savedJson: saved,
           wasEdit: isEdit,
+          showDeliveryPrompt: !isEdit,
           displaySupplierName: draftSnap.supplierName,
           displayBrokerName: draftSnap.brokerName,
           displayPurchaseDate: draftSnap.purchaseDate,
         );
-        if (!mounted) return;
-        if (!isEdit && pid.isNotEmpty) {
-          await _scheduleDeliveryPrompt(pid);
-        }
         if (!mounted) return;
         if (where == 'add_more') {
           ref.read(purchaseDraftProvider.notifier).reset();
@@ -2034,8 +1756,6 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
             _supplierFieldError = null;
             _brokerFieldError = null;
             _partyUserSupplierActionGeneration++;
-            _didAutoFocusPartyFromAiScan = false;
-            _didAutoFocusBrokerFromAiScan = false;
           });
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
@@ -2053,6 +1773,16 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
           return;
         }
         if (where == 'later_missing') {
+          context.popOrGo('/purchase');
+          return;
+        }
+        if (where == 'delivery_yes' || where == 'delivery_no') {
+          if (where == 'delivery_yes' && mounted) {
+            showTopSnack(
+              context,
+              'Purchase saved — warehouse will receive and verify separately',
+            );
+          }
           context.popOrGo('/purchase');
           return;
         }
@@ -2137,7 +1867,22 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         if (proceed == true && mounted) {
           await _savePurchaseAttempt(
             forceDuplicate: true,
-            shareAfterSave: shareAfterSave,
+          );
+        }
+        return;
+      }
+      if (isEdit && _isPurchaseCommitted409(e)) {
+        if (mounted) {
+          const msg =
+              'Committed to stock — contact owner to adjust';
+          setState(() {
+            _isSaving = false;
+            _inlineSaveError = msg;
+            _supplierFieldError = null;
+            _brokerFieldError = null;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text(msg)),
           );
         }
         return;
@@ -2175,6 +1920,10 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
           _isSaving = false;
           _inlineSaveError = friendlyApiError(e);
         });
+      }
+    } finally {
+      if (mounted && _isSaving) {
+        setState(() => _isSaving = false);
       }
     }
   }
@@ -2314,7 +2063,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
             supplierMapLabel: _supplierMapLabel,
             sortSuppliers: _sortSuppliersByPurchaseRecency,
             filterSuppliersByCatalog: _filterSuppliersByCatalogLineDefaults,
-            onCatalogAutoSupplierSelected: _applySupplierSelection,
+            onCatalogAutoSupplierSelected: _onUserSupplierSelected,
             onSupplierSelectedSync: _onUserSupplierSelected,
             openQuickSupplierCreate: _openQuickSupplierCreate,
             partyUserSupplierActionGen: () => _partyUserSupplierActionGeneration,
@@ -2461,62 +2210,31 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
                 style: TextStyle(color: Colors.red[800], fontSize: 11),
               ),
             ),
-          Row(
-            children: [
-              Expanded(
-                child: SizedBox(
-                  height: kbInset > 0 ? 44 : 52,
-                  child: OutlinedButton(
-                    onPressed: _isSaving
-                        ? null
-                        : () => _validateAndSave(shareAfterSave: false),
-                    child: _isSaving
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text(
-                            'Save Only',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                            ),
-                          ),
-                  ),
-                ),
+          SizedBox(
+            height: kbInset > 0 ? 44 : 52,
+            width: double.infinity,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: HexaColors.brandAccent,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: SizedBox(
-                  height: kbInset > 0 ? 44 : 52,
-                  child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: HexaColors.brandAccent,
+              onPressed: _isSaving ? null : _validateAndSave,
+              child: _isSaving
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text(
+                      'Save',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
                     ),
-                    onPressed: _isSaving
-                        ? null
-                        : () => _validateAndSave(shareAfterSave: true),
-                    child: _isSaving
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            'Save & Share',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 14,
-                            ),
-                          ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ],
@@ -2655,34 +2373,9 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     );
     ref.listen(suppliersListProvider, (prev, next) {
       next.whenData((d) => _lastGoodSuppliers = d);
-      if (next.hasError) {
-        // #region agent log
-        agentDebugLog(
-          hypothesisId: 'H4',
-          location: 'purchase_entry_wizard_v2.dart:suppliers',
-          message: 'suppliers provider error',
-          data: {
-            'error': next.error?.runtimeType.toString(),
-            'detail': next.error.toString().length > 100
-                ? next.error.toString().substring(0, 100)
-                : next.error.toString(),
-          },
-        );
-        // #endregion
-      }
     });
     ref.listen(brokersListProvider, (prev, next) {
       next.whenData((d) => _lastGoodBrokers = d);
-      if (next.hasError) {
-        // #region agent log
-        agentDebugLog(
-          hypothesisId: 'H4',
-          location: 'purchase_entry_wizard_v2.dart:brokers',
-          message: 'brokers provider error',
-          data: {'error': next.error?.runtimeType.toString()},
-        );
-        // #endregion
-      }
     });
     ref.listen(
       purchaseDraftProvider.select((d) => d.supplierId),
@@ -2698,20 +2391,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         _lastCatalogSnapshot ??
         const <Map<String, dynamic>>[];
 
-    final aiTok = widget.aiScanToken?.trim();
-    final fromAiBill = !isEdit &&
-        aiTok != null &&
-        aiTok.isNotEmpty &&
-        widget.aiScanBaseJson != null;
-
-    final appBarTitle =
-        fromAiBill
-            ? switch (_wizStep) {
-              0 => 'AI bill draft — Party & terms',
-              1 => 'AI bill draft — Match items',
-              _ => 'AI bill draft — Review & save',
-            }
-            : !isEdit
+    final appBarTitle = !isEdit
             ? switch (_wizStep) {
               0 => 'New purchase — Party & terms',
               1 => 'New purchase — Items',

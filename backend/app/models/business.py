@@ -19,7 +19,6 @@ class Business(Base):
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    accounts_whatsapp_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     default_currency: Mapped[str] = mapped_column(String(3), default="INR")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

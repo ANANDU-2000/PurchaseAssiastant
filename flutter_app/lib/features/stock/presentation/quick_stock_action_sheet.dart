@@ -18,7 +18,6 @@ import '../../../core/providers/stock_providers.dart'
     show
         applyStockItemDetailPatch,
         applyStockListRowPatch,
-        patchStockItemInCache,
         stockStatusCountsProvider;
 import '../stock_list_row_patch.dart'
     show stockListPatchFromPhysicalCount, stockListPatchFromStockDetail;
@@ -194,10 +193,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
   }
 
   void _onSavePressed() {
-    FocusScope.of(context).unfocus();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_save());
-    });
+    unawaited(_save());
   }
 
   @override
@@ -388,9 +384,12 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         stockVersion: stockVersion,
         idempotencyKey: idempotencyKey,
       ).timeout(const Duration(seconds: 45));
+      if (saved == null || saved.isEmpty) {
+        throw StateError('Could not save stock — sign in again and retry.');
+      }
       if (kDebugMode) {
         debugPrint(
-          '[STOCK_SAVE_SUCCESS] status=${saved?['current_stock'] ?? saved?['physical_stock_qty']}',
+          '[STOCK_SAVE_SUCCESS] status=${saved['current_stock'] ?? saved['physical_stock_qty']}',
         );
       }
       _QuickStockActionBodyState._applyOptimisticListPatchStatic(
@@ -402,9 +401,6 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         parsed: parsed,
       );
       parentRef.invalidate(stockStatusCountsProvider);
-      if (mode == StockUpdateMode.system && itemId.isNotEmpty) {
-        unawaited(patchStockItemInCache(parentRef, itemId: itemId));
-      }
       await _afterSaveBackgroundWithRef(
         parentRef: parentRef,
         itemId: itemId,
@@ -514,6 +510,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     final parsed = _parseEnteredQty()!;
     if (_saving) return;
     if (!mounted) return;
+    setState(() => _saving = true);
     if (kDebugMode) {
       debugPrint(
         '[STOCK_SAVE_START] itemId=$_itemId mode=$_mode qty=$parsed',
@@ -536,9 +533,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     final idempotencyKey =
         'stock-save:$captureItemId:${DateTime.now().microsecondsSinceEpoch}';
 
-    // Close sheet before cache patches — avoids rebuild with a stuck spinner.
-    if (mounted) Navigator.of(context).pop(true);
-    unawaited(HapticFeedback.mediumImpact());
+    // Patch list immediately so the row updates as the sheet closes.
     try {
       _applyOptimisticListPatch(
         null,
@@ -553,6 +548,8 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         debugPrint('[STOCK_SAVE_PATCH] optimistic patch failed: $e\n$st');
       }
     }
+    if (mounted) Navigator.of(context).pop(true);
+    unawaited(HapticFeedback.mediumImpact());
     unawaited(
       _completeStockSaveAfterPop(
         parentRef: parentRef,
@@ -750,23 +747,20 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
           const SizedBox(height: 16),
           SizedBox(
             height: 48,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              child: FilledButton(
-                onPressed: canSave && !_saving ? _onSavePressed : null,
-                child: _saving
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(
-                        _mode == StockUpdateMode.system
-                            ? 'SAVE SYSTEM STOCK'
-                            : 'SAVE PHYSICAL COUNT',
-                        style: const TextStyle(fontWeight: FontWeight.w900),
-                      ),
-              ),
+            child: FilledButton(
+              onPressed: canSave && !_saving ? _onSavePressed : null,
+              child: _saving
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(
+                      _mode == StockUpdateMode.system
+                          ? 'SAVE SYSTEM STOCK'
+                          : 'SAVE PHYSICAL COUNT',
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
             ),
           ),
         ],

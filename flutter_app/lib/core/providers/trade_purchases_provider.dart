@@ -249,6 +249,7 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
           status: apiStatus,
           purchaseFrom: apiRange.from,
           purchaseTo: apiRange.to,
+          includeLines: false,
         );
     if (_dead) {
       return const TradePurchasesListView(rows: [], hasMore: false);
@@ -288,6 +289,7 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
             status: apiStatus,
             purchaseFrom: apiRange.from,
             purchaseTo: apiRange.to,
+            includeLines: false,
           );
       if (_dead) return;
       final after = state.valueOrNull;

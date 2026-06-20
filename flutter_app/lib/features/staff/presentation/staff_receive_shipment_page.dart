@@ -14,10 +14,10 @@ import '../../../core/providers/business_aggregates_invalidation.dart'
 import '../../../core/providers/api_degraded_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/utils/delivery_offline_actions.dart';
+import '../../../core/utils/delivery_write_resilience.dart';
 import '../../../core/utils/snack.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/list_skeleton.dart';
-import '../../purchase/presentation/widgets/staff_verification_sheet.dart';
 import '../../purchase/providers/trade_purchase_detail_provider.dart';
 
 class StaffReceiveShipmentPage extends ConsumerStatefulWidget {
@@ -35,9 +35,9 @@ class _StaffReceiveShipmentPageState
   final _notesCtrl = TextEditingController();
   final _truckCtrl = TextEditingController();
   final _driverCtrl = TextEditingController();
-  final _damageCtrl = TextEditingController();
-  final _missingCtrl = TextEditingController();
-  bool _brokerConfirmed = false;
+  final _receivedQty = <String, TextEditingController>{};
+  final _damagedQty = <String, TextEditingController>{};
+  String? _lineControllersPurchaseId;
   bool _saving = false;
 
   @override
@@ -45,26 +45,84 @@ class _StaffReceiveShipmentPageState
     _notesCtrl.dispose();
     _truckCtrl.dispose();
     _driverCtrl.dispose();
-    _damageCtrl.dispose();
-    _missingCtrl.dispose();
+    for (final c in _receivedQty.values) {
+      c.dispose();
+    }
+    for (final c in _damagedQty.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
-  double? _parseOptionalQty(String raw) {
+  void _ensureLineControllers(TradePurchase p) {
+    if (_lineControllersPurchaseId == p.id) return;
+    for (final c in _receivedQty.values) {
+      c.dispose();
+    }
+    for (final c in _damagedQty.values) {
+      c.dispose();
+    }
+    _receivedQty.clear();
+    _damagedQty.clear();
+    for (final line in p.lines) {
+      if (line.id.isEmpty) continue;
+      _receivedQty[line.id] = TextEditingController(
+        text: line.qty > 0 ? line.qty.toStringAsFixed(0) : '',
+      );
+      _damagedQty[line.id] = TextEditingController(text: '0');
+    }
+    _lineControllersPurchaseId = p.id;
+  }
+
+  double? _parseQty(String raw) {
     final t = raw.trim();
     if (t.isEmpty) return null;
     return double.tryParse(t);
   }
 
-  bool _needsDetailedVerification() {
-    final damage = _parseOptionalQty(_damageCtrl.text) ?? 0;
-    final missing = _parseOptionalQty(_missingCtrl.text) ?? 0;
-    return damage > 0 || missing > 0;
+  List<Map<String, dynamic>>? _buildVerifyPayload(TradePurchase p) {
+    final payload = <Map<String, dynamic>>[];
+    for (final line in p.lines) {
+      if (line.id.isEmpty) continue;
+      final receivedCtrl = _receivedQty[line.id];
+      final damagedCtrl = _damagedQty[line.id];
+      if (receivedCtrl == null || damagedCtrl == null) continue;
+      final parsed = _parseQty(receivedCtrl.text);
+      final received = (parsed != null && parsed >= 0) ? parsed : line.qty;
+      final damaged = _parseQty(damagedCtrl.text) ?? 0;
+      if (damaged < 0) {
+        showTopSnack(context, 'Damaged qty cannot be negative', isError: true);
+        return null;
+      }
+      if (damaged > received) {
+        showTopSnack(
+          context,
+          'Damaged qty cannot exceed received for ${line.itemName}',
+          isError: true,
+        );
+        return null;
+      }
+      payload.add({
+        'line_id': line.id,
+        'received_qty': received,
+        'damaged_qty': damaged,
+        'return_qty': 0,
+      });
+    }
+    if (payload.isEmpty) {
+      showTopSnack(context, 'No lines to verify', isError: true);
+      return null;
+    }
+    return payload;
   }
 
   Future<void> _submitReceive(TradePurchase p) async {
     final session = ref.read(sessionProvider);
     if (session == null || _saving) return;
+    _ensureLineControllers(p);
+    final payload = _buildVerifyPayload(p);
+    if (payload == null) return;
+
     setState(() => _saving = true);
     try {
       final bid = session.primaryBusiness.id;
@@ -87,8 +145,6 @@ class _StaffReceiveShipmentPageState
         return;
       }
 
-      final damageQty = _parseOptionalQty(_damageCtrl.text);
-      final missingQty = _parseOptionalQty(_missingCtrl.text);
       final arrivalNotes = _notesCtrl.text.trim().isEmpty
           ? null
           : _notesCtrl.text.trim();
@@ -105,59 +161,23 @@ class _StaffReceiveShipmentPageState
           notes: arrivalNotes,
           truckNumber: _truckCtrl.text.trim(),
           driverContact: _driverCtrl.text.trim(),
-          damageQty: damageQty,
-          missingQty: missingQty,
-          brokerConfirmed: _brokerConfirmed ? true : null,
         );
-        if (mounted &&
-            ((damageQty ?? 0) > 0 || (missingQty ?? 0) > 0)) {
-          showTopSnack(
-            context,
-            'Discrepancy noted — owner will review',
-          );
-        }
       }
 
       if (!mounted) return;
 
-      if (_needsDetailedVerification()) {
-        final lineMaps = [
-          for (final l in p.lines)
-            {
-              'id': l.id,
-              'catalog_item_id': l.catalogItemId,
-              'item_name': l.itemName,
-              'qty': l.qty,
-              'unit': l.unit,
-            }
-        ];
-        final verified = await showStaffVerificationSheet(
-          context: context,
-          ref: ref,
-          purchaseId: p.id,
-          lines: lineMaps,
-        );
-        invalidateStaffDeliverySurfaces(ref);
-        ref.read(apiDegradedProvider.notifier).clear();
-        if (verified && mounted) {
-          showTopSnack(
-            context,
-            'Received — quantities verified. Owner will commit stock to warehouse.',
-          );
-          context.popOrGo('/staff/deliveries');
-        }
-        return;
-      }
-
-      final body = await verifyPurchaseDeliveryAsOrdered(
+      final body = await resilientPurchaseWrite<Map<String, dynamic>>(
+        write: () => ref.read(hexaApiProvider).verifyPurchaseDelivery(
+              businessId: bid,
+              purchaseId: p.id,
+              lines: payload,
+              notes: arrivalNotes,
+            ),
         ref: ref,
         businessId: bid,
         purchaseId: p.id,
-        lines: [
-          for (final l in p.lines)
-            (lineId: l.id, orderedQty: l.qty),
-        ],
-        notes: arrivalNotes,
+        reconcileSuccess: purchasePassedVerifyGate,
+        mapReconciled: (detail) => detail,
       );
       syncPurchaseStockAfterVerify(
         ref,
@@ -167,9 +187,14 @@ class _StaffReceiveShipmentPageState
       invalidateStaffDeliverySurfaces(ref);
       ref.read(apiDegradedProvider.notifier).clear();
       if (mounted) {
+        final hasDiscrepancy = payload.any(
+          (row) => (row['damaged_qty'] as num? ?? 0) > 0,
+        );
         showTopSnack(
           context,
-          'Received as ordered. Owner will commit stock to warehouse.',
+          hasDiscrepancy
+              ? 'Received with discrepancies. Owner will review and commit stock.'
+              : 'Received as ordered. Owner will commit stock to warehouse.',
         );
         context.popOrGo('/staff/deliveries');
       }
@@ -207,6 +232,7 @@ class _StaffReceiveShipmentPageState
               ref.invalidate(tradePurchaseDetailProvider(widget.purchaseId)),
         ),
         data: (p) {
+          _ensureLineControllers(p);
           final ds = p.deliveryStatusEnum;
           if (ds == DeliveryStatus.stockCommitted || p.isDeliveryCommitted) {
             return Center(
@@ -270,11 +296,17 @@ class _StaffReceiveShipmentPageState
                     _HeaderCard(purchase: p),
                     const SizedBox(height: 16),
                     Text(
-                      'Check each line',
+                      'Verify each line',
                       style: HexaDsType.heading(16),
                     ),
                     const SizedBox(height: 8),
-                    ...p.lines.map((line) => _LineCheckTile(line: line)),
+                    ...p.lines.map(
+                      (line) => _LineReceiveTile(
+                        line: line,
+                        receivedCtrl: _receivedQty[line.id],
+                        damagedCtrl: _damagedQty[line.id],
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     TextField(
                       controller: _truckCtrl,
@@ -294,43 +326,6 @@ class _StaffReceiveShipmentPageState
                       ),
                     ),
                     const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _damageCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: const InputDecoration(
-                              labelText: 'Damage qty (optional)',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            controller: _missingCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: const InputDecoration(
-                              labelText: 'Missing qty (optional)',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Broker confirmed (optional)'),
-                      value: _brokerConfirmed,
-                      onChanged: (v) => setState(() => _brokerConfirmed = v),
-                    ),
-                    const SizedBox(height: 8),
                     TextField(
                       controller: _notesCtrl,
                       maxLines: 3,
@@ -373,9 +368,8 @@ class _StaffReceiveShipmentPageState
                             SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Tap Arrive & verify to accept PO quantities. '
-                                'Only fill damage/missing if something is wrong — '
-                                'then you will confirm line details.',
+                                'Enter received and damaged qty per line. '
+                                'Defaults match the PO — adjust only when counts differ.',
                                 style: TextStyle(fontSize: 12),
                               ),
                             ),
@@ -458,19 +452,71 @@ class _HeaderCard extends StatelessWidget {
   }
 }
 
-class _LineCheckTile extends StatelessWidget {
-  const _LineCheckTile({required this.line});
+class _LineReceiveTile extends StatelessWidget {
+  const _LineReceiveTile({
+    required this.line,
+    required this.receivedCtrl,
+    required this.damagedCtrl,
+  });
 
   final TradePurchaseLine line;
+  final TextEditingController? receivedCtrl;
+  final TextEditingController? damagedCtrl;
 
   @override
   Widget build(BuildContext context) {
+    if (receivedCtrl == null || damagedCtrl == null) {
+      return const SizedBox.shrink();
+    }
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        title: Text(line.itemName),
-        subtitle: Text(
-          '${line.qty.toStringAsFixed(0)} ${line.unit}',
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              line.itemName,
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Ordered ${line.qty.toStringAsFixed(0)} ${line.unit}',
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: receivedCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Received (${line.unit})',
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: damagedCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Damaged (${line.unit})',
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
