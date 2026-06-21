@@ -14,9 +14,9 @@ $pat = (Get-Content $patFile -Raw).Trim()
 if ($pat.Length -lt 10) {
   Write-Error "PAT in config/github.pat.local looks empty."
 }
-$remote = "https://ANANDU-2000:${pat}@github.com/ANANDU-2000/PurchaseAssiastant.git"
+$remote = "https://x-access-token:${pat}@github.com/ANANDU-2000/PurchaseAssiastant.git"
 Write-Host "Pushing $Branch to PurchaseAssiastant..."
-git push $remote "${Branch}:${Branch}"
+git -c credential.helper= push $remote "${Branch}:${Branch}"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 git fetch origin $Branch 2>$null
 $sha = git rev-parse --short "origin/$Branch" 2>$null
