@@ -1697,7 +1697,10 @@ async def list_catalog_items(
                 select(CatalogItem, CategoryType.name, ItemCategory.name)
                 .join(ItemCategory, ItemCategory.id == CatalogItem.category_id)
                 .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
-                .where(CatalogItem.business_id == business_id)
+                .where(
+                    CatalogItem.business_id == business_id,
+                    CatalogItem.deleted_at.is_(None),
+                )
             )
             if category_id is not None:
                 q = q.where(CatalogItem.category_id == category_id)
@@ -1735,7 +1738,10 @@ async def list_catalog_items(
         q = (
             select(CatalogItem, ItemCategory.name)
             .join(ItemCategory, ItemCategory.id == CatalogItem.category_id)
-            .where(CatalogItem.business_id == business_id)
+            .where(
+                CatalogItem.business_id == business_id,
+                CatalogItem.deleted_at.is_(None),
+            )
         )
         if category_id is not None:
             q = q.where(CatalogItem.category_id == category_id)

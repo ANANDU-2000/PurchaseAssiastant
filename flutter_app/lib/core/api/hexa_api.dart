@@ -2073,18 +2073,34 @@ class HexaApi {
     required String businessId,
     String? categoryId,
     String? typeId,
+    int perPage = 500,
+    bool fetchAllPages = true,
   }) async {
-    final res = await _dio.get<dynamic>(
-      '/v1/businesses/$businessId/catalog-items',
-      queryParameters: {
-        if (categoryId != null && categoryId.isNotEmpty)
-          'category_id': categoryId,
-        if (typeId != null && typeId.isNotEmpty) 'type_id': typeId,
-      },
-    );
-    final data = res.data;
-    if (data is! List) return [];
-    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    final out = <Map<String, dynamic>>[];
+    var page = 1;
+    const maxPages = 50;
+    while (page <= maxPages) {
+      final res = await _dio.get<dynamic>(
+        '/v1/businesses/$businessId/catalog-items',
+        queryParameters: {
+          'page': page,
+          'per_page': perPage,
+          if (categoryId != null && categoryId.isNotEmpty)
+            'category_id': categoryId,
+          if (typeId != null && typeId.isNotEmpty) 'type_id': typeId,
+        },
+      );
+      final data = res.data;
+      if (data is! List) break;
+      final chunk = data
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      if (chunk.isEmpty) break;
+      out.addAll(chunk);
+      if (!fetchAllPages || chunk.length < perPage) break;
+      page++;
+    }
+    return out;
   }
 
   /// Token-sort fuzzy matches for catalog duplicate hints (create-item UIs).
