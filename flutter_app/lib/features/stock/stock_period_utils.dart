@@ -1,0 +1,135 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/providers/home_dashboard_provider.dart';
+import '../../core/providers/stock_providers.dart';
+
+/// YYYY-MM-DD for stock list period query params (inclusive end date).
+String stockApiDate(DateTime d) {
+  return '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+}
+
+/// Applies [p] to [stockListQueryProvider] with period purchase totals enabled.
+void applyStockPagePeriod(WidgetRef ref, HomePeriod p) {
+  ref.read(stockPagePeriodProvider.notifier).state = p;
+  final range = homePeriodRange(p);
+  final endInclusive = range.end.subtract(const Duration(days: 1));
+  final q = ref.read(stockListQueryProvider);
+  ref.read(stockListQueryProvider.notifier).state = q.copyWith(
+    includePeriod: true,
+    periodStart: stockApiDate(range.start),
+    periodEnd: stockApiDate(endInclusive),
+    page: 1,
+  );
+  ref.read(stockSelectedItemIdProvider.notifier).state = null;
+}
+
+/// Client-side filters for operational stock list (unit, missing code, reorder).
+List<Map<String, dynamic>> filterStockListClient(
+  List<Map<String, dynamic>> items,
+  StockOperationalFilters op,
+) {
+  return items.where((it) {
+    if (op.missingBarcodeOnly && it['missing_barcode'] != true) return false;
+    if (op.missingItemCodeOnly && it['missing_item_code'] != true) return false;
+    if (op.reorderOnly) {
+      final ro = _num(it['reorder_level']);
+      final cur = _num(it['current_stock']);
+      if (ro <= 0 || cur > ro) return false;
+    }
+    if (op.unit.isNotEmpty) {
+      final u = (it['unit']?.toString() ?? '').toLowerCase();
+      if (u != op.unit.toLowerCase()) return false;
+    }
+    if (op.purchasedInPeriodOnly) {
+      final purchased = _num(it['period_purchased_qty']);
+      if (purchased <= 0) return false;
+    }
+    return true;
+  }).toList();
+}
+
+double _num(dynamic v) {
+  if (v is num) return v.toDouble();
+  return double.tryParse('$v') ?? 0;
+}
+
+/// Warehouse priority sort: recently updated → low/out → missing barcode/code → name.
+int stockRowSortKey(Map<String, dynamic> item) {
+  final updated = item['last_stock_updated_at']?.toString();
+  if (updated != null && updated.isNotEmpty) return 0;
+  final st = item['stock_status']?.toString() ?? '';
+  if (st == 'out') return 1;
+  if (st == 'critical') return 2;
+  if (st == 'low') return 3;
+  if (item['missing_barcode'] == true || item['missing_item_code'] == true) {
+    return 4;
+  }
+  return 5;
+}
+
+int _stockNamePrefixRank(Map<String, dynamic> item, String query) {
+  if (query.isEmpty) return 0;
+  final name = (item['name']?.toString() ?? '').toLowerCase();
+  final code = (item['item_code']?.toString() ?? '').toLowerCase();
+  if (name.startsWith(query) || code.startsWith(query)) return 0;
+  if (name.contains(query) || code.contains(query)) return 1;
+  return 2;
+}
+
+int _compareByApiSort(
+  Map<String, dynamic> a,
+  Map<String, dynamic> b,
+  String sort,
+) {
+  switch (sort) {
+    case 'stock_asc':
+      return _num(a['current_stock']).compareTo(_num(b['current_stock']));
+    case 'stock_desc':
+      return _num(b['current_stock']).compareTo(_num(a['current_stock']));
+    case 'recent':
+      final da = a['days_since_last_purchase'];
+      final db = b['days_since_last_purchase'];
+      final na = da is num ? da.toInt() : 99999;
+      final nb = db is num ? db.toInt() : 99999;
+      return na.compareTo(nb);
+    default:
+      return (a['name']?.toString() ?? '')
+          .toLowerCase()
+          .compareTo((b['name']?.toString() ?? '').toLowerCase());
+  }
+}
+
+void sortStockListOperational(
+  List<Map<String, dynamic>> items, {
+  String? searchQuery,
+  String sort = 'name',
+  bool prioritizePeriodPurchases = false,
+}) {
+  final q = searchQuery?.trim().toLowerCase() ?? '';
+  final apiSort = sort.trim().toLowerCase();
+  final useWarehouseKey = apiSort == 'name' || apiSort.isEmpty;
+  items.sort((a, b) {
+    if (prioritizePeriodPurchases) {
+      final pp = _num(b['period_purchased_qty'])
+          .compareTo(_num(a['period_purchased_qty']));
+      if (pp != 0) return pp;
+    }
+    if (q.isNotEmpty) {
+      final pr = _stockNamePrefixRank(a, q).compareTo(_stockNamePrefixRank(b, q));
+      if (pr != 0) return pr;
+    }
+    if (!useWarehouseKey) {
+      final sr = _compareByApiSort(a, b, apiSort);
+      if (sr != 0) return sr;
+    } else {
+      final ka = stockRowSortKey(a);
+      final kb = stockRowSortKey(b);
+      if (ka != kb) return ka.compareTo(kb);
+    }
+    return (a['name']?.toString() ?? '')
+        .toLowerCase()
+        .compareTo((b['name']?.toString() ?? '').toLowerCase());
+  });
+}

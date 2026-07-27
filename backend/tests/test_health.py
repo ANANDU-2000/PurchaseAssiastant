@@ -1,0 +1,26 @@
+"""Smoke tests — require a valid DATABASE_URL (see backend/README.md)."""
+
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+client = TestClient(app)
+
+
+def test_health_live_ok():
+    response = client.get("/health/live")
+    assert response.status_code == 200
+    assert response.json().get("alive") is True
+
+
+def test_health_ok():
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("status") == "ok"
+    assert "ai_provider" in data
+    assert "ai_ready" in data
+    assert "intent_llm_active" in data
+    assert "ai_status" in data
+    assert "assistant_ready" in data
+    assert "redis_url_set" in data

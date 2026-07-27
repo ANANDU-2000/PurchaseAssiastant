@@ -1,0 +1,1601 @@
+"""Reports sourced from trade_purchases + trade_purchase_lines (wholesale flow)."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import uuid
+from collections import OrderedDict
+from copy import deepcopy
+from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
+from difflib import SequenceMatcher
+from time import monotonic
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, Field
+from sqlalchemy import String, and_, case, cast, desc, func, literal, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from starlette.responses import Response
+
+from app.async_budget import run_read_budget_bounded
+from app.database import get_db
+from app.db_resilience import execute_with_retry
+from app.deps import get_current_user, require_membership, require_role
+from app.http_etag import json_bytes, json_response_with_etag, payload_etag
+from app.models import CatalogItem, CategoryType, ItemCategory, Membership, TradePurchase, TradePurchaseLine, User
+from app.models.stock_adjustment import StockAdjustmentLog
+from app.models.stock_physical_count import StockPhysicalCount
+from app.models.contacts import Supplier
+from app.read_cache_generation import trade_read_cache_generation
+from app.services import trade_mapping as trade_map
+from app.services import trade_query as tq
+from app.services.home_operational_bundle import build_home_operational_bundle
+from app.services.stock_inventory import compute_inventory_summary
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(
+    prefix="/v1/businesses/{business_id}/reports",
+    tags=["reports-trade"],
+)
+
+_trade_line_amount_expr = tq.trade_line_amount_expr
+_trade_purchase_date_filter = tq.trade_purchase_date_filter
+
+_trade_dashboard_ttl_s = 60.0
+_trade_dashboard_cache: OrderedDict[
+    tuple[str, str, str, int, bool],
+    tuple[float, dict[str, Any], str, bytes],
+] = OrderedDict()
+_trade_dashboard_cache_max = 256
+
+_trade_summary_ttl_s = 45.0
+_trade_summary_cache: OrderedDict[
+    tuple[str, str, str, str, int], tuple[float, dict[str, Any]]
+] = OrderedDict()
+_trade_summary_cache_max = 256
+
+_DEGRADED_META = frozenset({"degraded", "degraded_reason"})
+_trade_dashboard_last_good: OrderedDict[tuple[Any, ...], dict[str, Any]] = OrderedDict()
+_trade_dashboard_last_good_max = 512
+_trade_summary_last_good: OrderedDict[tuple[Any, ...], dict[str, Any]] = OrderedDict()
+_trade_summary_last_good_max = 256
+
+
+class SalesCompareLineIn(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    qty: float | None = None
+    amount: float | None = None
+
+
+class SalesCompareIn(BaseModel):
+    lines: list[SalesCompareLineIn] = Field(min_length=1, max_length=500)
+
+
+def _norm_name(value: str) -> str:
+    return " ".join(value.lower().replace("-", " ").replace("_", " ").split())
+
+
+def _utc_range_from_local_dates(
+    date_from: date,
+    date_to: date,
+    tz_offset_minutes: int = 0,
+) -> tuple[datetime, datetime]:
+    """Convert local calendar dates to UTC instants using client tz offset."""
+    tz_offset = timedelta(minutes=tz_offset_minutes)
+    start_dt = datetime.combine(date_from, time.min) - tz_offset
+    end_dt = datetime.combine(date_to, time.max) - tz_offset
+    if start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=timezone.utc)
+    if end_dt.tzinfo is None:
+        end_dt = end_dt.replace(tzinfo=timezone.utc)
+    return start_dt, end_dt
+
+
+def _normalize_optional_uuid_str(value: Any) -> str | None:
+    """Hyphenated UUID for API JSON; SQLite max(cast(uuid, String)) can return 32-char hex."""
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    try:
+        return str(uuid.UUID(s))
+    except ValueError:
+        pass
+    if len(s) == 32 and "-" not in s:
+        try:
+            return str(uuid.UUID(hex=s))
+        except ValueError:
+            return s
+    return s
+
+
+def _strip_degraded_snapshot_fields(payload: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in payload.items() if k not in _DEGRADED_META}
+
+
+@router.post("/sales-comparison")
+async def compare_sales_lines(
+    business_id: uuid.UUID,
+    body: SalesCompareIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+) -> dict[str, Any]:
+    r = await db.execute(
+        select(CatalogItem.id, CatalogItem.name, CatalogItem.item_code).where(
+            CatalogItem.business_id == business_id,
+            CatalogItem.deleted_at.is_(None),
+        )
+    )
+    catalog = [
+        {"id": str(cid), "name": name, "item_code": code, "norm": _norm_name(name or "")}
+        for cid, name, code in r.all()
+    ]
+    out: list[dict[str, Any]] = []
+    for line in body.lines:
+        src = _norm_name(line.name)
+        best: dict[str, Any] | None = None
+        best_score = 0.0
+        for item in catalog:
+            score = SequenceMatcher(None, src, item["norm"]).ratio()
+            if src and item["norm"] and (src in item["norm"] or item["norm"] in src):
+                score = max(score, 0.92)
+            if score > best_score:
+                best_score = score
+                best = item
+        status_label = "matched" if best_score >= 0.82 else ("review" if best_score >= 0.62 else "missing")
+        out.append(
+            {
+                "source_name": line.name,
+                "qty": line.qty,
+                "amount": line.amount,
+                "match_status": status_label,
+                "match_score": round(best_score, 3),
+                "catalog_item_id": best["id"] if best else None,
+                "catalog_name": best["name"] if best else None,
+                "item_code": best["item_code"] if best else None,
+            }
+        )
+    return {
+        "rows": out,
+        "matched": sum(1 for r in out if r["match_status"] == "matched"),
+        "review": sum(1 for r in out if r["match_status"] == "review"),
+        "missing": sum(1 for r in out if r["match_status"] == "missing"),
+    }
+
+
+def _empty_snapshot_for_dates(ds_from: str, ds_to: str) -> dict[str, Any]:
+    return {
+        "from": ds_from,
+        "to": ds_to,
+        "summary": {
+            "deals": 0,
+            "total_purchase": 0.0,
+            "total_landing": 0.0,
+            "total_selling": 0.0,
+            "total_profit": 0.0,
+            "profit_percent": None,
+            "total_qty": 0.0,
+            "pending_delivery_count": 0,
+            "supplier_count": 0,
+            "broker_count": 0,
+            "received_delivery_count": 0,
+            "negative_stock_count": 0,
+        },
+        "unit_totals": {
+            "total_kg": 0.0,
+            "total_bags": 0.0,
+            "total_boxes": 0.0,
+            "total_tins": 0.0,
+        },
+        "categories": [],
+        "subcategories": [],
+        "item_slices": [],
+        "suppliers": [],
+        "recommendations": [],
+        "consistency": {"portfolio_score": None},
+    }
+
+
+def _put_dashboard_last_good(key: tuple[Any, ...], payload: dict[str, Any]) -> None:
+    clean = _strip_degraded_snapshot_fields(dict(payload))
+    if key in _trade_dashboard_last_good:
+        del _trade_dashboard_last_good[key]
+    _trade_dashboard_last_good[key] = deepcopy(clean)
+    while len(_trade_dashboard_last_good) > _trade_dashboard_last_good_max:
+        _trade_dashboard_last_good.popitem(last=False)
+
+
+def _put_summary_last_good(key: tuple[Any, ...], payload: dict[str, Any]) -> None:
+    clean = _strip_degraded_snapshot_fields(dict(payload))
+    if key in _trade_summary_last_good:
+        del _trade_summary_last_good[key]
+    _trade_summary_last_good[key] = deepcopy(clean)
+    while len(_trade_summary_last_good) > _trade_summary_last_good_max:
+        _trade_summary_last_good.popitem(last=False)
+
+
+def _degraded_dashboard_response(
+    key: tuple[Any, ...],
+    date_from: date,
+    date_to: date,
+    *,
+    compact: bool,
+) -> dict[str, Any]:
+    lg = _trade_dashboard_last_good.get(key)
+    if lg:
+        out = dict(deepcopy(lg))
+    else:
+        out = _empty_snapshot_for_dates(date_from.isoformat(), date_to.isoformat())
+        if compact:
+            _apply_trade_dashboard_compact(out)
+    out["degraded"] = True
+    out["degraded_reason"] = "read_budget_exceeded"
+    return out
+
+
+def _degraded_summary_response(key: tuple[Any, ...]) -> dict[str, Any]:
+    lg = _trade_summary_last_good.get(key)
+    if lg:
+        out = dict(deepcopy(lg))
+    else:
+        out = {
+            "deals": 0,
+            "total_purchase": 0.0,
+            "total_qty": 0.0,
+            "avg_cost": 0.0,
+            "unit_totals": {
+                "total_kg": 0.0,
+                "total_bags": 0.0,
+                "total_boxes": 0.0,
+                "total_tins": 0.0,
+            },
+        }
+    out["degraded"] = True
+    out["degraded_reason"] = "read_budget_exceeded"
+    return out
+
+
+async def _trade_suppliers_rows(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    date_from: date,
+    date_to: date,
+) -> list[dict[str, Any]]:
+    """Same rows as GET /trade-suppliers (line-based amounts, report status filter)."""
+    amt = _trade_line_amount_expr()
+    kg_line = tq.trade_line_weight_expr()
+    bag_expr = tq.trade_line_qty_bags_expr()
+    box_expr = tq.trade_line_qty_boxes_expr()
+    tin_expr = tq.trade_line_qty_tins_expr()
+    bag_sum = func.coalesce(func.sum(bag_expr), 0.0)
+    box_sum = func.coalesce(func.sum(box_expr), 0.0)
+    tin_sum = func.coalesce(func.sum(tin_expr), 0.0)
+    kg_sum = func.coalesce(func.sum(kg_line), 0.0)
+    bf = _trade_purchase_date_filter(business_id, date_from, date_to)
+    q = (
+        select(
+            Supplier.id,
+            func.coalesce(Supplier.name, "Unknown").label("supplier_name"),
+            func.count(func.distinct(TradePurchase.id)).label("deals"),
+            func.coalesce(func.sum(amt), 0.0).label("total_purchase"),
+            func.coalesce(func.sum(TradePurchaseLine.qty), 0.0).label("total_qty"),
+            bag_sum.label("total_bags"),
+            box_sum.label("total_boxes"),
+            tin_sum.label("total_tins"),
+            kg_sum.label("total_kg"),
+        )
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .outerjoin(Supplier, Supplier.id == TradePurchase.supplier_id)
+        .where(bf)
+        .group_by(Supplier.id, Supplier.name)
+        .having(func.count(func.distinct(TradePurchase.id)) > 0)
+        .order_by(func.coalesce(func.sum(amt), 0.0).desc())
+    )
+    rows = (await execute_with_retry(lambda: db.execute(q))).mappings().all()
+    return [
+        {
+            "supplier_id": str(r["id"]) if r["id"] is not None else "",
+            "supplier_name": str(r["supplier_name"] or "Unknown"),
+            "purchase_count": int(r["deals"] or 0),
+            "deals": int(r["deals"] or 0),
+            "total_purchase": float(r["total_purchase"] or 0),
+            "total_qty": float(r["total_qty"] or 0),
+            "total_bags": float(r["total_bags"] or 0),
+            "total_boxes": float(r["total_boxes"] or 0),
+            "total_tins": float(r["total_tins"] or 0),
+            "total_kg": float(r["total_kg"] or 0),
+            "total_profit": 0.0,
+            "avg_landing": 0.0,
+            "margin_pct": 0.0,
+        }
+        for r in rows
+    ]
+
+
+def _snapshot_cache_key(
+    business_id: uuid.UUID,
+    date_from: date,
+    date_to: date,
+    *,
+    compact: bool,
+    shell_bundle: bool = False,
+) -> tuple[str, str, str, int, bool, bool]:
+    return (
+        str(business_id),
+        date_from.isoformat(),
+        date_to.isoformat(),
+        trade_read_cache_generation(business_id),
+        compact,
+        shell_bundle,
+    )
+
+
+def _store_trade_dashboard_cache(
+    cache_key: tuple[Any, ...],
+    payload: dict[str, Any],
+) -> tuple[float, dict[str, Any], str, bytes]:
+    body = json_bytes(payload)
+    etag = payload_etag(body)
+    entry = (monotonic(), payload, etag, body)
+    if cache_key in _trade_dashboard_cache:
+        del _trade_dashboard_cache[cache_key]
+    _trade_dashboard_cache[cache_key] = entry
+    while len(_trade_dashboard_cache) > _trade_dashboard_cache_max:
+        _trade_dashboard_cache.popitem(last=False)
+    return entry
+
+
+def _get_trade_dashboard_cache(
+    cache_key: tuple[Any, ...],
+) -> tuple[float, dict[str, Any], str, bytes] | None:
+    cached = _trade_dashboard_cache.get(cache_key)
+    if cached is not None:
+        _trade_dashboard_cache.move_to_end(cache_key)
+    return cached
+
+
+def _store_trade_summary_cache(
+    cache_key: tuple[Any, ...],
+    payload: dict[str, Any],
+) -> None:
+    if cache_key in _trade_summary_cache:
+        del _trade_summary_cache[cache_key]
+    _trade_summary_cache[cache_key] = (monotonic(), payload)
+    while len(_trade_summary_cache) > _trade_summary_cache_max:
+        _trade_summary_cache.popitem(last=False)
+
+
+def _get_trade_summary_cache(
+    cache_key: tuple[Any, ...],
+) -> tuple[float, dict[str, Any]] | None:
+    cached = _trade_summary_cache.get(cache_key)
+    if cached is not None:
+        _trade_summary_cache.move_to_end(cache_key)
+    return cached
+
+
+def _apply_trade_dashboard_compact(payload: dict[str, Any]) -> None:
+    """Trim heavy arrays; summary + category rollups retained (no line items)."""
+    payload["subcategories"] = []
+    payload["item_slices"] = []
+    payload["suppliers"] = []
+    payload["recommendations"] = []
+    payload["consistency"] = {"portfolio_score": None}
+    cats = payload.get("categories")
+    if isinstance(cats, list):
+        for cat in cats:
+            if isinstance(cat, dict):
+                cat["items"] = []
+
+
+def _attach_analytics_panel_blocks(
+    payload: dict[str, Any],
+    stock: dict[str, float | int],
+) -> None:
+    """Point-in-time stock + period purchased totals for home analytics strip."""
+    unit_totals = payload.get("unit_totals")
+    if not isinstance(unit_totals, dict):
+        unit_totals = {}
+    summary = payload.get("summary")
+    if not isinstance(summary, dict):
+        summary = {}
+    payload["stock_in_hand"] = {
+        "bags": stock.get("bags", 0),
+        "boxes": stock.get("boxes", 0),
+        "tins": stock.get("tins", 0),
+        "kg": stock.get("kg", 0),
+        "total_value_inr": stock.get("total_value_inr", 0),
+        "item_count": stock.get("item_count", 0),
+    }
+    payload["purchased"] = {
+        "bags": float(unit_totals.get("total_bags") or 0),
+        "boxes": float(unit_totals.get("total_boxes") or 0),
+        "tins": float(unit_totals.get("total_tins") or 0),
+        "kg": float(unit_totals.get("total_kg") or 0),
+        "amount_inr": float(summary.get("total_purchase") or 0),
+        "deals": int(summary.get("deals") or 0),
+    }
+
+
+async def _fetch_trade_items_breakdown_rows(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    date_from: date,
+    date_to: date,
+) -> list[dict[str, Any]]:
+    amt = _trade_line_amount_expr()
+    bf = _trade_purchase_date_filter(business_id, date_from, date_to)
+    kg_line = tq.trade_line_weight_expr()
+    bag_expr = tq.trade_line_qty_bags_expr()
+    box_expr = tq.trade_line_qty_boxes_expr()
+    tin_expr = tq.trade_line_qty_tins_expr()
+    bag_sum = func.coalesce(func.sum(bag_expr), 0.0)
+    box_sum = func.coalesce(func.sum(box_expr), 0.0)
+    tin_sum = func.coalesce(func.sum(tin_expr), 0.0)
+    kg_sum = func.coalesce(func.sum(kg_line), 0.0)
+    land_gross = tq.trade_line_amount_expr()
+    sell_gross = tq.trade_line_selling_expr()
+    land_sum = func.coalesce(func.sum(land_gross), 0.0)
+    sell_sum = func.coalesce(func.sum(sell_gross), 0.0)
+    q = (
+        select(
+            TradePurchaseLine.item_name,
+            func.max(cast(TradePurchaseLine.catalog_item_id, String)).label("catalog_item_id"),
+            func.coalesce(func.sum(amt), 0).label("total_purchase"),
+            func.coalesce(func.sum(TradePurchaseLine.qty), 0).label("total_qty"),
+            func.count(TradePurchaseLine.id).label("line_count"),
+            func.count(func.distinct(TradePurchaseLine.trade_purchase_id)).label("deals"),
+            func.max(TradePurchaseLine.unit).label("unit"),
+            bag_sum.label("total_bags"),
+            box_sum.label("total_boxes"),
+            tin_sum.label("total_tins"),
+            kg_sum.label("total_kg"),
+            land_sum.label("total_landing_gross"),
+            sell_sum.label("total_selling_gross"),
+        )
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(bf)
+        .group_by(TradePurchaseLine.item_name)
+        .order_by(func.coalesce(func.sum(amt), 0).desc())
+    )
+    rows = (await execute_with_retry(lambda: db.execute(q))).mappings().all()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        qty = float(r["total_qty"] or 0)
+        tp = float(r["total_purchase"] or 0)
+        tb = float(r["total_bags"] or 0)
+        txb = float(r["total_boxes"] or 0)
+        ttn = float(r["total_tins"] or 0)
+        tkg = float(r["total_kg"] or 0)
+        tland = float(r["total_landing_gross"] or 0)
+        tsl = float(r["total_selling_gross"] or 0)
+        tprof = tsl - tland if tsl > 1e-12 or tland > 1e-12 else 0.0
+        cid = _normalize_optional_uuid_str(r.get("catalog_item_id"))
+        out.append(
+            {
+                "item_name": (r["item_name"] or "Unknown").strip() or "Unknown",
+                "catalog_item_id": cid,
+                "total_qty": qty,
+                "unit": (r["unit"] or "").strip() or "—",
+                "total_purchase": tp,
+                "total_profit": tprof,
+                "line_count": int(r["line_count"] or 0),
+                "purchase_count": int(r["deals"] or 0),
+                "avg_landing": (tland / qty) if qty > 1e-12 else 0.0,
+                "total_bags": tb,
+                "total_boxes": txb,
+                "total_tins": ttn,
+                "total_kg": tkg,
+                "total_selling": tsl,
+                "total_landing_gross": tland,
+            }
+        )
+    return out
+
+
+async def _fetch_trade_types_breakdown_rows(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    date_from: date,
+    date_to: date,
+) -> list[dict[str, Any]]:
+    amt = _trade_line_amount_expr()
+    bf = _trade_purchase_date_filter(business_id, date_from, date_to)
+    parent_cat = func.coalesce(ItemCategory.name, "Uncategorized").label("category_name")
+    type_label = case(
+        (CatalogItem.type_id.is_(None), literal("No type")),
+        else_=func.coalesce(CategoryType.name, "Unknown"),
+    ).label("type_name")
+    qty_sum = func.coalesce(func.sum(TradePurchaseLine.qty), 0)
+    kg_line = tq.trade_line_weight_expr()
+    bag_expr = tq.trade_line_qty_bags_expr()
+    box_expr = tq.trade_line_qty_boxes_expr()
+    tin_expr = tq.trade_line_qty_tins_expr()
+    bag_sum = func.coalesce(func.sum(bag_expr), 0.0)
+    box_sum = func.coalesce(func.sum(box_expr), 0.0)
+    tin_sum = func.coalesce(func.sum(tin_expr), 0.0)
+    kg_sum = func.coalesce(func.sum(kg_line), 0.0)
+    q = (
+        select(
+            parent_cat,
+            type_label,
+            func.coalesce(func.sum(amt), 0).label("total_purchase"),
+            qty_sum.label("total_qty"),
+            bag_sum.label("total_bags"),
+            box_sum.label("total_boxes"),
+            tin_sum.label("total_tins"),
+            kg_sum.label("total_kg"),
+            func.count(TradePurchaseLine.id).label("line_count"),
+        )
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .outerjoin(
+            CatalogItem,
+            and_(CatalogItem.id == TradePurchaseLine.catalog_item_id, CatalogItem.deleted_at.is_(None)),
+        )
+        .outerjoin(ItemCategory, ItemCategory.id == CatalogItem.category_id)
+        .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
+        .where(bf)
+        .group_by(parent_cat, type_label)
+        .order_by(func.coalesce(func.sum(amt), 0).desc())
+    )
+    rows = (await execute_with_retry(lambda: db.execute(q))).mappings().all()
+    return [
+        {
+            "type_name": str(r["type_name"] or "No type"),
+            "category_name": str(r["category_name"] or "Uncategorized"),
+            "subcategory": str(r["type_name"] or "No type"),
+            "line_count": int(r["line_count"] or 0),
+            "total_purchase": float(r["total_purchase"] or 0),
+            "total_qty": float(r["total_qty"] or 0),
+            "total_bags": float(r["total_bags"] or 0),
+            "total_boxes": float(r["total_boxes"] or 0),
+            "total_tins": float(r["total_tins"] or 0),
+            "total_kg": float(r["total_kg"] or 0),
+            "total_profit": 0.0,
+        }
+        for r in rows
+    ]
+
+
+async def _compute_trade_dashboard_snapshot_payload(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    date_from: date,
+    date_to: date,
+) -> dict[str, Any]:
+    """Single snapshot dict — same fields as GET /trade-dashboard-snapshot."""
+    amt = _trade_line_amount_expr()
+    bf = _trade_purchase_date_filter(business_id, date_from, date_to)
+    kg_expr = tq.trade_line_weight_expr()
+    bag_expr = tq.trade_line_qty_bags_expr()
+    box_expr = tq.trade_line_qty_boxes_expr()
+    tin_expr = tq.trade_line_qty_tins_expr()
+    roll = (
+        select(
+            func.coalesce(func.sum(bag_expr), 0.0).label("total_bags"),
+            func.coalesce(func.sum(box_expr), 0.0).label("total_boxes"),
+            func.coalesce(func.sum(tin_expr), 0.0).label("total_tins"),
+            func.coalesce(func.sum(kg_expr), 0.0).label("total_kg"),
+        )
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(bf)
+    )
+    sell_line = tq.trade_line_selling_expr()
+    sum_q = select(
+        func.count(func.distinct(TradePurchase.id)).label("deals"),
+        func.coalesce(func.sum(amt), 0.0).label("total_purchase"),
+        func.coalesce(func.sum(TradePurchaseLine.qty), 0.0).label("total_qty"),
+        func.coalesce(func.sum(sell_line), 0.0).label("total_selling"),
+    ).select_from(TradePurchaseLine).join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id).where(bf)
+    cat_id_key = case(
+        (ItemCategory.id.isnot(None), func.cast(ItemCategory.id, String)),
+        else_=literal("_uncat"),
+    ).label("category_id")
+    cn = func.coalesce(ItemCategory.name, "Uncategorised").label("category_name")
+    nest_q = (
+        select(
+            cat_id_key,
+            cn,
+            TradePurchaseLine.item_name,
+            func.max(TradePurchaseLine.unit).label("unit"),
+            func.max(TradePurchaseLine.unit_type).label("unit_type"),
+            func.coalesce(func.sum(amt), 0.0).label("amount"),
+            func.coalesce(func.sum(TradePurchaseLine.qty), 0.0).label("qty"),
+            func.max(cast(TradePurchaseLine.catalog_item_id, String)).label("catalog_item_id"),
+        )
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .outerjoin(
+            CatalogItem,
+            and_(CatalogItem.id == TradePurchaseLine.catalog_item_id, CatalogItem.deleted_at.is_(None)),
+        )
+        .outerjoin(ItemCategory, ItemCategory.id == CatalogItem.category_id)
+        .where(bf)
+        .group_by(cat_id_key, cn, TradePurchaseLine.item_name)
+    )
+    eroll, esum, enest = await asyncio.gather(
+        execute_with_retry(lambda: db.execute(roll)),
+        execute_with_retry(lambda: db.execute(sum_q)),
+        execute_with_retry(lambda: db.execute(nest_q)),
+    )
+    roll_row = eroll.mappings().one()
+    srow = esum.mappings().one()
+    flat = enest.mappings().all()
+
+    mapping, items, types, suppliers = await asyncio.gather(
+        trade_map.item_supplier_broker_rows(db, business_id, date_from, date_to),
+        _fetch_trade_items_breakdown_rows(db, business_id, date_from, date_to),
+        _fetch_trade_types_breakdown_rows(db, business_id, date_from, date_to),
+        _trade_suppliers_rows(db, business_id, date_from, date_to),
+    )
+    detail, recs = mapping
+    total_purchase = float(srow["total_purchase"] or 0)
+    total_selling = float(srow["total_selling"] or 0)
+    total_qty = float(srow["total_qty"] or 0)
+    deals = int(srow["deals"] or 0)
+    total_landing = total_purchase
+    total_profit = total_selling - total_landing
+    profit_percent: float | None
+    if total_landing > 1e-12:
+        profit_percent = (total_profit / total_landing) * 100.0
+    else:
+        profit_percent = None
+
+    cat_map: dict[str, dict[str, Any]] = {}
+    for r in flat:
+        cid = str(r["category_id"] or "_uncat")
+        cname = str(r["category_name"] or "Uncategorised")
+        if cid not in cat_map:
+            cat_map[cid] = {
+                "category_id": cid,
+                "category_name": cname,
+                "total_purchase": 0.0,
+                "total_qty": 0.0,
+                "units": {"bags": 0.0, "boxes": 0.0, "tins": 0.0},
+                "items": [],
+            }
+        unit = str(r["unit"] or "")
+        uu = unit.upper()
+        ut_cat = str(r["unit_type"] or "").strip().lower()
+        qv = float(r["qty"] or 0)
+        am = float(r["amount"] or 0)
+        cat_map[cid]["total_purchase"] += am
+        cat_map[cid]["total_qty"] += qv
+        if ut_cat == "bag" or (not ut_cat and ("BAG" in uu or "SACK" in uu)):
+            cat_map[cid]["units"]["bags"] += qv
+        if ut_cat == "box" or (not ut_cat and "BOX" in uu):
+            cat_map[cid]["units"]["boxes"] += qv
+        if ut_cat == "tin" or (not ut_cat and "TIN" in uu):
+            cat_map[cid]["units"]["tins"] += qv
+        ci = _normalize_optional_uuid_str(r["catalog_item_id"])
+        cat_map[cid]["items"].append(
+            {
+                "name": (r["item_name"] or "—").strip() or "—",
+                "qty": qv,
+                "unit": unit,
+                "amount": am,
+                "catalog_item_id": ci,
+            }
+        )
+    for c in cat_map.values():
+        c["items"].sort(key=lambda x: x["amount"], reverse=True)
+
+    by_cid: dict[str, list[dict[str, Any]]] = {}
+    for drow in detail:
+        iid = _normalize_optional_uuid_str(drow.get("catalog_item_id"))
+        if not iid:
+            continue
+        sid = iid
+        if sid not in by_cid:
+            by_cid[sid] = []
+        by_cid[sid].append(drow)
+    for c in cat_map.values():
+        its = c.get("items") or []
+        sup = "—"
+        bro: str = "—"
+        for it in its:
+            iid = it.get("catalog_item_id")
+            if not iid:
+                continue
+            group = by_cid.get(str(iid))
+            if not group:
+                continue
+            best = max(
+                group,
+                key=lambda g: (float(g.get("total_purchase") or 0.0), str(g.get("supplier_id") or "")),
+            )
+            sname = str(best.get("supplier_name") or "").strip()
+            bname = best.get("broker_name")
+            sup = sname or "—"
+            bro = str(bname).strip() if bname is not None and str(bname).strip() else "—"
+            break
+        c["subtitle_supplier"] = sup
+        c["subtitle_broker"] = bro
+    cids = {d["catalog_item_id"] for d in detail if d.get("catalog_item_id")}
+    scores: list[float] = []
+    for cid in cids:
+        zs = [r.get("vwap_zscore") for r in detail if r.get("catalog_item_id") == cid]
+        sc = trade_map.consistency_score_from_zscores(zs)
+        if sc is not None:
+            scores.append(sc)
+    portfolio_consistency = sum(scores) / len(scores) if scores else None
+
+    pend_q = (
+        select(func.count())
+        .select_from(TradePurchase)
+        .where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.is_delivered.is_(False),
+            TradePurchase.status.notin_(("deleted", "cancelled")),
+        )
+    )
+    sup_q = (
+        select(func.count(func.distinct(TradePurchase.supplier_id)))
+        .select_from(TradePurchase)
+        .where(bf, TradePurchase.supplier_id.isnot(None))
+    )
+    bro_q = (
+        select(func.count(func.distinct(TradePurchase.broker_id)))
+        .select_from(TradePurchase)
+        .where(bf, TradePurchase.broker_id.isnot(None))
+    )
+    recv_q = (
+        select(func.count())
+        .select_from(TradePurchase)
+        .where(
+            bf,
+            TradePurchase.is_delivered.is_(True),
+        )
+    )
+    neg_q = (
+        select(func.count())
+        .select_from(CatalogItem)
+        .where(
+            CatalogItem.business_id == business_id,
+            CatalogItem.deleted_at.is_(None),
+            CatalogItem.current_stock < 0,
+        )
+    )
+
+    async def _count_scalar(q) -> int:
+        r = await execute_with_retry(lambda: db.execute(q))
+        return int(r.scalar() or 0)
+
+    (
+        pending_delivery_count,
+        supplier_count,
+        broker_count,
+        received_delivery_count,
+        negative_stock_count,
+    ) = await asyncio.gather(
+        _count_scalar(pend_q),
+        _count_scalar(sup_q),
+        _count_scalar(bro_q),
+        _count_scalar(recv_q),
+        _count_scalar(neg_q),
+    )
+
+    return {
+        "from": date_from.isoformat(),
+        "to": date_to.isoformat(),
+        "summary": {
+            "deals": deals,
+            "total_purchase": total_purchase,
+            "total_landing": total_landing,
+            "total_selling": total_selling,
+            "total_profit": total_profit,
+            "profit_percent": round(profit_percent, 2) if profit_percent is not None else None,
+            "total_qty": total_qty,
+            "pending_delivery_count": pending_delivery_count,
+            "supplier_count": supplier_count,
+            "broker_count": broker_count,
+            "received_delivery_count": received_delivery_count,
+            "negative_stock_count": negative_stock_count,
+        },
+        "unit_totals": {
+            "total_kg": float(roll_row["total_kg"] or 0),
+            "total_bags": float(roll_row["total_bags"] or 0),
+            "total_boxes": float(roll_row["total_boxes"] or 0),
+            "total_tins": float(roll_row["total_tins"] or 0),
+        },
+        "categories": list(cat_map.values()),
+        "subcategories": types,
+        "item_slices": items,
+        "suppliers": suppliers,
+        "recommendations": recs,
+        "consistency": {"portfolio_score": portfolio_consistency},
+    }
+
+
+@router.get("/trade-supplier-broker-map")
+async def trade_supplier_broker_map(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+) -> dict[str, Any]:
+    """Item-level trade lines to (supplier, broker) with vwap; optional z-scores and best-supplier recs (deals>=2)."""
+    del _m
+    detail, recs = await trade_map.item_supplier_broker_rows(db, business_id, date_from, date_to)
+    return {"rows": detail, "recommendations": recs}
+
+
+@router.get("/trade-last-supplier-autofill")
+async def trade_last_supplier_autofill(
+    business_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    supplier_id: uuid.UUID = Query(..., description="Supplier to load latest trade header for"),
+) -> dict[str, Any]:
+    """Latest TradePurchase header for supplier (draft autofill; trade rows only)."""
+    del user, _m
+    return await trade_map.latest_supplier_trade_header_defaults(db, business_id, supplier_id)
+
+
+@router.get("/trade-dashboard-snapshot")
+async def trade_dashboard_snapshot(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_role("owner", "manager", "super_admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+) -> dict[str, Any]:
+    """Single payload matching report definitions: summary, unit rollups, categories with line items, types, top items."""
+    del _m
+    cache_key = _snapshot_cache_key(business_id, date_from, date_to, compact=False, shell_bundle=False)
+    now_mono = monotonic()
+    cached = _get_trade_dashboard_cache(cache_key)
+    if cached is not None and now_mono - cached[0] <= _trade_dashboard_ttl_s:
+        return cached[1]
+
+    async def compute() -> dict[str, Any]:
+        return await _compute_trade_dashboard_snapshot_payload(db, business_id, date_from, date_to)
+
+    ok, maybe = await run_read_budget_bounded(compute, timeout_seconds=10.0)
+    if not ok or maybe is None:
+        return _degraded_dashboard_response(cache_key, date_from, date_to, compact=False)
+    payload = _strip_degraded_snapshot_fields(dict(maybe))
+    _put_dashboard_last_good(cache_key, payload)
+    _store_trade_dashboard_cache(cache_key, payload)
+    return payload
+
+
+@router.get("/home-overview")
+async def trade_home_overview(
+    request: Request,
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+    compact: bool = Query(False, description="Omit heavy snapshot arrays when true."),
+    shell_bundle: bool = Query(
+        False,
+        description="When true, attach home_shell (subcategories, suppliers, items) from the same snapshot compute (no extra queries).",
+    ),
+    max_span_days: int | None = Query(
+        None,
+        ge=1,
+        le=400,
+        description="When set, reject ranges longer than this (inclusive calendar days).",
+    ),
+) -> Response:
+    """Bundled dashboard snapshot shape for Flutter home — delegates to snapshot builder (+ optional compact)."""
+    if date_from > date_to:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="from_must_not_exceed_to")
+    inclusive_days = (date_to - date_from).days + 1
+    if max_span_days is not None and inclusive_days > max_span_days:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="date_range_exceeds_max_span_days")
+
+    cache_key = _snapshot_cache_key(
+        business_id, date_from, date_to, compact=compact, shell_bundle=shell_bundle
+    )
+    now_mono = monotonic()
+    cached = _get_trade_dashboard_cache(cache_key)
+    if cached is not None and now_mono - cached[0] <= _trade_dashboard_ttl_s:
+        return json_response_with_etag(
+            request,
+            cached[1],
+            cache_control="private, max-age=60",
+            precomputed_body=cached[3],
+            precomputed_etag=cached[2],
+        )
+
+    async def compute() -> dict[str, Any]:
+        full = await _compute_trade_dashboard_snapshot_payload(db, business_id, date_from, date_to)
+        out = dict(full)
+        home_shell: dict[str, Any] | None = None
+        if shell_bundle:
+            home_shell = {
+                "subcategories": list(out.get("subcategories") or []),
+                "suppliers": list(out.get("suppliers") or []),
+                "items": list(out.get("item_slices") or []),
+            }
+            stock = await compute_inventory_summary(db, business_id)
+            _attach_analytics_panel_blocks(out, stock)
+            out["home_operational"] = await build_home_operational_bundle(
+                db, business_id, _m
+            )
+        if compact:
+            _apply_trade_dashboard_compact(out)
+        if home_shell is not None:
+            out["home_shell"] = home_shell
+        return out
+
+    ok, maybe = await run_read_budget_bounded(compute, timeout_seconds=10.0)
+    if not ok or maybe is None:
+        degraded = _degraded_dashboard_response(cache_key, date_from, date_to, compact=compact)
+        return json_response_with_etag(
+            request,
+            degraded,
+            cache_control="private, max-age=0",
+        )
+    payload = _strip_degraded_snapshot_fields(dict(maybe))
+    _put_dashboard_last_good(cache_key, payload)
+    _, _, etag, body = _store_trade_dashboard_cache(cache_key, payload)
+    return json_response_with_etag(
+        request,
+        payload,
+        cache_control="private, max-age=60",
+        precomputed_body=body,
+        precomputed_etag=etag,
+    )
+
+
+@router.get("/trade-summary")
+async def trade_purchase_summary(
+    request: Request,
+    business_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_role("owner", "manager", "super_admin"))],
+    date_from: date | None = Query(None, alias="from"),
+    date_to: date | None = Query(None, alias="to"),
+    supplier_id: uuid.UUID | None = Query(None),
+) -> Response:
+    """
+    Line-based totals: same [trade_line_amount_expr] and status filter as
+    /trade-items and /trade-dashboard-snapshot. Header [TradePurchase.total_amount]
+    can differ (freight/rounding); report KPIs use line sums.
+    """
+    del user
+    gen = trade_read_cache_generation(business_id)
+    su_key = (
+        str(business_id),
+        date_from.isoformat() if date_from is not None else "",
+        date_to.isoformat() if date_to is not None else "",
+        str(supplier_id) if supplier_id is not None else "",
+        gen,
+    )
+    t0 = monotonic()
+    hit = _get_trade_summary_cache(su_key)
+    if hit is not None and t0 - hit[0] <= _trade_summary_ttl_s:
+        return json_response_with_etag(
+            request,
+            hit[1],
+            cache_control="private, max-age=60",
+        )
+
+    async def compute_summary() -> dict[str, Any]:
+        amt_inner = tq.trade_line_amount_expr()
+        conditions_inner = [
+            TradePurchase.business_id == business_id,
+            tq.trade_purchase_status_in_reports(),
+        ]
+        if date_from is not None:
+            conditions_inner.append(TradePurchase.purchase_date >= date_from)
+        if date_to is not None:
+            conditions_inner.append(TradePurchase.purchase_date <= date_to)
+        if supplier_id is not None:
+            conditions_inner.append(TradePurchase.supplier_id == supplier_id)
+        q_inner = (
+            select(
+                func.count(func.distinct(TradePurchase.id)).label("deals"),
+                func.coalesce(func.sum(amt_inner), 0.0).label("total_purchase"),
+                func.coalesce(func.sum(TradePurchaseLine.qty), 0.0).label("total_qty"),
+            )
+            .select_from(TradePurchaseLine)
+            .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+            .where(and_(*conditions_inner))
+        )
+        m = (await execute_with_retry(lambda: db.execute(q_inner))).mappings().one()
+        deals_val = int(m["deals"] or 0)
+        total_purchase_val = float(m["total_purchase"] or 0)
+        total_qty_val = float(m["total_qty"] or 0)
+        avg_cost_val = (total_purchase_val / total_qty_val) if total_qty_val > 1e-12 else 0.0
+
+        kg_expr_i = tq.trade_line_weight_expr()
+        bag_expr_i = tq.trade_line_qty_bags_expr()
+        box_expr_i = tq.trade_line_qty_boxes_expr()
+        tin_expr_i = tq.trade_line_qty_tins_expr()
+        roll_q_inner = (
+            select(
+                func.coalesce(func.sum(bag_expr_i), 0.0).label("total_bags"),
+                func.coalesce(func.sum(box_expr_i), 0.0).label("total_boxes"),
+                func.coalesce(func.sum(tin_expr_i), 0.0).label("total_tins"),
+                func.coalesce(func.sum(kg_expr_i), 0.0).label("total_kg"),
+            )
+            .select_from(TradePurchaseLine)
+            .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+            .where(and_(*conditions_inner))
+        )
+        roll_row_inner = (await execute_with_retry(lambda: db.execute(roll_q_inner))).mappings().one()
+
+        return {
+            "deals": deals_val,
+            "total_purchase": total_purchase_val,
+            "total_qty": total_qty_val,
+            "avg_cost": avg_cost_val,
+            "unit_totals": {
+                "total_kg": float(roll_row_inner["total_kg"] or 0),
+                "total_bags": float(roll_row_inner["total_bags"] or 0),
+                "total_boxes": float(roll_row_inner["total_boxes"] or 0),
+                "total_tins": float(roll_row_inner["total_tins"] or 0),
+            },
+        }
+
+    ok, maybe = await run_read_budget_bounded(compute_summary)
+    if not ok or maybe is None:
+        degraded = _degraded_summary_response(su_key)
+        return json_response_with_etag(
+            request,
+            degraded,
+            cache_control="private, max-age=0",
+        )
+    payload = _strip_degraded_snapshot_fields(dict(maybe))
+    _put_summary_last_good(su_key, payload)
+    _store_trade_summary_cache(su_key, payload)
+    return json_response_with_etag(
+        request,
+        payload,
+        cache_control="private, max-age=60",
+    )
+
+
+@router.get("/trade-daily-profit")
+async def trade_daily_profit_series(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+) -> list[dict[str, Any]]:
+    """Per-calendar-day sum of line profit (same basis as [trade_line_profit_expr]) for charts."""
+    del _m
+    if date_from > date_to:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="from_must_not_exceed_to")
+    profit_e = tq.trade_line_profit_expr()
+    bf = _trade_purchase_date_filter(business_id, date_from, date_to)
+    q = (
+        select(TradePurchase.purchase_date, func.coalesce(func.sum(profit_e), 0.0))
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(bf)
+        .group_by(TradePurchase.purchase_date)
+        .order_by(TradePurchase.purchase_date)
+    )
+    r = await execute_with_retry(lambda: db.execute(q))
+    return [{"d": d.isoformat(), "profit": float(p or 0)} for d, p in r.all()]
+
+
+@router.get("/trade-items")
+async def trade_items_breakdown(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+    category_id: list[uuid.UUID] | None = Query(None),
+    subcategory_id: list[uuid.UUID] | None = Query(None),
+    supplier_id: list[uuid.UUID] | None = Query(None),
+    sort: str = Query("highestValue"),
+    order: str = Query("desc"),
+    limit: int = Query(500, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
+) -> list[dict[str, Any]]:
+    del _m
+    rows = await _fetch_trade_items_breakdown_rows(db, business_id, date_from, date_to)
+    if supplier_id:
+        allowed = {str(s) for s in supplier_id}
+        rows = [r for r in rows if str(r.get("supplier_id") or "") in allowed]
+    reverse = order.lower() != "asc"
+    key_fn = {
+        "highestValue": lambda r: float(r.get("total_purchase") or r.get("total_amount") or 0),
+        "highestQty": lambda r: float(r.get("total_qty") or 0),
+        "az": lambda r: str(r.get("item_name") or r.get("name") or "").lower(),
+        "latest": lambda r: str(r.get("last_purchase_date") or ""),
+    }.get(sort, lambda r: float(r.get("total_purchase") or 0))
+    rows.sort(key=key_fn, reverse=reverse)
+    return rows[offset : offset + limit]
+
+
+@router.get("/trade-suppliers")
+async def trade_suppliers_breakdown(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+    limit: int = Query(100, ge=1, le=500),
+) -> list[dict[str, Any]]:
+    del _m
+    rows = await _trade_suppliers_rows(db, business_id, date_from, date_to)
+    return rows[:limit]
+
+
+@router.get("/trade-categories")
+async def trade_categories_breakdown(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+    limit: int = Query(100, ge=1, le=500),
+) -> list[dict[str, Any]]:
+    """Spend grouped by ItemCategory name."""
+    del _m
+    amt = _trade_line_amount_expr()
+    bf = _trade_purchase_date_filter(business_id, date_from, date_to)
+    cat_key = func.coalesce(ItemCategory.name, "Uncategorized")
+    qty_sum = func.coalesce(func.sum(TradePurchaseLine.qty), 0)
+    q = (
+        select(
+            cat_key.label("category_name"),
+            func.count(TradePurchaseLine.id).label("line_count"),
+            func.count(func.distinct(TradePurchaseLine.catalog_item_id)).label("item_count"),
+            func.coalesce(func.sum(amt), 0).label("total_purchase"),
+            qty_sum.label("total_qty"),
+        )
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .outerjoin(
+            CatalogItem,
+            and_(CatalogItem.id == TradePurchaseLine.catalog_item_id, CatalogItem.deleted_at.is_(None)),
+        )
+        .outerjoin(ItemCategory, ItemCategory.id == CatalogItem.category_id)
+        .where(bf)
+        .group_by(cat_key)
+        .order_by(func.coalesce(func.sum(amt), 0).desc())
+    )
+    rows = (await db.execute(q)).mappings().all()
+    out = [
+        {
+            "category_name": str(r["category_name"] or "Uncategorized"),
+            "category": str(r["category_name"] or "Uncategorized"),
+            "line_count": int(r["line_count"] or 0),
+            "item_count": int(r["item_count"] or 0),
+            "total_purchase": float(r["total_purchase"] or 0),
+            "total_profit": 0.0,
+            "total_qty": float(r["total_qty"] or 0),
+            "type_name": "—",
+        }
+        for r in rows
+    ]
+    return out[:limit]
+
+
+@router.get("/trade-types")
+async def trade_types_breakdown(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+    limit: int = Query(100, ge=1, le=500),
+) -> list[dict[str, Any]]:
+    """Category → subcategory: spend grouped by CategoryType (catalog `type_id`) with parent category name."""
+    del _m
+    rows = await _fetch_trade_types_breakdown_rows(db, business_id, date_from, date_to)
+    return rows[:limit]
+
+
+async def _purchase_totals_for_range(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    date_from: date,
+    date_to: date,
+) -> dict[str, Any]:
+    bf = _trade_purchase_date_filter(business_id, date_from, date_to)
+    purchase = await execute_with_retry(
+        lambda: db.execute(
+            select(func.coalesce(func.sum(_trade_line_amount_expr()), 0))
+            .select_from(TradePurchaseLine)
+            .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+            .where(bf)
+        )
+    )
+    deals = await execute_with_retry(
+        lambda: db.execute(
+            select(func.count(TradePurchase.id.distinct()))
+            .select_from(TradePurchase)
+            .where(bf)
+        )
+    )
+    sups = await execute_with_retry(
+        lambda: db.execute(
+            select(func.count(TradePurchase.supplier_id.distinct()))
+            .select_from(TradePurchase)
+            .where(bf)
+        )
+    )
+    kg = await execute_with_retry(
+        lambda: db.execute(
+            select(func.coalesce(func.sum(tq.trade_line_weight_expr()), 0))
+            .select_from(TradePurchaseLine)
+            .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+            .where(bf)
+        )
+    )
+    return {
+        "total_purchase": float(purchase.scalar() or 0),
+        "purchase_count": int(deals.scalar() or 0),
+        "supplier_count": int(sups.scalar() or 0),
+        "total_kg": float(kg.scalar() or 0),
+    }
+
+
+@router.get("/period-comparison")
+async def reports_period_comparison(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+) -> dict[str, Any]:
+    """Current period vs prior equal-length window (purchase value SSOT)."""
+    del _m
+    span = (date_to - date_from).days + 1
+    prior_end = date_from - timedelta(days=1)
+    prior_start = prior_end - timedelta(days=span - 1)
+    current = await _purchase_totals_for_range(db, business_id, date_from, date_to)
+    prior = await _purchase_totals_for_range(db, business_id, prior_start, prior_end)
+    cur_p = current["total_purchase"]
+    prev_p = prior["total_purchase"]
+    pct = None
+    if prev_p > 1e-6:
+        pct = round(((cur_p - prev_p) / prev_p) * 100, 1)
+    return {
+        "current": current,
+        "prior": prior,
+        "purchase_change_pct": pct,
+        "prior_from": prior_start.isoformat(),
+        "prior_to": prior_end.isoformat(),
+    }
+
+
+@router.get("/movement-summary")
+async def reports_movement_summary(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+    tz_offset_minutes: int = Query(0, ge=-720, le=840),
+) -> dict[str, Any]:
+    """Stock adjustment totals by type for the period (no financial totals)."""
+    del _m
+    start_dt, end_dt = _utc_range_from_local_dates(
+        date_from, date_to, tz_offset_minutes
+    )
+    r = await db.execute(
+        select(
+            StockAdjustmentLog.adjustment_type,
+            func.count(),
+            func.coalesce(func.sum(StockAdjustmentLog.new_qty - StockAdjustmentLog.old_qty), 0),
+        )
+        .where(
+            StockAdjustmentLog.business_id == business_id,
+            StockAdjustmentLog.updated_at >= start_dt,
+            StockAdjustmentLog.updated_at <= end_dt,
+        )
+        .group_by(StockAdjustmentLog.adjustment_type)
+    )
+    by_type: dict[str, dict[str, float | int]] = {}
+    for adj_type, cnt, delta in r.all():
+        key = str(adj_type or "manual")
+        by_type[key] = {"count": int(cnt or 0), "qty_delta": float(delta or 0)}
+    daily_r = await db.execute(
+        select(
+            func.date(StockAdjustmentLog.updated_at),
+            func.count(),
+        )
+        .where(
+            StockAdjustmentLog.business_id == business_id,
+            StockAdjustmentLog.updated_at >= start_dt,
+            StockAdjustmentLog.updated_at <= end_dt,
+        )
+        .group_by(func.date(StockAdjustmentLog.updated_at))
+        .order_by(func.date(StockAdjustmentLog.updated_at))
+    )
+    timeline = [
+        {"date": (d.isoformat() if hasattr(d, "isoformat") else str(d)), "events": int(c or 0)}
+        for d, c in daily_r.all()
+    ]
+    return {"by_type": by_type, "timeline": timeline}
+
+
+@router.get("/activity-feed")
+async def reports_activity_feed(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+    tz_offset_minutes: int = Query(0, ge=-720, le=840),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> dict[str, Any]:
+    """Unified activity timeline: purchases + stock adjustments."""
+    del _m
+    start_dt, end_dt = _utc_range_from_local_dates(
+        date_from, date_to, tz_offset_minutes
+    )
+    daily_r = await db.execute(
+        select(
+            func.date(StockAdjustmentLog.updated_at),
+            func.count(),
+        )
+        .where(
+            StockAdjustmentLog.business_id == business_id,
+            StockAdjustmentLog.updated_at >= start_dt,
+            StockAdjustmentLog.updated_at <= end_dt,
+        )
+        .group_by(func.date(StockAdjustmentLog.updated_at))
+        .order_by(func.date(StockAdjustmentLog.updated_at))
+    )
+    stock_timeline = [
+        {
+            "type": "stock",
+            "date": (d.isoformat() if hasattr(d, "isoformat") else str(d)),
+            "events": int(c or 0),
+        }
+        for d, c in daily_r.all()
+    ]
+    bf = _trade_purchase_date_filter(business_id, date_from, date_to)
+    pq = (
+        select(
+            TradePurchase.id,
+            TradePurchase.human_id,
+            TradePurchase.purchase_date,
+            TradePurchase.total_amount,
+        )
+        .where(bf)
+        .order_by(TradePurchase.purchase_date.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    purchases = [
+        {
+            "type": "purchase",
+            "purchase_id": str(pid),
+            "human_id": hid,
+            "date": pd.isoformat(),
+            "amount": float(amt or 0),
+        }
+        for pid, hid, pd, amt in (await db.execute(pq)).all()
+    ]
+    return {
+        "stock_timeline": stock_timeline,
+        "purchases": purchases,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+async def _latest_physical_qty(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    item_id: uuid.UUID,
+) -> tuple[float | None, str | None]:
+    row = (
+        await db.execute(
+            select(StockPhysicalCount.qty, StockPhysicalCount.counted_at)
+            .where(
+                StockPhysicalCount.business_id == business_id,
+                StockPhysicalCount.item_id == item_id,
+            )
+            .order_by(desc(StockPhysicalCount.counted_at))
+            .limit(1)
+        )
+    ).one_or_none()
+    if row is None:
+        return None, None
+    qty, counted_at = row
+    at_iso = counted_at.isoformat() if counted_at is not None else None
+    return float(qty or 0), at_iso
+
+
+@router.get("/item/{catalog_item_id}")
+async def reports_item_bundle(
+    business_id: uuid.UUID,
+    catalog_item_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> dict[str, Any]:
+    """Item report: catalog snapshot + period KPIs + paginated purchase lines."""
+    del _m
+    try:
+        return await _reports_item_bundle_body(
+            db=db,
+            business_id=business_id,
+            catalog_item_id=catalog_item_id,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+            offset=offset,
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            "reports_item_bundle failed business_id=%s catalog_item_id=%s",
+            business_id,
+            catalog_item_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": "REPORTS_ITEM_FAILED",
+                "message": "Could not load item report",
+            },
+        ) from None
+
+
+async def _reports_item_bundle_body(
+    *,
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    catalog_item_id: uuid.UUID,
+    date_from: date,
+    date_to: date,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    last_supplier = Supplier.__table__.alias("last_supplier")
+    item_r = await db.execute(
+        select(
+            CatalogItem,
+            ItemCategory.name.label("category_name"),
+            CategoryType.name.label("subcategory_name"),
+            last_supplier.c.name.label("last_supplier_name"),
+        )
+        .outerjoin(ItemCategory, ItemCategory.id == CatalogItem.category_id)
+        .outerjoin(CategoryType, CategoryType.id == CatalogItem.type_id)
+        .outerjoin(last_supplier, last_supplier.c.id == CatalogItem.last_supplier_id)
+        .where(
+            CatalogItem.business_id == business_id,
+            CatalogItem.id == catalog_item_id,
+            CatalogItem.deleted_at.is_(None),
+        )
+    )
+    item_row = item_r.one_or_none()
+    if item_row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="item_not_found")
+    item, category_name, subcategory_name, last_supplier_name = item_row
+    phys_qty, phys_at = await _latest_physical_qty(db, business_id, catalog_item_id)
+
+    def _fdec(v: Decimal | None) -> float | None:
+        if v is None:
+            return None
+        return float(v)
+
+    def _iso_dt(v: datetime | None) -> str | None:
+        return v.isoformat() if v is not None else None
+
+    item_snapshot = {
+        "id": str(item.id),
+        "name": item.name,
+        "category": category_name or "",
+        "subcategory": subcategory_name or "",
+        "item_code": item.item_code or "",
+        "barcode": item.barcode or "",
+        "hsn_code": item.hsn_code or "",
+        "stock_unit": item.stock_unit or item.default_unit or "",
+        "rack_location": item.rack_location or "",
+        "current_stock": float(item.current_stock or 0),
+        "reorder_level": float(item.reorder_level or 0),
+        "physical_stock_qty": phys_qty,
+        "physical_stock_counted_at": phys_at,
+        "default_landing_cost": _fdec(item.default_landing_cost),
+        "default_selling_cost": _fdec(item.default_selling_cost),
+        "last_purchase_price": _fdec(item.last_purchase_price),
+        "last_purchase_at": _iso_dt(item.last_purchase_at),
+        "last_supplier_name": last_supplier_name or "",
+        "last_stock_updated_at": _iso_dt(item.last_stock_updated_at),
+        "last_stock_updated_by": item.last_stock_updated_by or "",
+        "default_kg_per_bag": _fdec(item.default_kg_per_bag),
+    }
+
+    amt = _trade_line_amount_expr()
+    bf = _trade_purchase_date_filter(business_id, date_from, date_to)
+    line_filter = and_(
+        bf,
+        TradePurchaseLine.catalog_item_id == catalog_item_id,
+    )
+    summary_q = (
+        select(
+            func.coalesce(func.sum(amt), 0).label("total_purchase"),
+            func.coalesce(func.sum(TradePurchaseLine.qty), 0).label("total_qty"),
+            func.coalesce(func.sum(TradePurchaseLine.total_weight), 0).label("total_weight_kg"),
+            func.count(func.distinct(TradePurchase.id)).label("purchase_count"),
+            func.count(func.distinct(TradePurchase.supplier_id)).label("supplier_count"),
+            func.coalesce(func.min(TradePurchaseLine.landing_cost), 0).label("rate_min"),
+            func.coalesce(func.max(TradePurchaseLine.landing_cost), 0).label("rate_max"),
+            func.coalesce(func.avg(TradePurchaseLine.landing_cost), 0).label("rate_avg"),
+        )
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .where(line_filter)
+    )
+    sm = (await db.execute(summary_q)).mappings().one()
+    lines_q = (
+        select(
+            TradePurchase.id,
+            TradePurchase.human_id,
+            TradePurchase.purchase_date,
+            TradePurchaseLine.qty,
+            TradePurchaseLine.unit,
+            TradePurchaseLine.landing_cost,
+            func.coalesce(amt, 0).label("line_amount"),
+            Supplier.name.label("supplier_name"),
+            User.name.label("entered_by_name"),
+        )
+        .select_from(TradePurchaseLine)
+        .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
+        .outerjoin(Supplier, Supplier.id == TradePurchase.supplier_id)
+        .outerjoin(User, User.id == TradePurchase.user_id)
+        .where(line_filter)
+        .order_by(TradePurchase.purchase_date.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    lines = [
+        {
+            "purchase_id": str(pid),
+            "human_id": hid or "",
+            "purchase_date": pdate.isoformat(),
+            "qty": float(qty or 0),
+            "unit": str(unit or ""),
+            "rate": float(rate or 0),
+            "line_amount": float(lamt or 0),
+            "supplier_name": str(sup_name or ""),
+            "entered_by_name": str(entered_by or ""),
+        }
+        for pid, hid, pdate, qty, unit, rate, lamt, sup_name, entered_by in (
+            await db.execute(lines_q)
+        ).all()
+    ]
+    return {
+        "catalog_item_id": str(catalog_item_id),
+        "item_name": item.name,
+        "current_stock": float(item.current_stock or 0),
+        "item": item_snapshot,
+        "summary": {
+            "total_purchase": float(sm["total_purchase"] or 0),
+            "total_qty": float(sm["total_qty"] or 0),
+            "total_weight_kg": float(sm["total_weight_kg"] or 0),
+            "purchase_count": int(sm["purchase_count"] or 0),
+            "supplier_count": int(sm["supplier_count"] or 0),
+            "rate_min": float(sm["rate_min"] or 0),
+            "rate_max": float(sm["rate_max"] or 0),
+            "rate_avg": float(sm["rate_avg"] or 0),
+        },
+        "lines": lines,
+        "limit": limit,
+        "offset": offset,
+    }

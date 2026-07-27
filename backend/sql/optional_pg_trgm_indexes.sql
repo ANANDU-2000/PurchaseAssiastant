@@ -1,0 +1,16 @@
+-- Optional PostgreSQL performance helpers for fuzzy / prefix search.
+-- Run manually on production (review locks); CONCURRENTLY avoids blocking writes.
+--
+-- 1) Extension (once per database)
+--    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+--
+-- 2) Catalog item names (unified search / typeahead)
+--    CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_catalog_items_name_trgm
+--      ON catalog_items USING gin (name gin_trgm_ops);
+--
+-- 3) Trade purchase human id + line item names (if you add server-side q= again)
+--    CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_trade_purchases_human_id_trgm
+--      ON trade_purchases USING gin (human_id gin_trgm_ops);
+--
+-- Note: Alembic migrations often run inside a transaction; CREATE INDEX CONCURRENTLY
+-- cannot. Use a maintenance window + psql, or a migration that uses autocommit.

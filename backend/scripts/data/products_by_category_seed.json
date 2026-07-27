@@ -1,0 +1,4158 @@
+{
+  "MAIDA ATTA SOOJI": [
+    {
+      "name": "916 RAVA 30 KG",
+      "code": "2095",
+      "hsn": "11029000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "916 RAVA 50 KG",
+      "code": "2096",
+      "hsn": "11029000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 1900.0
+    },
+    {
+      "name": "APPLE RAVA 30 KG",
+      "code": "2098",
+      "hsn": "11029000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 1221.0
+    },
+    {
+      "name": "APPLE RAVA 50 KG",
+      "code": "2099",
+      "hsn": "11029000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 2035.0
+    },
+    {
+      "name": "ATTA LOOSE",
+      "code": "2709",
+      "hsn": "11010000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 37.5
+    },
+    {
+      "name": "E.ATTA 1KG",
+      "code": "2102",
+      "hsn": "11010000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 51.35
+    },
+    {
+      "name": "E.ATTA 30 KG",
+      "code": "2103",
+      "hsn": "11010000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 1095.0
+    },
+    {
+      "name": "E.ATTA 50 KG",
+      "code": "2104",
+      "hsn": "11010000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 1825.0
+    },
+    {
+      "name": "E.CHOLAPODI 50 KG",
+      "code": "2105",
+      "hsn": "23099010",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 1360.0
+    },
+    {
+      "name": "E.CHOLATHAVIDU 34 KG",
+      "code": "2106",
+      "hsn": "23099010",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 1040.0
+    },
+    {
+      "name": "E.MAIDA 30 KG",
+      "code": "2107",
+      "hsn": "11010000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 1191.0
+    },
+    {
+      "name": "E.MAIDA 50 KG",
+      "code": "2108",
+      "hsn": "11010000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 1985.0
+    },
+    {
+      "name": "E.POROTA SP MAIDA 50 KG",
+      "code": "2110",
+      "hsn": "11010000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 2105.0
+    },
+    {
+      "name": "E.RAVA 50 KG",
+      "code": "2111",
+      "hsn": "11029000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 2085.0
+    },
+    {
+      "name": "KING MAIDA 30 KG",
+      "code": "2112",
+      "hsn": "11010000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 1068.0
+    },
+    {
+      "name": "KING MAIDA 50 KG",
+      "code": "2113",
+      "hsn": "11010000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 1760.0
+    },
+    {
+      "name": "M. CHOLATHAVIDU 34 KG",
+      "code": "2115",
+      "hsn": "23023000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 890.0
+    },
+    {
+      "name": "M. MAIDA 50 KG",
+      "code": "2116",
+      "hsn": "11010000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 2050.0
+    },
+    {
+      "name": "MAIDA LOOSE",
+      "code": "2708",
+      "hsn": "11010000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 35.2
+    },
+    {
+      "name": "P. CHOLAPODI 50 KG",
+      "code": "2117",
+      "hsn": "23099010",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 1290.0
+    },
+    {
+      "name": "P. CHOLATHAVIDU 34 KG",
+      "code": "2118",
+      "hsn": "23099010",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 980.0
+    },
+    {
+      "name": "P. RAVA 50 KG",
+      "code": "2119",
+      "hsn": "11031110",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "PRINCE MAIDA 50 KG",
+      "code": "2120",
+      "hsn": "11010000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 2043.0
+    },
+    {
+      "name": "RAVA LOOSE",
+      "code": "2710",
+      "hsn": "11029000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 38.0
+    },
+    {
+      "name": "SURABHI MAIDA 50 KG",
+      "code": "2121",
+      "hsn": "11010000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 2065.0
+    },
+    {
+      "name": "SURABHI RAVA LOOSE",
+      "code": "2122",
+      "hsn": "11010000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "TV ATTA 50KG",
+      "code": "2123",
+      "hsn": "11010000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    }
+  ],
+  "WHEAT FLOUR": [
+    {
+      "name": "AASHIRVAAD ATTA 10KG",
+      "code": "2649",
+      "hsn": "11010000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 536.0
+    },
+    {
+      "name": "AASHIRVAAD ATTA 1KG",
+      "code": "2650",
+      "hsn": "11010000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 62.4
+    },
+    {
+      "name": "AASHIRVAAD ATTA 2 KG",
+      "code": "2651",
+      "hsn": "11010000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 122.8
+    },
+    {
+      "name": "AASHIRVAAD ATTA 5KG",
+      "code": "2652",
+      "hsn": "11010000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 307.75
+    }
+  ],
+  "FAST FOOD ITEMS": [
+    {
+      "name": "AJINOMOTO 500 GM",
+      "code": "2441",
+      "hsn": "29224220",
+      "unit": "PCS",
+      "tax_rate": 18.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "BAKELS DOMEX D 500 BREAD IMPROVER 1KG",
+      "code": "2880",
+      "hsn": "19012000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "BAKER CRAFT BUTTERSCOTCH SYRUP 1500GM",
+      "code": "2887",
+      "hsn": "21069040",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "BAKER CRAFT ICING SUGAR 1KG",
+      "code": "2883",
+      "hsn": "17041190",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "BAKER CRAFT SYRUP CHOCLATE 1400GM",
+      "code": "2884",
+      "hsn": "21069040",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "BAKER CRAFT SYRUP PISTA 1500GM",
+      "code": "2886",
+      "hsn": "21069040",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "BAKER CRAFT SYRUP STRAWBERRY 1500GM",
+      "code": "2885",
+      "hsn": "21069040",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "BLACK PEPPER SACHET",
+      "code": "2443",
+      "hsn": "09101290",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "BLACK SALT POWDER VEWON",
+      "code": "2444",
+      "hsn": "10063010",
+      "unit": "PCS",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "BLACK SALT POWDER VIPIN",
+      "code": "2445",
+      "hsn": "25010010",
+      "unit": "PCS",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "BREAD CRUMBS 1 KG",
+      "code": "2446",
+      "hsn": "19054000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "C&C MUFFIN MIX CAKE 5KG",
+      "code": "2901",
+      "hsn": "19012000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 476.2
+    },
+    {
+      "name": "CELEBRE BUTTER SCOTCH GELI 1KG",
+      "code": "2893",
+      "hsn": "17049090",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 200.0
+    },
+    {
+      "name": "CELEBRE MANGO GELI 1KG",
+      "code": "2897",
+      "hsn": "17049090",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 171.42
+    },
+    {
+      "name": "CHOCO CHIPS WHITE MELLO LOOSE",
+      "code": "2896",
+      "hsn": "17049090",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 314.28
+    },
+    {
+      "name": "CITRIC ACID 500 GM",
+      "code": "2447",
+      "hsn": "29181400",
+      "unit": "PCS",
+      "tax_rate": 18.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "CLASSIC BAKING POWDER 50 GM",
+      "code": "2692",
+      "hsn": "21023000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "CLASSIC BAKING SODA 100 GM",
+      "code": "2448",
+      "hsn": "28363000",
+      "unit": "PCS",
+      "tax_rate": 18.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "COLOURMIST BOTTLE YELLOW 60GM",
+      "code": "2888",
+      "hsn": "32041989",
+      "unit": "PCS",
+      "tax_rate": 18.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "DRY LEMON",
+      "code": "2449",
+      "hsn": "08055000",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 247.62
+    },
+    {
+      "name": "MALANAD STRAWBERRY CRUSH 750ML",
+      "code": "2895",
+      "hsn": "20089919",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 131.42
+    },
+    {
+      "name": "MALAS BUTTER SCOTCH DESSERT TOPPING",
+      "code": "2894",
+      "hsn": "20089993",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 131.42
+    },
+    {
+      "name": "MALAS CRUSH BLUBERRY 750ML",
+      "code": "2882",
+      "hsn": "20089919",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "NOODLES 1 KG",
+      "code": "2450",
+      "hsn": "19021100",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "PILLISBURY VANILA SPONGE MIX 5KG",
+      "code": "2900",
+      "hsn": "19012000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 571.43
+    },
+    {
+      "name": "SUGAR SACHET",
+      "code": "2451",
+      "hsn": "17011490",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "SWEET SAUNF 1 KG",
+      "code": "2452",
+      "hsn": "09096119",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "TOMATO KETCHUP 8GM (DEL MONT)",
+      "code": "2453",
+      "hsn": "21032000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "VANASPATHI RED LILLY 15KG",
+      "code": "2899",
+      "hsn": "15162091",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 2571.43
+    },
+    {
+      "name": "VIZYON GLAZE ORANGE COLD 900GM",
+      "code": "2898",
+      "hsn": "21069060",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 285.72
+    }
+  ],
+  "SPICES": [
+    {
+      "name": "AJWAIN",
+      "code": "2236",
+      "hsn": "09109914",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 102.77
+    },
+    {
+      "name": "ALMOND",
+      "code": "2237",
+      "hsn": "08021200",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "ALMOND BRAINNUT 30 KG",
+      "code": "2238",
+      "hsn": "08021200",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 810.0
+    },
+    {
+      "name": "ALMOND FALCON 15 KG",
+      "code": "2239",
+      "hsn": "08021200",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 842.6
+    },
+    {
+      "name": "ALMOND MEHARWAN 30 KG",
+      "code": "2240",
+      "hsn": "08021200",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 758.0
+    },
+    {
+      "name": "ALMOND MICRON GOLD 15 KG",
+      "code": "2241",
+      "hsn": "08021200",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 815.0
+    },
+    {
+      "name": "ALMOND SRK 30 KG",
+      "code": "2243",
+      "hsn": "08021200",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 713.0
+    },
+    {
+      "name": "ANGEL INST DRY YEAST 500 GM",
+      "code": "2244",
+      "hsn": "21021020",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 158.0
+    },
+    {
+      "name": "ASHALI",
+      "code": "2245",
+      "hsn": "12119099",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 120.6
+    },
+    {
+      "name": "BARLI RICE",
+      "code": "2246",
+      "hsn": "10030090",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 47.6
+    },
+    {
+      "name": "BARLI RICE 50 KG",
+      "code": "2247",
+      "hsn": "11041900",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 46.0
+    },
+    {
+      "name": "BAY LEAVES",
+      "code": "2248",
+      "hsn": "09109990",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 114.29
+    },
+    {
+      "name": "BLACK JEERA",
+      "code": "2249",
+      "hsn": "12072090",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 276.6
+    },
+    {
+      "name": "BLACK SALT",
+      "code": "2250",
+      "hsn": "25010010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 45.0
+    },
+    {
+      "name": "CARAWAY SEED",
+      "code": "2251",
+      "hsn": "09096139",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 207.6
+    },
+    {
+      "name": "CHATHAKUPPA E GOLD 1KG X 30",
+      "code": "2252",
+      "hsn": "09109913",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 113.4
+    },
+    {
+      "name": "CHATHAKUPPA E GOLD 30 KG",
+      "code": "2253",
+      "hsn": "09109913",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 120.58
+    },
+    {
+      "name": "CHATHAKUPPA LOOSE",
+      "code": "2254",
+      "hsn": "09109914",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 130.0
+    },
+    {
+      "name": "CHERRY",
+      "code": "2255",
+      "hsn": "08112020",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 175.0
+    },
+    {
+      "name": "CHERRY M MASTER",
+      "code": "2256",
+      "hsn": "08112020",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 165.0
+    },
+    {
+      "name": "CHERRY RED DIAMOND 12 KG",
+      "code": "2257",
+      "hsn": "33074100",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 119.9
+    },
+    {
+      "name": "CHILLI KONDATTAM",
+      "code": "2258",
+      "hsn": "21039090",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 100.0
+    },
+    {
+      "name": "CIGARATTE CASSIA",
+      "code": "2259",
+      "hsn": "09061020",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 390.0
+    },
+    {
+      "name": "CLOVES",
+      "code": "2260",
+      "hsn": "09071090",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 747.62
+    },
+    {
+      "name": "ELAKKAYA  5 to 6",
+      "code": "2262",
+      "hsn": "09083120",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 2486.0
+    },
+    {
+      "name": "ELAKKAYA 7 to 7.5",
+      "code": "2263",
+      "hsn": "09083120",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 2570.0
+    },
+    {
+      "name": "ELAKKAYA EQ",
+      "code": "2264",
+      "hsn": "09083120",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 2802.45
+    },
+    {
+      "name": "JATHIKKAYA",
+      "code": "2265",
+      "hsn": "09081110",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 380.0
+    },
+    {
+      "name": "JATHIPATHRI",
+      "code": "2266",
+      "hsn": "09081110",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 2238.1
+    },
+    {
+      "name": "JATHIPATHRI S",
+      "code": "2267",
+      "hsn": "09081110",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 2400.0
+    },
+    {
+      "name": "KASKAS BLACK",
+      "code": "2268",
+      "hsn": "12119094",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 204.7619
+    },
+    {
+      "name": "KASKAS WHITE",
+      "code": "2269",
+      "hsn": "10089090",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 130.0
+    },
+    {
+      "name": "KASURI METHI HD 100 GM",
+      "code": "2270",
+      "hsn": "09109924",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 30.0
+    },
+    {
+      "name": "MALABAR WHITE PEPPER POWDER GREEN 500 GM",
+      "code": "2271",
+      "hsn": "09109100",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 100.0
+    },
+    {
+      "name": "MASALAMIX 100 GM  EAGER",
+      "code": "2765",
+      "hsn": "09109100",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 66.67
+    },
+    {
+      "name": "MASALAMIX 75 GM  EAGER",
+      "code": "2272",
+      "hsn": "09109100",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 38.1
+    },
+    {
+      "name": "PEPPER EQ",
+      "code": "2273",
+      "hsn": "09041140",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 755.0
+    },
+    {
+      "name": "PISTA BAZANA 1 KG",
+      "code": "2276",
+      "hsn": "08025100",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 1123.81
+    },
+    {
+      "name": "PISTA BAZANA 250 GM",
+      "code": "2277",
+      "hsn": "08025100",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 282.5
+    },
+    {
+      "name": "PISTA TASTEON",
+      "code": "2278",
+      "hsn": "08025100",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 1052.6
+    },
+    {
+      "name": "SAJEERAKAM",
+      "code": "2754",
+      "hsn": "09096139",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "SODIUM BI CARBONATE 50 KG",
+      "code": "2279",
+      "hsn": "28363000",
+      "unit": "KG",
+      "tax_rate": 18.0,
+      "purchase_rate": 36.61
+    },
+    {
+      "name": "SODIUM BI CARBONATE LOOSE",
+      "code": "2280",
+      "hsn": "28363000",
+      "unit": "KG",
+      "tax_rate": 18.0,
+      "purchase_rate": 37.75
+    },
+    {
+      "name": "SPLIT CASSIA",
+      "code": "2281",
+      "hsn": "09061910",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 247.62
+    },
+    {
+      "name": "STAR ANI SEED",
+      "code": "2282",
+      "hsn": "09096220",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 442.6
+    },
+    {
+      "name": "STAR ANI SEED 10KG",
+      "code": "2283",
+      "hsn": "09096220",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 380.0
+    }
+  ],
+  "BIRIYANI RICE": [
+    {
+      "name": "ALIF LAILA ORANGE 50 KG",
+      "code": "1939",
+      "hsn": "10063090",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 110.0
+    },
+    {
+      "name": "BIRI RICE ALIBABA 30 KG BAG",
+      "code": "1940",
+      "hsn": "10063090",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 110.0
+    },
+    {
+      "name": "BIRI RICE ALIBABA CLASSIC SELA 30KG",
+      "code": "2658",
+      "hsn": "10063020",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 118.5
+    },
+    {
+      "name": "BIRI RICE BARKATH SILVER 40 KG FUMR",
+      "code": "1941",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 53.5
+    },
+    {
+      "name": "BIRI RICE BARKATH SILVER 40 KG SGRM",
+      "code": "1942",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 53.5
+    },
+    {
+      "name": "BIRI RICE BARKATH SILVER GOLD 45 KG",
+      "code": "1943",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 70.0
+    },
+    {
+      "name": "BIRI RICE CHANTHARA 50KG",
+      "code": "1945",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 53.2
+    },
+    {
+      "name": "BIRI RICE INDIAGATE WADA KOLAM RICE 30KG",
+      "code": "2661",
+      "hsn": "10063090",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 77.0
+    },
+    {
+      "name": "BIRI RICE KAIMA RICE DOUBLE MAAN 50KG",
+      "code": "2659",
+      "hsn": "10061010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 125.0
+    },
+    {
+      "name": "BIRI RICE KOLAM JOKER 30KG",
+      "code": "2662",
+      "hsn": "10061010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 54.72
+    },
+    {
+      "name": "BIRI RICE NILAVU BAG  50",
+      "code": "2660",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 65.0
+    },
+    {
+      "name": "BIRI RICE ROSEKAIMA 50 KG",
+      "code": "1947",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 177.55
+    },
+    {
+      "name": "BIRI RICE THREE ROSE KAIMA 50 KG",
+      "code": "1948",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 126.26
+    },
+    {
+      "name": "BIRIRICE BULLET 30KG",
+      "code": "1944",
+      "hsn": "10063020",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 73.0
+    },
+    {
+      "name": "BIRIRICE INDIA GATE MANTHI 30 KG",
+      "code": "1951",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 108.0
+    },
+    {
+      "name": "BIRIRICE INDIA GATE SUPREME 30 KG",
+      "code": "1946",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 114.91
+    },
+    {
+      "name": "Biriyani Rice 2 Kg",
+      "code": "2953",
+      "hsn": "10063010",
+      "unit": "PCS",
+      "tax_rate": 0.0,
+      "purchase_rate": 99.72
+    },
+    {
+      "name": "KAIMA RICE DOUBLE MAAN 50KG",
+      "code": "1949",
+      "hsn": "10061010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 125.0
+    },
+    {
+      "name": "SHUBHAM KOLAM JOKER 30KG",
+      "code": "1950",
+      "hsn": "10061010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    }
+  ],
+  "CASHEW NUT": [
+    {
+      "name": "ANDIKANNU",
+      "code": "1952",
+      "hsn": "08011100",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 419.04
+    },
+    {
+      "name": "CASHEW NUT 210",
+      "code": "1953",
+      "hsn": "08013220",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 885.714
+    },
+    {
+      "name": "CASHEW NUT 240",
+      "code": "1954",
+      "hsn": "08013220",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 838.096
+    },
+    {
+      "name": "CASHEW NUT 320",
+      "code": "1955",
+      "hsn": "08013220",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 761.9048
+    },
+    {
+      "name": "CASHEW NUT SPLIT",
+      "code": "1957",
+      "hsn": "08013210",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 742.85713
+    },
+    {
+      "name": "CASHEWNUT LWP",
+      "code": "1956",
+      "hsn": "08013220",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 695.238
+    }
+  ],
+  "AVIL": [
+    {
+      "name": "AVIL MATTA PKT",
+      "code": "2720",
+      "hsn": "19041020",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 25.0
+    },
+    {
+      "name": "AVIL WHITE CHERRY 30KG",
+      "code": "2857",
+      "hsn": "19041020",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 62.0
+    },
+    {
+      "name": "AVIL WHITE PKT",
+      "code": "2723",
+      "hsn": "19041020",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 23.5
+    },
+    {
+      "name": "AVIL WHITE SHIP 40KG",
+      "code": "2727",
+      "hsn": "19041020",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "AVIL(ROSE) BAG 40KG",
+      "code": "2722",
+      "hsn": "19041020",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 54.0
+    },
+    {
+      "name": "PAVIZHAM AVILMATTA ROASTED 10 KG",
+      "code": "2753",
+      "hsn": "19041020",
+      "unit": "BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 616.78
+    },
+    {
+      "name": "SN AVIL MATTA LOOSE",
+      "code": "2755",
+      "hsn": "19041020",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 53.0
+    },
+    {
+      "name": "SN AVIL MATTA THICK 30KG",
+      "code": "2841",
+      "hsn": "19041020",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 53.0
+    }
+  ],
+  "BATRI": [
+    {
+      "name": "BATRI JOKER 50 KG",
+      "code": "1935",
+      "hsn": "07131000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 48.99
+    },
+    {
+      "name": "BATRI STAR GOLD 50 KG",
+      "code": "1936",
+      "hsn": "7131000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 53.84
+    }
+  ],
+  "BELLAM": [
+    {
+      "name": "BELLAM 30 KG AKS",
+      "code": "1937",
+      "hsn": "17011200",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 47.66667
+    },
+    {
+      "name": "BELLAM LOOSE",
+      "code": "2815",
+      "hsn": "17011200",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 49.0
+    },
+    {
+      "name": "BELLAM UNDA 30 KG",
+      "code": "1938",
+      "hsn": "17011310",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 52.66667
+    }
+  ],
+  "DILSHAD": [
+    {
+      "name": "BIRI RICE DILSHAD GOLD MANTHI 30 KG",
+      "code": "2014",
+      "hsn": "10063020",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 93.35
+    },
+    {
+      "name": "BIRI RICE DILSHAD PREMIUM 30 KG",
+      "code": "2015",
+      "hsn": "10063020",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 74.54
+    },
+    {
+      "name": "BIRI RICE DILSHAD XXXL 30KG",
+      "code": "2663",
+      "hsn": "10063020",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 93.0
+    },
+    {
+      "name": "BIRI RICEDILSHAD PREMIUM 30 KG NC",
+      "code": "2016",
+      "hsn": "10063020",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 69.44
+    }
+  ],
+  "KISMIS": [
+    {
+      "name": "BLACK RAISINS 17 KG",
+      "code": "2936",
+      "hsn": "08062010",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 361.90484
+    },
+    {
+      "name": "BLACK RAISINS 18KG",
+      "code": "2494",
+      "hsn": "08062010",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 390.0
+    },
+    {
+      "name": "KISMIS LOOSE",
+      "code": "2495",
+      "hsn": "08062010",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 330.0
+    },
+    {
+      "name": "KISMIS NATURAL",
+      "code": "2500",
+      "hsn": "08062010",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 305.0
+    },
+    {
+      "name": "KISMIS NATURAL ASB",
+      "code": "2501",
+      "hsn": "08062010",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 185.0
+    },
+    {
+      "name": "KISMIS WHITE 10KG  (ACP/44)",
+      "code": "2935",
+      "hsn": "08062010",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 245.71429
+    },
+    {
+      "name": "KISMIS WHITE 10KG (ACP/11/10)",
+      "code": "2756",
+      "hsn": "08062010",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 280.6
+    },
+    {
+      "name": "KISMIS WHITE 14KG BOX",
+      "code": "2504",
+      "hsn": "08062010",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 238.0
+    },
+    {
+      "name": "KISMIS WHITE 15KG  (LS/76)",
+      "code": "2989",
+      "hsn": "08062010",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 314.286
+    },
+    {
+      "name": "KISMIS WHITE 15KG (HN/28) BOX",
+      "code": "2510",
+      "hsn": "08062010",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 308.0
+    },
+    {
+      "name": "KISMIS WHITE 15KG (MS/29) BOX",
+      "code": "2511",
+      "hsn": "08062010",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 326.5
+    },
+    {
+      "name": "KISMIS WHITE 15KG (VGK/40) BOX",
+      "code": "2516",
+      "hsn": "08062010",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 328.0
+    }
+  ],
+  "EDIBLE OIL": [
+    {
+      "name": "BRAN OIL BELL TIN",
+      "code": "2732",
+      "hsn": "15159040",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 2070.0
+    },
+    {
+      "name": "COCONUT OIL NEW WORLD  500 ML",
+      "code": "2736",
+      "hsn": "15131100",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 111.6665
+    },
+    {
+      "name": "COCONUT OIL NEW WORLD 1 LTR",
+      "code": "2734",
+      "hsn": "15131100",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 222.857
+    },
+    {
+      "name": "COM BRAN OIL TIN",
+      "code": "2737",
+      "hsn": "15159040",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 2260.0
+    },
+    {
+      "name": "GINGILY OIL  NIRMAL TIN",
+      "code": "2738",
+      "hsn": "15155099",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 2628.57
+    },
+    {
+      "name": "GOLDWINNER 1 LTR",
+      "code": "2740",
+      "hsn": "15121910",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 163.33347
+    },
+    {
+      "name": "GOLDWINNER 500 ML",
+      "code": "2742",
+      "hsn": "15119020",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 82.619
+    },
+    {
+      "name": "KAPPALANDI SF LOOSE",
+      "code": "2967",
+      "hsn": "12022010",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 145.51
+    },
+    {
+      "name": "RBD 1 LTR",
+      "code": "2717",
+      "hsn": "15111000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 139.5
+    },
+    {
+      "name": "RBD TIN 15 LTR",
+      "code": "2718",
+      "hsn": "15111000",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 2185.0
+    },
+    {
+      "name": "RUCHI 425 GM",
+      "code": "2743",
+      "hsn": "15119020",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 64.9
+    },
+    {
+      "name": "RUCHI 5KG",
+      "code": "2745",
+      "hsn": "15119020",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 763.45
+    },
+    {
+      "name": "RUCHI 850GM",
+      "code": "2746",
+      "hsn": "15119020",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 128.095
+    },
+    {
+      "name": "RUCHI OIL TIN",
+      "code": "2748",
+      "hsn": "15119020",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 1995.24
+    },
+    {
+      "name": "SUNRICH 15LTR TIN",
+      "code": "2749",
+      "hsn": "15121910",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 2470.0
+    },
+    {
+      "name": "SUNRICH 400 GM",
+      "code": "2750",
+      "hsn": "15121910",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 76.55
+    },
+    {
+      "name": "SUNRICH 800 GM",
+      "code": "2751",
+      "hsn": "15121910",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 142.381
+    }
+  ],
+  "CHERUPAYAR": [
+    {
+      "name": "CHERUPARIPPU AMBASSADOR 30 KG",
+      "code": "1996",
+      "hsn": "07133100",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 102.71
+    },
+    {
+      "name": "CHERUPARIPPU BEST CHOICE 30 KG",
+      "code": "1997",
+      "hsn": "07133100",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 101.69
+    },
+    {
+      "name": "CHERUPARIPPU BULLET 30 KG",
+      "code": "1998",
+      "hsn": "07133100",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 90.0
+    },
+    {
+      "name": "CHERUPARIPPU DOUBLE TRISHUL 30KG",
+      "code": "2665",
+      "hsn": "07133100",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 97.22
+    },
+    {
+      "name": "CHERUPARIPPU LOOSE",
+      "code": "2842",
+      "hsn": "07133100",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 101.7
+    },
+    {
+      "name": "CHERUPARIPPU ZENDA 30KG",
+      "code": "2992",
+      "hsn": "07133100",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 98.0
+    },
+    {
+      "name": "CHERUPAYAR AMRIT 30KG",
+      "code": "2929",
+      "hsn": "07133100",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 122.0
+    },
+    {
+      "name": "CHERUPAYAR GREEN GOLD 30KG",
+      "code": "3021",
+      "hsn": "07133100",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 100.25
+    },
+    {
+      "name": "CHERUPAYAR JYOTHI GOLD 30KG",
+      "code": "2664",
+      "hsn": "07133100",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "CHERUPAYAR MAKHAN 30KG",
+      "code": "2691",
+      "hsn": "07133100",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 92.5
+    },
+    {
+      "name": "CHERUPAYAR PF",
+      "code": "2771",
+      "hsn": "07133100",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 84.0
+    },
+    {
+      "name": "CHERUPAYAR RUBY 30 KG",
+      "code": "2011",
+      "hsn": "07133100",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 90.0
+    },
+    {
+      "name": "CHERUPAYAR SF",
+      "code": "2770",
+      "hsn": "07133100",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 114.92
+    },
+    {
+      "name": "CHERUPAYAR TAKA-TAK 30 KG",
+      "code": "2904",
+      "hsn": "07133100",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 117.5
+    },
+    {
+      "name": "CHERUPAYAR WB GOLD 30 KG",
+      "code": "2012",
+      "hsn": "07133100",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 110.0
+    }
+  ],
+  "CHILLI": [
+    {
+      "name": "CHILLI  AR",
+      "code": "2813",
+      "hsn": "09042110",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 200.0
+    },
+    {
+      "name": "CHILLI (S)",
+      "code": "2685",
+      "hsn": "09042110",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 227.71
+    },
+    {
+      "name": "CHILLI AS",
+      "code": "2956",
+      "hsn": "09042110",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 222.86
+    },
+    {
+      "name": "CHILLI E5 R BAG",
+      "code": "2682",
+      "hsn": "09042110",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 177.38
+    },
+    {
+      "name": "CHILLI JCC",
+      "code": "2950",
+      "hsn": "09042110",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 212.40087
+    },
+    {
+      "name": "CHILLI KASHMIRI AS",
+      "code": "2814",
+      "hsn": "09042110",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 295.24
+    },
+    {
+      "name": "CHILLI KASHMIRI LOOSE",
+      "code": "2855",
+      "hsn": "09042110",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 333.0
+    },
+    {
+      "name": "CHILLI KASHMIRI R",
+      "code": "2675",
+      "hsn": "09042110",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 332.68
+    },
+    {
+      "name": "CHILLI PF LOOSE",
+      "code": "2774",
+      "hsn": "09042212",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 223.5
+    },
+    {
+      "name": "CHILLI POWDER  WB  1KG",
+      "code": "2963",
+      "hsn": "09042211",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "CHILLI POWDER  WB  500GM",
+      "code": "2964",
+      "hsn": "09042211",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "CHILLI POWDER LOOSE",
+      "code": "2761",
+      "hsn": "09042212",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 200.0
+    },
+    {
+      "name": "CHILLI RSF 10KG",
+      "code": "2678",
+      "hsn": "09042110",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 240.95238
+    },
+    {
+      "name": "CHILLI RSF AC BAG",
+      "code": "2677",
+      "hsn": "09042110",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 223.80896
+    },
+    {
+      "name": "CHILLI SF LOOSE",
+      "code": "2773",
+      "hsn": "09042212",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 209.52378
+    },
+    {
+      "name": "CHILLI SSF BAG",
+      "code": "2681",
+      "hsn": "09042110",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 223.0
+    },
+    {
+      "name": "CHILLI STEMLESS",
+      "code": "2976",
+      "hsn": "09042110",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 247.61
+    },
+    {
+      "name": "CHILLI UNDA 20KG",
+      "code": "2680",
+      "hsn": "09042110",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 170.0
+    },
+    {
+      "name": "CHILLI ZL BAG",
+      "code": "2679",
+      "hsn": "09042212",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 205.0
+    }
+  ],
+  "CORNFLOUR": [
+    {
+      "name": "CORN FLOUR",
+      "code": "2731",
+      "hsn": "11081200",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 40.3
+    }
+  ],
+  "DRY FRUITS": [
+    {
+      "name": "D C SULTANAH DATES 5 KG",
+      "code": "2405",
+      "hsn": "08041020",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "DATES KIMIA GOLD 5 KG",
+      "code": "2403",
+      "hsn": "08041020",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 148.57
+    },
+    {
+      "name": "DATES OLINDA 500 GM",
+      "code": "2404",
+      "hsn": "08041020",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 200.0
+    },
+    {
+      "name": "KARAKKA",
+      "code": "2406",
+      "hsn": "08041030",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 208.8
+    },
+    {
+      "name": "TUITY FRUITY",
+      "code": "2407",
+      "hsn": "08111010",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 73.5
+    }
+  ],
+  "DALDA": [
+    {
+      "name": "DALDA 1 LTR BOX 20 Nos",
+      "code": "2357",
+      "hsn": "15162091",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 157.06
+    },
+    {
+      "name": "DALDA 100 ML BOX 180 Nos",
+      "code": "2356",
+      "hsn": "15162091",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 16.01
+    },
+    {
+      "name": "DALDA 200ML BOX 90 Nos",
+      "code": "2358",
+      "hsn": "15162091",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 33.4
+    },
+    {
+      "name": "DALDA 420 GM BOX 32 Nos",
+      "code": "2359",
+      "hsn": "15162091",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 79.0
+    },
+    {
+      "name": "DALDA 500ML BOX 32 Nos",
+      "code": "2360",
+      "hsn": "15162091",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 78.5
+    },
+    {
+      "name": "DALDA 840GM BOX 20 Nos",
+      "code": "2361",
+      "hsn": "15162091",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 147.72
+    },
+    {
+      "name": "DALDA MUSTARD OIL 1 LTR 12 Nos",
+      "code": "2362",
+      "hsn": "15149120",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 173.0
+    },
+    {
+      "name": "DALDA SUNFLOWER OIL 1 LTR",
+      "code": "2363",
+      "hsn": "15121910",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 161.0
+    },
+    {
+      "name": "DALDA SUNFLOWER OIL 500ML",
+      "code": "2364",
+      "hsn": "15121910",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 73.0
+    },
+    {
+      "name": "DALDA SUNFLOWER OIL 840 GM",
+      "code": "2365",
+      "hsn": "15121910",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 150.0
+    },
+    {
+      "name": "PALMOLEIN GINNI 850 GM",
+      "code": "2366",
+      "hsn": "15119020",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 128.0
+    }
+  ],
+  "DRY GINGER": [
+    {
+      "name": "DRY GINGER",
+      "code": "2729",
+      "hsn": "09101120",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 354.6
+    }
+  ],
+  "ELITE ATTA PKT": [
+    {
+      "name": "E BROKEN WHEAT 500 GM",
+      "code": "2436",
+      "hsn": "11029000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 35.02
+    },
+    {
+      "name": "E.MAIDA 1 KG",
+      "code": "2437",
+      "hsn": "11010000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 62.49
+    },
+    {
+      "name": "E.MAIDA 500 GM",
+      "code": "2438",
+      "hsn": "11010000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "E.RAVA 1 KG",
+      "code": "2439",
+      "hsn": "11010000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 66.85
+    },
+    {
+      "name": "E.RAVA 500 GM",
+      "code": "2440",
+      "hsn": "11010000",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 35.03
+    }
+  ],
+  "ELLU": [
+    {
+      "name": "ELLU BLACK ANNAM 30KG",
+      "code": "2673",
+      "hsn": "12075010",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 294.91
+    },
+    {
+      "name": "ELLU BLACK HARICHARAN 30 KG",
+      "code": "2018",
+      "hsn": "12075010",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 246.71
+    },
+    {
+      "name": "ELLU LOOSE",
+      "code": "2795",
+      "hsn": "12075010",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 267.45
+    },
+    {
+      "name": "ELLU WHITE LOOSE",
+      "code": "2817",
+      "hsn": "12074090",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 145.0
+    }
+  ],
+  "FRIED GRAM": [
+    {
+      "name": "FRIED GRAM CHAMPION 30 KG",
+      "code": "2035",
+      "hsn": "07132000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 79.83
+    },
+    {
+      "name": "FRIED GRAM LOOSE",
+      "code": "2796",
+      "hsn": "07132000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 79.83
+    },
+    {
+      "name": "FRIED GRAM SUPERIOR 30 KG",
+      "code": "2042",
+      "hsn": "07132000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 83.18
+    }
+  ],
+  "FRYMES": [
+    {
+      "name": "FRYMES  WHEEL NEW",
+      "code": "2048",
+      "hsn": "19059040",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "FRYMES BAT NEW",
+      "code": "2043",
+      "hsn": "19059040",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 73.4
+    },
+    {
+      "name": "FRYMES HEART NEW",
+      "code": "2044",
+      "hsn": "19059040",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 70.5
+    },
+    {
+      "name": "FRYMES KUZHAL NEW",
+      "code": "2045",
+      "hsn": "19059030",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 57.6
+    },
+    {
+      "name": "MACRONI 400GM",
+      "code": "2965",
+      "hsn": "19021900",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 43.88
+    },
+    {
+      "name": "PAPPADAM",
+      "code": "2049",
+      "hsn": "19059040",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    }
+  ],
+  "VEGETABLES": [
+    {
+      "name": "GARLIC BOMB",
+      "code": "2633",
+      "hsn": "07032000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 118.0
+    },
+    {
+      "name": "SAVOLA  ( H )",
+      "code": "2638",
+      "hsn": "07031010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 19.0
+    },
+    {
+      "name": "SAVOLA BAG",
+      "code": "2637",
+      "hsn": "07031010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 18.0
+    },
+    {
+      "name": "SAVOLA LOOSE",
+      "code": "2844",
+      "hsn": "07031010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 19.0
+    },
+    {
+      "name": "ULLI BAG",
+      "code": "2869",
+      "hsn": "07031010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 32.5
+    },
+    {
+      "name": "ULLI LOOSE",
+      "code": "2642",
+      "hsn": "07031010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "URULAKIZHANGU KLR",
+      "code": "2646",
+      "hsn": "07011000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 850.0
+    },
+    {
+      "name": "URULAKIZHANGU KLR LOOSE",
+      "code": "2690",
+      "hsn": "07011000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "URULAKIZHANGU THALAKIZHANGU",
+      "code": "2867",
+      "hsn": "07011000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 23.25
+    }
+  ],
+  "GREENPEAS": [
+    {
+      "name": "GREENPEAS 30KG",
+      "code": "3023",
+      "hsn": "07131020",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 54.5
+    },
+    {
+      "name": "GREENPEAS DOUBLE ELEPHANT 30 KG SSS",
+      "code": "2052",
+      "hsn": "07131020",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 57.5
+    },
+    {
+      "name": "GREENPEAS LOOSE",
+      "code": "2772",
+      "hsn": "07131000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 55.5
+    },
+    {
+      "name": "GREENPEAS SIKKA 30KG",
+      "code": "2909",
+      "hsn": "07131020",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 55.5
+    },
+    {
+      "name": "GREENPEAS STRAWBERRY 30KG",
+      "code": "2671",
+      "hsn": "07131000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 58.93
+    }
+  ],
+  "OIL": [
+    {
+      "name": "IDHAYAM MUSTARD OIL 1 LTR (15NOS)",
+      "code": "2541",
+      "hsn": "15149120",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 183.57
+    },
+    {
+      "name": "IDHAYAM MUSTARD OIL 500 ML (30Nos)",
+      "code": "2542",
+      "hsn": "15149120",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 103.0
+    },
+    {
+      "name": "LION BRAN OIL 1 LTR 12 Nos",
+      "code": "2351",
+      "hsn": "15159040",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 127.62
+    },
+    {
+      "name": "LION BRAN OIL 200 ML",
+      "code": "2352",
+      "hsn": "15159040",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 35.0
+    },
+    {
+      "name": "PAVITHRAM GINGELLY OIL 1 LTR",
+      "code": "2544",
+      "hsn": "15155091",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 191.87
+    },
+    {
+      "name": "PAVITHRAM GINGELLY OIL 100 ML",
+      "code": "2543",
+      "hsn": "15155091",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "PAVITHRAM GINGELLY OIL 200 ML",
+      "code": "2545",
+      "hsn": "15155091",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "PAVITHRAM GINGELLY OIL 500 ML",
+      "code": "2546",
+      "hsn": "15155099",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 99.36208
+    },
+    {
+      "name": "SURABHI BRAN OIL 1 LTR 12 Nos",
+      "code": "2353",
+      "hsn": "15159040",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 141.9
+    },
+    {
+      "name": "SURABHI BRAN OIL 200 ML  24 Nos",
+      "code": "2354",
+      "hsn": "15159040",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 37.14
+    },
+    {
+      "name": "SURABHI BRAN OIL 500 ML 12 Nos",
+      "code": "2355",
+      "hsn": "15159040",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 75.24
+    },
+    {
+      "name": "SWARNAM GINGELLY OIL 1 LTR",
+      "code": "2812",
+      "hsn": "15155091",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 182.71417
+    },
+    {
+      "name": "SWARNAM GINGELLY OIL 100 ML",
+      "code": "2547",
+      "hsn": "15155091",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 22.48
+    },
+    {
+      "name": "SWARNAM GINGELLY OIL 200 ML",
+      "code": "2548",
+      "hsn": "15155091",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 42.1
+    },
+    {
+      "name": "SWARNAM GINGELLY OIL 500 ML",
+      "code": "2549",
+      "hsn": "15155091",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 96.04
+    }
+  ],
+  "JEERAKAM": [
+    {
+      "name": "JEERAKAM ASOKA 30 KG",
+      "code": "2061",
+      "hsn": "09092190",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 235.23833
+    },
+    {
+      "name": "JEERAKAM LOOSE",
+      "code": "2797",
+      "hsn": "09092190",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 244.6
+    },
+    {
+      "name": "JEERAKAM TIGER 30 KG",
+      "code": "2068",
+      "hsn": "09096119",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 244.6
+    }
+  ],
+  "KADALA": [
+    {
+      "name": "KADALA BIG DOLLAR 30 KG",
+      "code": "2069",
+      "hsn": "07132000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 85.93
+    },
+    {
+      "name": "KADALA BIG JELSA 30 KG",
+      "code": "2071",
+      "hsn": "07139090",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 80.0
+    },
+    {
+      "name": "KADALA BIG LOOSE",
+      "code": "2779",
+      "hsn": "07132000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 83.42
+    },
+    {
+      "name": "KADALA SMALL BULLET 30 KG",
+      "code": "2075",
+      "hsn": "07139090",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "KADALA SMALL METRO 30 KG",
+      "code": "2079",
+      "hsn": "07132020",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 61.0
+    },
+    {
+      "name": "KADALA SMALL PF LOOSE",
+      "code": "2778",
+      "hsn": "07132020",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 59.49
+    },
+    {
+      "name": "KADALA SMALL SF 50KG",
+      "code": "2926",
+      "hsn": "07132000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 62.5
+    },
+    {
+      "name": "KADALA SMALL SF LOOSE",
+      "code": "2777",
+      "hsn": "07132020",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 65.0
+    },
+    {
+      "name": "KADALAPARIPPU CLASSIC 30KG",
+      "code": "2668",
+      "hsn": "07131000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 70.0
+    },
+    {
+      "name": "KADALAPARIPPU LOOSE",
+      "code": "2799",
+      "hsn": "07133100",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 70.0
+    },
+    {
+      "name": "KADALAPARIPPU MADURA 30KG",
+      "code": "2670",
+      "hsn": "07131000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 70.0
+    },
+    {
+      "name": "KADALAPARIPPU MAHARAJA 30 KG",
+      "code": "2910",
+      "hsn": "07139010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 69.5
+    },
+    {
+      "name": "KADALAPARIPPU MAHARAJA 50 KG",
+      "code": "2911",
+      "hsn": "07139010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 69.5
+    },
+    {
+      "name": "KADALAPARIPPU MAHARAJA GOLD 50 KG",
+      "code": "2073",
+      "hsn": "07139090",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 71.8
+    },
+    {
+      "name": "KADALAPARIPPU SWASTHIK 30KG",
+      "code": "2669",
+      "hsn": "07132000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 73.17
+    },
+    {
+      "name": "KADALAPARIPPU WB GOLD 30 KG",
+      "code": "2074",
+      "hsn": "07132000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 77.0
+    }
+  ],
+  "WHITE KADALA": [
+    {
+      "name": "KADALA WHITE APPLE 30 KG",
+      "code": "2312",
+      "hsn": "07132000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 84.77
+    },
+    {
+      "name": "KADALA WHITE BLACKBERRY 30 KG",
+      "code": "2313",
+      "hsn": "07132000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 104.54
+    },
+    {
+      "name": "KADALA WHITE SHALIMAR 30KG",
+      "code": "2314",
+      "hsn": "07132000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 89.75
+    }
+  ],
+  "KADALAMAVU": [
+    {
+      "name": "KADALAMAVU BELL 50 KG",
+      "code": "2081",
+      "hsn": "11061000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 66.13
+    },
+    {
+      "name": "KADALAMAVU GANAPATHY 50 KG",
+      "code": "2082",
+      "hsn": "11061000",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 3765.0
+    },
+    {
+      "name": "KADALAMAVU LOOSE",
+      "code": "2801",
+      "hsn": "11061000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 82.0
+    },
+    {
+      "name": "PEASEMAVU LOOSE",
+      "code": "2807",
+      "hsn": "11061000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 55.0
+    },
+    {
+      "name": "PEASMAVU 50 KG",
+      "code": "2084",
+      "hsn": "11061000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 53.4
+    }
+  ],
+  "KADUK": [
+    {
+      "name": "KADUK BADSHAH 50 KG",
+      "code": "2088",
+      "hsn": "12075090",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 81.32
+    },
+    {
+      "name": "KADUK DOUBLE ELEPHANT 50KG",
+      "code": "2089",
+      "hsn": "12075010",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 76.42
+    },
+    {
+      "name": "KADUK LOOSE",
+      "code": "2809",
+      "hsn": "12075010",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 76.42
+    },
+    {
+      "name": "KADUK TIGER 50 KG",
+      "code": "2090",
+      "hsn": "12075090",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 79.36
+    },
+    {
+      "name": "MUSTARD DALL LOOSE",
+      "code": "2091",
+      "hsn": "12075010",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 122.6
+    }
+  ],
+  "KALKANDAM": [
+    {
+      "name": "KALKANDAM CRYSTAL",
+      "code": "2712",
+      "hsn": "17011490",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 56.0
+    },
+    {
+      "name": "KALKANDAM KATTA 25KG BAG",
+      "code": "2713",
+      "hsn": "17019990",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 67.95
+    },
+    {
+      "name": "PANAMKALKKANDAM",
+      "code": "2715",
+      "hsn": "17011490",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 65.71
+    }
+  ],
+  "KAPPALANDI": [
+    {
+      "name": "KAPPALANDI AGMK 50 KG",
+      "code": "2092",
+      "hsn": "12022010",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 126.0
+    },
+    {
+      "name": "KAPPALANDI MR GOLD 50KG",
+      "code": "2934",
+      "hsn": "12022090",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 135.238
+    },
+    {
+      "name": "KAPPALANDI PF LOOSE",
+      "code": "2810",
+      "hsn": "12022010",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 139.28
+    },
+    {
+      "name": "KAPPALANDI WHITE 25 KG",
+      "code": "2716",
+      "hsn": "12022010",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "PEANUT WHITE 25KG",
+      "code": "2752",
+      "hsn": "20081100",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 132.6
+    },
+    {
+      "name": "PEANUT WHITE SPLIT 25KG",
+      "code": "2758",
+      "hsn": "12024210",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 137.6
+    }
+  ],
+  "CATTLE FEED": [
+    {
+      "name": "KAPPALANDI PINNAKKU 50 KG",
+      "code": "2337",
+      "hsn": "23099010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 42.86
+    },
+    {
+      "name": "KERALA FEED - Elight",
+      "code": "2338",
+      "hsn": "23099010",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 1365.0
+    },
+    {
+      "name": "KERALA FEED - Midukki",
+      "code": "2339",
+      "hsn": "23099010",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 1205.0
+    },
+    {
+      "name": "KSP",
+      "code": "2340",
+      "hsn": "23099010",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 1230.68
+    }
+  ],
+  "PULI": [
+    {
+      "name": "KOLPULI H 40 KG",
+      "code": "2208",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 82.0
+    },
+    {
+      "name": "KOLPULI SF 40 KG",
+      "code": "2209",
+      "hsn": "08134010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 95.0
+    },
+    {
+      "name": "KOLPULI SP 40 KG",
+      "code": "3028",
+      "hsn": "08134010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 135.0
+    },
+    {
+      "name": "KUDAMPULI",
+      "code": "2210",
+      "hsn": "12119096",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 210.0
+    },
+    {
+      "name": "SWAMIS PULI 100 GM",
+      "code": "2821",
+      "hsn": "08134010",
+      "unit": "PCS",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "SWAMIS PULI 250 GM",
+      "code": "2822",
+      "hsn": "08134010",
+      "unit": "PCS",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "SWAMIS PULI 500GM",
+      "code": "2823",
+      "hsn": "08134010",
+      "unit": "PCS",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    }
+  ],
+  "CHERUMANI RICE": [
+    {
+      "name": "KURUVA RICE LOOSE",
+      "code": "2852",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "RICE 786 CHERUMANI  26 KG",
+      "code": "1958",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 35.3
+    },
+    {
+      "name": "RICE 786 CHERUMANI  50KG",
+      "code": "1959",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 35.0
+    },
+    {
+      "name": "RICE 786 KRANTHI  50 KG",
+      "code": "1960",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 40.0
+    },
+    {
+      "name": "RICE A ONE 50KG",
+      "code": "1961",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 35.25
+    },
+    {
+      "name": "RICE APPLE 50KG",
+      "code": "1962",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 32.0
+    },
+    {
+      "name": "RICE ASHIRBAD 26KG (SR)",
+      "code": "1963",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 36.5
+    },
+    {
+      "name": "RICE ASHIRBAD 30 KG",
+      "code": "1964",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 31.6
+    },
+    {
+      "name": "RICE ASHIRBAD 50 KG",
+      "code": "1965",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 31.6
+    },
+    {
+      "name": "RICE ASHIRBAD 50KG (SR)",
+      "code": "2654",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 35.0
+    },
+    {
+      "name": "RICE ATHIBAN 50 KG",
+      "code": "1966",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 49.5
+    },
+    {
+      "name": "RICE BELL 50 KG",
+      "code": "1967",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 34.2
+    },
+    {
+      "name": "Rice Cherumani 5 Kg",
+      "code": "2951",
+      "hsn": "10063010",
+      "unit": "PCS",
+      "tax_rate": 0.0,
+      "purchase_rate": 36.0
+    },
+    {
+      "name": "RICE CHERUMANI SL 50 KG",
+      "code": "1968",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "RICE CYCLE 26 KG",
+      "code": "1969",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 34.5
+    },
+    {
+      "name": "RICE CYCLE 50 KG",
+      "code": "1970",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 34.5
+    },
+    {
+      "name": "RICE DEER 50 KG",
+      "code": "1971",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "RICE DOUBLE DEER 30 KG",
+      "code": "1972",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 46.0
+    },
+    {
+      "name": "RICE DOUBLE DEER 50 KG",
+      "code": "1973",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 46.0
+    },
+    {
+      "name": "RICE K GOLD 30KG",
+      "code": "1974",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 35.9
+    },
+    {
+      "name": "RICE K GOLD 50KG",
+      "code": "1975",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 35.4
+    },
+    {
+      "name": "RICE KRUPALU 30 KG",
+      "code": "1976",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 35.0
+    },
+    {
+      "name": "RICE KRUPALU 50 KG",
+      "code": "1977",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 35.0
+    },
+    {
+      "name": "RICE KURINJI GOLD 26 KG",
+      "code": "1978",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 36.9
+    },
+    {
+      "name": "RICE KURINJI GOLD 50KG",
+      "code": "1979",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 38.0
+    },
+    {
+      "name": "RICE MAHARAJA MINI JAYA 50KG",
+      "code": "2655",
+      "hsn": "10063019",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 33.0
+    },
+    {
+      "name": "RICE MALA GOLD 30 KG",
+      "code": "1980",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 38.8
+    },
+    {
+      "name": "RICE MALA GOLD 50KG",
+      "code": "1981",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 38.0
+    },
+    {
+      "name": "RICE MAYURI KURUVA 50KG",
+      "code": "1982",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 39.6316
+    },
+    {
+      "name": "RICE MSR 50KG",
+      "code": "1983",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 35.0
+    },
+    {
+      "name": "RICE MURALI 26 KG",
+      "code": "1984",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 43.38
+    },
+    {
+      "name": "RICE MURALI 50 KG",
+      "code": "1985",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 43.38
+    },
+    {
+      "name": "RICE NANDI BRAND 50 KG",
+      "code": "1986",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 39.5
+    },
+    {
+      "name": "RICE NANDINI 30 KG",
+      "code": "1987",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 44.0
+    },
+    {
+      "name": "RICE NANDINI 50 KG",
+      "code": "1988",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 44.0
+    },
+    {
+      "name": "RICE SANGU MARK (AMR) 50 KG",
+      "code": "1990",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 37.8
+    },
+    {
+      "name": "RICE SANGU MARK 50 KG",
+      "code": "1989",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 37.2
+    },
+    {
+      "name": "RICE TIP TOP",
+      "code": "1991",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 36.5
+    },
+    {
+      "name": "RICE VAANI 26 KG",
+      "code": "1992",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 36.8
+    },
+    {
+      "name": "RICE VAANI 50 KG",
+      "code": "1993",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 36.5
+    },
+    {
+      "name": "RICE WE TWO 50 KG",
+      "code": "1994",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 33.9
+    },
+    {
+      "name": "RICE WORLD CUP 50 KG",
+      "code": "1995",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 34.8
+    }
+  ],
+  "KAAYAM": [
+    {
+      "name": "LG 100 CAKE GM",
+      "code": "2488",
+      "hsn": "13019013",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 130.0
+    },
+    {
+      "name": "LG 200 CAKE GM",
+      "code": "2489",
+      "hsn": "13019013",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 245.99
+    },
+    {
+      "name": "LG 50 CAKE GM",
+      "code": "2490",
+      "hsn": "13019013",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 65.5
+    },
+    {
+      "name": "LG POWDER 100 GM",
+      "code": "2491",
+      "hsn": "13019013",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 134.5
+    },
+    {
+      "name": "LG POWDER 50 GM",
+      "code": "2492",
+      "hsn": "13019013",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 68.5
+    }
+  ],
+  "MALAR": [
+    {
+      "name": "MALAR",
+      "code": "2714",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 105.0
+    }
+  ],
+  "MALLI": [
+    {
+      "name": "MALLI  EAGLE 40 KG",
+      "code": "2125",
+      "hsn": "09092190",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 118.98
+    },
+    {
+      "name": "MALLI  SPLIT 40 KG",
+      "code": "2128",
+      "hsn": "09092110",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 104.0
+    },
+    {
+      "name": "MALLI CAMEL 40 KG",
+      "code": "2124",
+      "hsn": "09092190",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 120.25
+    },
+    {
+      "name": "MALLI LOOSE",
+      "code": "2775",
+      "hsn": "09092190",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 120.25
+    },
+    {
+      "name": "MALLI PODI",
+      "code": "2653",
+      "hsn": "09092200",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "MALLI SWASTHIK BAG",
+      "code": "2133",
+      "hsn": "09092190",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 131.25
+    }
+  ],
+  "MANJAL": [
+    {
+      "name": "MANJAL BIT 50 KG",
+      "code": "2135",
+      "hsn": "09103020",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 143.55
+    },
+    {
+      "name": "MANJAL LOOSE",
+      "code": "2776",
+      "hsn": "09092190",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 167.0
+    },
+    {
+      "name": "MANJAL PODI",
+      "code": "2136",
+      "hsn": "09103030",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 156.19
+    },
+    {
+      "name": "MANJAL SF 50 KG",
+      "code": "2137",
+      "hsn": "09103020",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 149.0
+    }
+  ],
+  "MATTA RICE": [
+    {
+      "name": "MATTA PODIYARI 50 KG",
+      "code": "2139",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 47.5
+    },
+    {
+      "name": "RABBIT VADI MATTA 50 KG",
+      "code": "2140",
+      "hsn": "10061090",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 48.5
+    },
+    {
+      "name": "RICE ANNAM DOUBLE MATTA 50 KG",
+      "code": "2141",
+      "hsn": "10061010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 43.5
+    },
+    {
+      "name": "RICE ANNAM SINGLE MATTA 50 KG",
+      "code": "2142",
+      "hsn": "10061010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 43.5
+    },
+    {
+      "name": "RICE AVANI MATTA 50 KG",
+      "code": "2143",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 41.5
+    },
+    {
+      "name": "RICE FTR DOUBLE 50 KG",
+      "code": "2144",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 47.0
+    },
+    {
+      "name": "RICE FTR SINGLE 50 KG",
+      "code": "2145",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 44.0
+    },
+    {
+      "name": "RICE MPS UNDA 50 KG",
+      "code": "2146",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 42.0
+    },
+    {
+      "name": "RICE MPS VADI MATTA 50 KG",
+      "code": "2147",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 47.5
+    },
+    {
+      "name": "RICE SADHYA VADIMATTA 50 KG",
+      "code": "2148",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 53.0
+    }
+  ],
+  "SALT": [
+    {
+      "name": "MB SALT SACHET 1 GM",
+      "code": "2890",
+      "hsn": "25101010",
+      "unit": "PCS",
+      "tax_rate": 0.0,
+      "purchase_rate": 130.0
+    },
+    {
+      "name": "TRU SALT SACHET",
+      "code": "2902",
+      "hsn": "25101010",
+      "unit": "PCS",
+      "tax_rate": 0.0,
+      "purchase_rate": 110.0
+    },
+    {
+      "name": "TRUSALT CRYSTAL BAG",
+      "code": "2232",
+      "hsn": "25010010",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 126.5
+    },
+    {
+      "name": "TRUSALT CRYSTAL PKT",
+      "code": "2233",
+      "hsn": "25010010",
+      "unit": "PCS",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "TRUSALT POWDER BAG",
+      "code": "2234",
+      "hsn": "25010010",
+      "unit": "BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 126.5
+    },
+    {
+      "name": "TRUSALT POWDER PKT",
+      "code": "2235",
+      "hsn": "25010010",
+      "unit": "PCS",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    }
+  ],
+  "MEALMAKER": [
+    {
+      "name": "MEALMAKER BIG AMRUDH 20 KG",
+      "code": "2149",
+      "hsn": "23040030",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 53.9525
+    },
+    {
+      "name": "MEALMAKER BIG LOOSE",
+      "code": "2828",
+      "hsn": "21061000",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 62.0
+    },
+    {
+      "name": "MEALMAKER BIG STAR 20 KG",
+      "code": "2151",
+      "hsn": "21061000",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 61.47
+    },
+    {
+      "name": "MEALMAKER SMALL AMRUDH 20 KG",
+      "code": "2152",
+      "hsn": "35040091",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 53.9525
+    },
+    {
+      "name": "MEALMAKER SMALL LOOSE",
+      "code": "2827",
+      "hsn": "21061000",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 64.0
+    },
+    {
+      "name": "MEALMAKER SMALL SARAS 20KG",
+      "code": "2870",
+      "hsn": "23040030",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 73.81
+    },
+    {
+      "name": "MEALMAKER SMALL STAR 20 KG",
+      "code": "2153",
+      "hsn": "21061000",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 64.04
+    }
+  ],
+  "MUTHIRA": [
+    {
+      "name": "MUTHIRA LOOSE",
+      "code": "2829",
+      "hsn": "07135000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "MUTHIRA NTR 50KG",
+      "code": "2760",
+      "hsn": "07135000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 45.57
+    },
+    {
+      "name": "MUTHIRA RV 50 KG",
+      "code": "2157",
+      "hsn": "07135000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 46.94
+    },
+    {
+      "name": "MUTHIRA SORTEX 50 KG",
+      "code": "2158",
+      "hsn": "07135000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 48.0
+    }
+  ],
+  "RAW RICE": [
+    {
+      "name": "PACHARI 140 50 KG",
+      "code": "2221",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 27.0
+    },
+    {
+      "name": "PACHARI JAYA DOLPHIN 50 KG",
+      "code": "2222",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 38.27
+    },
+    {
+      "name": "PACHARI KISSAN JAYA 50 KG",
+      "code": "2223",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 41.8
+    },
+    {
+      "name": "PACHARI NURUKU 50 KG",
+      "code": "2224",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 26.3
+    },
+    {
+      "name": "PACHARI SILKY BAG 50 KG",
+      "code": "2225",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 28.0
+    },
+    {
+      "name": "PACHARI UNDA AKN 50 KG",
+      "code": "2226",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 34.85
+    },
+    {
+      "name": "PACHARI UNDA GARUDA 50 KG",
+      "code": "2227",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 35.0
+    },
+    {
+      "name": "UNANGALLARI HORSE 50 KG",
+      "code": "2228",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 40.0
+    },
+    {
+      "name": "UNANGALLARI RABBIT 50 KG",
+      "code": "2230",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 45.0
+    },
+    {
+      "name": "UNANGALLARINURUK",
+      "code": "2229",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 47.0
+    }
+  ],
+  "PAYAR": [
+    {
+      "name": "PAYAR (H) 50KG",
+      "code": "2985",
+      "hsn": "07133500",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 74.0
+    },
+    {
+      "name": "PAYAR HP 50 KG",
+      "code": "2182",
+      "hsn": "07133990",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 78.9
+    },
+    {
+      "name": "PAYAR PEACOCK 30KG",
+      "code": "2931",
+      "hsn": "07133990",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 69.0
+    },
+    {
+      "name": "PAYAR PF LOOSE",
+      "code": "2769",
+      "hsn": "07133990",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 72.0
+    },
+    {
+      "name": "PAYAR SF LOOSE",
+      "code": "2768",
+      "hsn": "07133990",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 79.9
+    },
+    {
+      "name": "PAYAR SORTEX NH 30 KG",
+      "code": "2694",
+      "hsn": "07133500",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 78.9
+    },
+    {
+      "name": "PAYAR SORTEX NH 50 KG",
+      "code": "2943",
+      "hsn": "07133500",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 78.9
+    },
+    {
+      "name": "PAYAR SR 50KG",
+      "code": "2693",
+      "hsn": "07133500",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 72.0
+    },
+    {
+      "name": "SOYAPAYAR DEEPAK LOOSE",
+      "code": "2189",
+      "hsn": "12010090",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 100.2
+    }
+  ],
+  "PERINJEERAKAM": [
+    {
+      "name": "PERINJEERAKAM GOKUL 30 KG",
+      "code": "2191",
+      "hsn": "09096230",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 128.06
+    },
+    {
+      "name": "PERINJEERAKAM LOOSE",
+      "code": "2832",
+      "hsn": "09096230",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 107.94
+    },
+    {
+      "name": "PERINJEERAKAM MANGO 30 KG",
+      "code": "2192",
+      "hsn": "09093129",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 107.94
+    }
+  ],
+  "PONNI RICE": [
+    {
+      "name": "PONNI 555 50KG",
+      "code": "2657",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 45.9
+    },
+    {
+      "name": "PONNI 555 DELUXE 50 KG",
+      "code": "2197",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 53.2
+    },
+    {
+      "name": "PONNI 555 IDLY 50 KG",
+      "code": "2198",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 44.2
+    },
+    {
+      "name": "PONNI 555 KUCHI  50 KG",
+      "code": "2199",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 45.5
+    },
+    {
+      "name": "PONNI 555 NURUK 50 KG",
+      "code": "2200",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 35.0
+    },
+    {
+      "name": "PONNI 999 DELUXE 30 KG",
+      "code": "2201",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 46.0
+    },
+    {
+      "name": "PONNI BHARATH 50 KG",
+      "code": "2202",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 35.8
+    },
+    {
+      "name": "PONNI IDLY CYCLE 26KG",
+      "code": "2656",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 40.0
+    },
+    {
+      "name": "PONNI KALAMAN 50 KG",
+      "code": "2206",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 31.63
+    },
+    {
+      "name": "PONNI MOTHER 50 KG",
+      "code": "2207",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 42.65
+    }
+  ],
+  "WHEAT": [
+    {
+      "name": "POPCORN",
+      "code": "2854",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "SUNITHA BROKEN WHEAT 1 KG",
+      "code": "2616",
+      "hsn": "10011090",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 169.0
+    },
+    {
+      "name": "SUNITHA BROKEN WHEAT 500GM",
+      "code": "2617",
+      "hsn": "10019010",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 73.33
+    },
+    {
+      "name": "WHEAT  SOOJI BAG 50 KG",
+      "code": "2487",
+      "hsn": "10011090",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 89.5
+    },
+    {
+      "name": "WHEAT AASHIRWAD 50 KG",
+      "code": "2485",
+      "hsn": "10011090",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 33.25
+    },
+    {
+      "name": "WHEAT FLYING HORSE 50 KG",
+      "code": "2486",
+      "hsn": "10011090",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 35.75
+    },
+    {
+      "name": "WHEAT LOOSE",
+      "code": "2837",
+      "hsn": "10011090",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 35.75
+    },
+    {
+      "name": "WHEAT SOOJI LOOSE",
+      "code": "2648",
+      "hsn": "10011090",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 91.32
+    }
+  ],
+  "RABBIT": [
+    {
+      "name": "RABBIT MATTAPODIYARI 500 GM",
+      "code": "2567",
+      "hsn": "10061010",
+      "unit": "PCS",
+      "tax_rate": 0.0,
+      "purchase_rate": 26.0
+    }
+  ],
+  "RAGI": [
+    {
+      "name": "RAGI BAG",
+      "code": "2701",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 43.43
+    }
+  ],
+  "RAJMA PAYAR": [
+    {
+      "name": "RAJMA RED ROYAL 30KG",
+      "code": "2759",
+      "hsn": "07133300",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "RAJMA WHITE KRISHNA GOLD LOOSE",
+      "code": "2220",
+      "hsn": "07133990",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "RAJMAPAYAR RED LOOSE",
+      "code": "2833",
+      "hsn": "07133990",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 113.5
+    },
+    {
+      "name": "RAJMAPAYAR WHITE LOOSE",
+      "code": "2834",
+      "hsn": "07133990",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 110.0
+    }
+  ],
+  "MASOOR DALL": [
+    {
+      "name": "RED MASOOR CHAKRA 50KG",
+      "code": "2687",
+      "hsn": "07134000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 72.0
+    },
+    {
+      "name": "RED MASOOR FULL LOOSE",
+      "code": "2825",
+      "hsn": "07134000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 70.5
+    },
+    {
+      "name": "RED MASOOR LION (FULL)30KG",
+      "code": "2689",
+      "hsn": "07134000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 70.4
+    },
+    {
+      "name": "RED MASOOR SPLIT LOOSE",
+      "code": "2824",
+      "hsn": "07134000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "RED MASOOR TIGER (FULL) 50KG",
+      "code": "2688",
+      "hsn": "07134000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 72.45
+    },
+    {
+      "name": "YELLOW MASOOR HORSE",
+      "code": "2711",
+      "hsn": "07134000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 89.0
+    },
+    {
+      "name": "YELLOW MASOOR SPLIT LOOSE",
+      "code": "2826",
+      "hsn": "07134000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 86.0
+    }
+  ],
+  "JAYA RICE": [
+    {
+      "name": "RICE JAYALALITHA 50 KG",
+      "code": "1932",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 41.4
+    },
+    {
+      "name": "RICE LALITHA KURUVA 50 KG",
+      "code": "2481",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 38.79
+    },
+    {
+      "name": "RICE LALITHA SUREKHA 50 KG",
+      "code": "2482",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 44.4
+    },
+    {
+      "name": "RICE LG JAYA 50 KG",
+      "code": "2483",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 46.0
+    },
+    {
+      "name": "RICE MAHARAJA MINI JAYA 50 KG",
+      "code": "2484",
+      "hsn": "10063019",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 33.0
+    }
+  ],
+  "SAVARI": [
+    {
+      "name": "SAVARI",
+      "code": "2580",
+      "hsn": "19030000",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 47.0
+    }
+  ],
+  "SUGAR": [
+    {
+      "name": "Sugar 2 Kg",
+      "code": "2952",
+      "hsn": "17011490",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 42.0
+    },
+    {
+      "name": "SUGAR 50 KG",
+      "code": "1928",
+      "hsn": "17011490",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 1857.5
+    }
+  ],
+  "RUCHI": [
+    {
+      "name": "SUNRICH 400GM BOX",
+      "code": "2674",
+      "hsn": "15121910",
+      "unit": "PCS",
+      "tax_rate": 5.0,
+      "purchase_rate": 76.25
+    }
+  ],
+  "THINA": [
+    {
+      "name": "THINA BAG",
+      "code": "2696",
+      "hsn": "10063010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 35.0
+    },
+    {
+      "name": "THINA LOOSE",
+      "code": "2835",
+      "hsn": "10063010",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 37.8
+    }
+  ],
+  "THUVARA": [
+    {
+      "name": "THUVARA 55 GOLD 30 KG",
+      "code": "2284",
+      "hsn": "07131000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 89.5
+    },
+    {
+      "name": "THUVARA BKD 50 KG",
+      "code": "2287",
+      "hsn": "07139010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 103.0
+    },
+    {
+      "name": "THUVARA BKD GOLD 50 KG",
+      "code": "2288",
+      "hsn": "07139010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 108.0
+    },
+    {
+      "name": "THUVARA DEER 50 KG",
+      "code": "2291",
+      "hsn": "07139010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 98.0
+    },
+    {
+      "name": "THUVARA DOLPHIN 50KG",
+      "code": "3029",
+      "hsn": "07139010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 93.0
+    },
+    {
+      "name": "THUVARA GOLD COIN 50 KG",
+      "code": "2292",
+      "hsn": "07139010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 94.0
+    },
+    {
+      "name": "THUVARA HERO 50 KG",
+      "code": "2293",
+      "hsn": "07139010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 122.0
+    },
+    {
+      "name": "THUVARA KING 30KG",
+      "code": "2932",
+      "hsn": "07139010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 109.0
+    },
+    {
+      "name": "THUVARA PF LOOSE 2",
+      "code": "2767",
+      "hsn": "07131000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 104.43
+    },
+    {
+      "name": "THUVARA PQ LOOSE 3",
+      "code": "2851",
+      "hsn": "07131000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 99.8
+    },
+    {
+      "name": "THUVARA PRESIDENT 30 KG",
+      "code": "2297",
+      "hsn": "07139010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 116.0
+    },
+    {
+      "name": "THUVARA ROSE 50KG",
+      "code": "2970",
+      "hsn": "07131000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 0.0
+    },
+    {
+      "name": "THUVARA SF LOOSE 1",
+      "code": "2766",
+      "hsn": "07131000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 122.1
+    },
+    {
+      "name": "THUVARA SWAMI VIVEKANAND GOLD 50 KG",
+      "code": "2299",
+      "hsn": "07139010",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 122.1
+    }
+  ],
+  "ULUVA": [
+    {
+      "name": "ULUVA 999 50 KG",
+      "code": "2301",
+      "hsn": "09109912",
+      "unit": "KG-BAG",
+      "tax_rate": 5.0,
+      "purchase_rate": 66.52
+    },
+    {
+      "name": "ULUVA LOOSE",
+      "code": "2836",
+      "hsn": "09109912",
+      "unit": "KG",
+      "tax_rate": 5.0,
+      "purchase_rate": 72.0
+    }
+  ],
+  "UZHUNNU": [
+    {
+      "name": "UZHUNNU ELITE 30 KG",
+      "code": "2304",
+      "hsn": "07133100",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 113.8
+    },
+    {
+      "name": "UZHUNNU ELITE 50 KG",
+      "code": "2305",
+      "hsn": "07133100",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 113.8
+    },
+    {
+      "name": "UZHUNNU LION",
+      "code": "2307",
+      "hsn": "07133100",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 98.0
+    },
+    {
+      "name": "UZHUNNU MAHARAJA 50 KG",
+      "code": "2308",
+      "hsn": "07133100",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 114.5
+    },
+    {
+      "name": "UZHUNNU POLI HALF MOON 50 KG",
+      "code": "2309",
+      "hsn": "07133100",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 100.85
+    }
+  ],
+  "VADAPARIPP": [
+    {
+      "name": "VADAPARIPP MAHARAJA 50 KG",
+      "code": "2311",
+      "hsn": "07133100",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 45.5
+    },
+    {
+      "name": "VADAPARIPP PEACOCK 50KG",
+      "code": "2993",
+      "hsn": "07133100",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 45.0
+    }
+  ],
+  "WHITE PEAS": [
+    {
+      "name": "WHITE PEAS AMRR MAHARAJA 30 KG",
+      "code": "2315",
+      "hsn": "07131000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 45.25
+    },
+    {
+      "name": "WHITE PEAS LOOSE",
+      "code": "2838",
+      "hsn": "07131000",
+      "unit": "KG",
+      "tax_rate": 0.0,
+      "purchase_rate": 44.5
+    },
+    {
+      "name": "WHITE PEAS ROSE 30 KG",
+      "code": "2316",
+      "hsn": "07131000",
+      "unit": "KG-BAG",
+      "tax_rate": 0.0,
+      "purchase_rate": 42.0
+    }
+  ]
+}

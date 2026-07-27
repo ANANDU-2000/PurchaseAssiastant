@@ -1,0 +1,72 @@
+# HARISREE PURCHASE APP — CURSOR RULES (AUTHORITATIVE)
+# New Harisree Agency, Thrissur 680619
+# Stack: Flutter (Riverpod) + FastAPI + SQLite or Postgres
+
+---
+
+## STRICT WORKFLOW (READ BEFORE ANY CODE)
+
+- **One phase at a time** — finish and validate before starting the next.
+- **Data before UI** — wire correct providers/APIs first; then layout and typography.
+- **Do not guess** — if requirements or field names are unclear, inspect the repo or ask; keep existing behaviour when unsure.
+- **Do not add extra features** — only what the active phase checklist asks for.
+- **Do not break save flows** — `TradePurchase` create/update payloads and backend validation stay compatible.
+
+After substantive edits: **`flutter analyze`** (client); **`pytest`** when backend touched.
+
+---
+
+## CRITICAL ARCHITECTURE (DATA)
+
+- **Purchases live in:** `trade_purchases` + `trade_purchase_lines` (not legacy `entries` / `entry_line_items` for the main app flow).
+- **Reports / analytics tables** used by the Flutter Reports tab must use **trade-backed data** — `GET /v1/businesses/{id}/reports/trade-items`, `trade-suppliers`, `trade-categories`, and `trade-summary` — not Entry-only analytics for spend KPIs.
+- **Line money:** weight lines use `qty × kg_per_unit × landing_cost_per_kg`; else `qty × landing_cost`.
+- **Supplier / broker on a line:** header fields on `trade_purchases` (`supplier_id`, `broker_id`); lines carry `catalog_item_id`. Do not assume `supplier_id` on each line without a schema migration.
+
+---
+
+## SPRINT STATUS & AGENT RULES
+
+- **Living task board:** `TASKS.md` (do not duplicate phase checklists here).
+- **Product / deploy truth:** `docs/harisree/MASTER_REFERENCE.md` and `.cursor/rules/purchase-assistant-master.mdc`.
+- **Phased UX milestones** (navigation, dashboard, reports, production) are tracked in `TASKS.md` — complete one phase at a time before starting the next.
+
+---
+
+## SINGLE SOURCE OF TRUTH (FLUTTER)
+
+- Purchase draft: `purchaseDraftProvider` in `lib/features/purchase/state/purchase_draft_provider.dart`
+- No `setState` for core purchase totals (UI-only state is OK)
+
+## PROTECTED (DO NOT BREAK UNINTENTIONALLY)
+
+- `purchaseDraftProvider`, `purchaseTotalsProvider`, `purchaseStrictBreakdownProvider`
+- `tradePurchasesListProvider`, `tradePurchasesParsedProvider`, `suppliersListProvider`, `brokersListProvider`
+- Client `_filterPurchasesBySearch` / supplier selection helpers used by purchase history
+- Backend path prefix: `/v1/businesses/{business_id}/...` — **add** routes; do not rename without migration
+
+## ALWAYS
+
+- HapticFeedback: selection on main nav; medium on save where appropriate
+- `ref.invalidate(...)` after mutations that affect lists, KPIs, or reports
+- Loading: **skeletons / `LinearProgressIndicator` in sections**, not blocking full-screen spinners on shell tabs
+- Confirm before delete or discard with unsaved changes
+- Search: **≥1 character** to search; debounce ~300ms on heavy queries
+- Money in UI: `NumberFormat.currency(locale: 'en_IN', symbol: '₹', ...)` or agreed `#,##,###` pattern consistently
+
+## NEVER
+
+- HSN mandatory on catalog create (optional for traders)
+- Snackbars for field validation (use inline `errorText`)
+- Emoji in PDF body
+- Duplicate purchase / item entry flows — extend the canonical wizard only
+- **Entry-only** queries for **trade** spend reports (KPI + report tables)
+- Auto-save purchases — always preview → confirm save
+
+## COMPANY (PDF / DISPLAY FALLBACK)
+
+- Name: NEW HARISREE AGENCY  
+- Address: 6/366A, Thrithallur, Thrissur 680619  
+- Phone: 8078103800 / 7025333999  
+
+Use `BusinessProfile.legalName` / `displayTitle` in code — not a non-existent `.name` field.

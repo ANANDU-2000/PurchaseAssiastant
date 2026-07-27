@@ -1,0 +1,48 @@
+---
+description: Rules for implementing Figma designs and building HEXA Purchase Assistant UI with the Figma MCP workflow.
+globs: "flutter_app/lib/**,admin_web/src/**"
+alwaysApply: false
+---
+
+# HEXA — Figma & UI Implementation Rules
+
+## Component Discovery
+
+- Flutter UI lives under `flutter_app/lib/` — prefer `features/<domain>/` and `shared/widgets/`.
+- Super Admin web lives under `admin_web/src/`.
+- Before adding new primitives, check existing shared widgets and theme tokens.
+
+## Figma MCP — Implementation Flow
+
+1. Run **get_design_context** for the exact node(s) to implement.
+2. If truncated, use **get_metadata** then refetch specific nodes.
+3. Run **get_screenshot** for visual reference.
+4. Download assets from Figma MCP when provided; use localhost sources from the payload when given.
+5. Translate generated output (often React + Tailwind) into **Flutter** or **project stack** — do not copy Tailwind as final app style.
+6. Validate against screenshot before marking complete.
+
+## Styling & Tokens
+
+- **IMPORTANT:** Do not hardcode hex colors in Dart/TS if the project defines theme/tokens — use theme extension or CSS variables.
+- Spacing: use a consistent grid (e.g. 4px base) aligned with Figma variables.
+- Typography: match Figma text styles to `Theme.of(context).textTheme` or design tokens.
+
+## Assets
+
+- **IMPORTANT:** Prefer assets supplied by Figma MCP; avoid adding new icon packs unless product requires it.
+- Store downloaded assets under project `assets/` with clear names; declare in `pubspec.yaml` for Flutter.
+
+## HEXA-Specific UX
+
+- **Preview before save** for every entry path (app + WhatsApp parity in messaging).
+- **Price Intelligence Panel:** compact card + expandable sheet; show avg/high/low/trend/% position when history exists.
+- **Landing cost** is user-entered — never auto-filled from AI.
+- Bottom nav order: Home, Entries, Analytics, Contacts, Settings.
+
+## Accessibility
+
+- Interactive controls: minimum touch target 48dp; semantic labels for icons.
+
+## Code Connect (When Applicable)
+
+- Connect published Figma components to code only after stable component APIs; use Code Connect tools per team workflow.

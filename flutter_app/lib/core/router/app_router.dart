@@ -1,0 +1,1374 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../auth/auth_failure_policy.dart';
+import '../auth/session_notifier.dart';
+import 'post_auth_route.dart'
+    show authenticatedHomePath, sessionCanManageUsers, sessionIsStaff;
+import '../models/trade_purchase_models.dart';
+import 'purchase_overlay_active_provider.dart';
+import 'page_transitions.dart';
+import '../widgets/hexa_page_error_boundary.dart';
+import '../../features/shell/shell_branch_provider.dart';
+import '../../features/reports/shell/reports_shell_page.dart';
+import '../../features/catalog/presentation/item_analytics_redirect_page.dart';
+import '../../features/reports/drill/reports_item_report_page.dart';
+import '../../features/reports/drill/reports_purchase_report_page.dart';
+import '../../features/catalog/presentation/catalog_taxonomy_hub_page.dart';
+import '../../features/catalog/presentation/catalog_add_category_page.dart';
+import '../../features/catalog/presentation/catalog_add_item_page.dart';
+import '../../features/catalog/presentation/catalog_add_subcategory_page.dart';
+import '../../features/catalog/presentation/catalog_category_detail_page.dart';
+import '../../features/catalog/presentation/catalog_item_create_page.dart';
+import '../../features/catalog/presentation/catalog_item_timeline_page.dart';
+import '../../features/catalog/presentation/catalog_page.dart';
+import '../../features/catalog/presentation/catalog_type_items_page.dart';
+import '../../features/catalog/presentation/item_detail_page.dart';
+import '../../features/catalog/presentation/item_edit_page.dart';
+import '../../features/catalog/presentation/quick_add_catalog_item_page.dart';
+import '../../features/catalog/presentation/batch_item_create_page.dart';
+import '../../features/catalog/presentation/catalog_missing_codes_page.dart';
+import '../../features/catalog/presentation/catalog_setup_reorder_levels_page.dart';
+import '../../features/auth/presentation/forgot_password_page.dart';
+import '../../features/auth/presentation/login_page.dart';
+import '../../features/auth/presentation/reset_password_page.dart';
+import '../../features/contacts/presentation/broker_detail_page.dart';
+import '../../features/contacts/presentation/broker_wizard_page.dart';
+import '../../features/contacts/presentation/category_items_page.dart';
+import '../../features/contacts/presentation/contacts_page.dart';
+import '../../features/contacts/presentation/trade_ledger_page.dart';
+import '../../features/contacts/presentation/supplier_create_simple.dart';
+import '../../features/contacts/presentation/supplier_detail_page.dart';
+import '../../features/supplier/presentation/supplier_ledger_page.dart';
+import '../../features/item/presentation/item_history_page.dart';
+import '../../features/broker/presentation/broker_history_page.dart';
+import '../../features/home/presentation/home_breakdown_list_page.dart';
+import '../../features/home/presentation/home_warehouse_activity_page.dart';
+import '../../features/home/presentation/home_page.dart';
+import '../providers/home_breakdown_tab_providers.dart'
+    show homeBreakdownTabFromQuery, HomeBreakdownTab;
+import '../../features/purchase/domain/purchase_draft.dart';
+import '../../features/purchase/presentation/purchase_detail_page.dart';
+import '../../features/purchase/presentation/purchase_home_page.dart';
+import '../../features/purchase/presentation/purchase_entry_wizard_v2.dart';
+import '../../features/notifications/presentation/notifications_page.dart';
+import '../../features/settings/presentation/business_profile_page.dart';
+import '../../features/settings/presentation/settings_page.dart';
+import '../../features/settings/presentation/user_management_page.dart';
+import '../../features/settings/presentation/user_profile_page.dart';
+import '../../features/staff/presentation/staff_home_page.dart';
+import '../../features/settings/presentation/backup_page.dart';
+import '../../features/settings/presentation/help_guide_page.dart';
+import '../../features/search/presentation/search_page.dart';
+import '../../features/barcode/presentation/barcode_print_page.dart';
+import '../../features/barcode/presentation/bulk_barcode_print_page.dart';
+import '../../features/barcode/presentation/barcode_scan_page.dart';
+import '../../features/barcode/presentation/barcode_scan_history_page.dart';
+import '../../features/barcode/presentation/public_item_scan_page.dart';
+import '../../features/barcode/presentation/stock_audit_session_page.dart';
+import '../../features/barcode/presentation/stock_audit_summary_page.dart';
+import '../../features/stock/presentation/stock_page.dart';
+import '../../features/stock/presentation/opening_stock_setup_page.dart';
+import '../../features/stock/presentation/staff_purchase_logs_page.dart';
+import '../../features/stock/presentation/low_stock_dashboard_page.dart';
+import '../../features/stock/presentation/reorder_list_page.dart';
+import '../../features/staff/presentation/staff_shell_screen.dart';
+import '../../features/staff/staff_shell_branch_provider.dart';
+import '../../features/staff/presentation/staff_activity_page.dart';
+import '../../features/staff/presentation/staff_purchase_order_detail_page.dart';
+import '../../features/staff/presentation/staff_pending_deliveries_page.dart';
+import '../../features/staff/presentation/staff_purchase_history_page.dart';
+import '../../features/staff/presentation/staff_item_gallery_page.dart';
+import '../../features/staff/presentation/staff_receive_shipment_page.dart';
+import '../../features/shell/shell_screen.dart';
+import '../../features/splash/presentation/splash_page.dart';
+import '../../features/operations/presentation/daily_usage_page.dart';
+import '../../features/operations/presentation/staff_checklist_page.dart';
+import '../../features/operations/presentation/owner_tasks_page.dart';
+import '../../features/catalog/presentation/barcode_quick_create_page.dart';
+import '../../features/catalog/presentation/catalog_duplicates_page.dart';
+import '../../features/stock/presentation/stock_missing_labels_page.dart';
+
+final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
+
+bool _isOwnerShellTab(String loc) {
+  if (loc == '/home' || loc.startsWith('/home/')) return true;
+  if (loc == '/stock') return true;
+  if (loc == '/reports') return true;
+  if (loc == '/purchase') return true;
+  if (loc == '/search') return true;
+  return false;
+}
+
+/// Staff may only open operational routes (shell + stock/barcode/catalog helpers).
+bool _isStaffAllowedRoute(String loc) {
+  if (loc.startsWith('/staff')) return true;
+  if (loc == '/purchase/new' ||
+      loc.startsWith('/purchase/edit/') ||
+      loc.startsWith('/purchase/detail/')) {
+    return true;
+  }
+  if (loc == '/reports' || loc.startsWith('/reports/')) return true;
+  if (loc == '/settings' || loc.startsWith('/settings/')) return true;
+  if (loc == '/notifications') return true;
+  if (loc.startsWith('/barcode/')) return true;
+  if (loc == '/catalog/missing-codes' ||
+      loc == '/catalog/taxonomy' ||
+      loc == '/catalog/new-category' ||
+      (loc.startsWith('/catalog/category/') &&
+          (loc.endsWith('/new-subcategory') || loc.contains('/type/'))) ||
+      loc == '/stock/missing-barcodes' ||
+      loc == '/catalog/quick-add' ||
+      loc == '/catalog/quick-add-from-scan' ||
+      loc.startsWith('/catalog/item/')) {
+    return true;
+  }
+  if (loc.startsWith('/operations/')) return true;
+  if (loc.startsWith('/stock/intelligence/') ||
+      loc.startsWith('/stock/') && loc.endsWith('/history')) {
+    return true;
+  }
+  if (loc.startsWith('/operations/')) return true;
+  return false;
+}
+
+String _staffRedirectForBlockedRoute(String loc) {
+  if (loc.startsWith('/purchase') &&
+      loc != '/purchase/new' &&
+      !loc.startsWith('/purchase/edit/')) {
+    return '/staff/deliveries';
+  }
+  if (loc.startsWith('/stock')) return '/staff/stock';
+  if (loc.startsWith('/search')) return '/staff/search';
+  if (loc.startsWith('/home')) return '/staff/home';
+  if (loc.startsWith('/analytics')) {
+    return '/staff/home';
+  }
+  if (loc.startsWith('/settings') ||
+      loc.startsWith('/contacts') ||
+      loc.startsWith('/supplier') ||
+      loc.startsWith('/broker') ||
+      loc == '/catalog' ||
+      loc.startsWith('/catalog/') && !_isStaffAllowedRoute(loc)) {
+    return '/staff/home';
+  }
+  return '/staff/home';
+}
+
+final appRouterProvider = Provider<GoRouter>((ref) {
+  return GoRouter(
+    navigatorKey: _rootNavigatorKey,
+    initialLocation: '/splash',
+    refreshListenable: authRefresh,
+    errorBuilder: (context, state) {
+      if (kDebugMode) {
+        debugPrint(
+          'GoRouter error: uri=${state.uri} matched=${state.matchedLocation} error=${state.error}',
+        );
+      }
+      return GoRouterErrorScreen(
+        uri: state.uri,
+        routerError: state.error,
+      );
+    },
+    redirect: (context, state) {
+      final loc = state.matchedLocation;
+      try {
+        syncPurchaseOverlayActive(ProviderScope.containerOf(context), loc);
+      } catch (_) {}
+      final public = loc == '/splash' ||
+          loc == '/login' ||
+          loc == '/forgot-password' ||
+          loc == '/reset-password' ||
+          loc.startsWith('/scan/') ||
+          loc.startsWith('/item/');
+
+      ProviderContainer container;
+      try {
+        container = ProviderScope.containerOf(context);
+      } catch (_) {
+        // Rare: router runs before ProviderScope is available. Never land on a protected shell route.
+        if (!public) return '/splash';
+        return null;
+      }
+
+      final session = container.read(sessionProvider);
+      final authExpired = container.read(authSessionExpiredProvider);
+      final authCircuit = container.read(auth401CircuitOpenProvider);
+      // No session → only public auth/onboarding routes. (JWT may still be restoring in main(); splash handles that.)
+      if (session == null || authExpired || authCircuit) {
+        if (loc == '/signup') {
+          return '/login?tab=signin&notice=owner_only';
+        }
+        if (public) return null;
+        return '/login';
+      }
+      // Password reset from email should work even with a stale / other-tab session.
+      final resetTok = state.uri.queryParameters['token']?.trim() ?? '';
+      if (loc == '/reset-password' && resetTok.isNotEmpty) {
+        return null;
+      }
+      // Allow forgot-password so users aren't bounced to /home if session state is wrong.
+      if (loc == '/forgot-password') {
+        return null;
+      }
+      if (loc == '/signup') {
+        return '/login?tab=signin&notice=owner_only';
+      }
+      if (loc == '/ai') return authenticatedHomePath(session);
+      if (loc.startsWith('/settings/users') &&
+          !sessionCanManageUsers(session)) {
+        return '/settings';
+      }
+      if (sessionIsStaff(session) && loc == '/stock/opening-setup') {
+        return '/staff/stock';
+      }
+      if (sessionIsStaff(session)) {
+        if (_isStaffAllowedRoute(loc)) return null;
+        if (_isOwnerShellTab(loc)) {
+          if (loc == '/stock') return '/staff/stock';
+          if (loc == '/search') return '/staff/search';
+          if (loc == '/home' || loc.startsWith('/home/')) return '/staff/home';
+          return '/staff/home';
+        }
+        if (!_isStaffAllowedRoute(loc)) {
+          return _staffRedirectForBlockedRoute(loc);
+        }
+      } else {
+        if (loc.startsWith('/staff')) return '/home';
+      }
+      // Signed in → skip other auth / onboarding screens.
+      if (public) return authenticatedHomePath(session);
+      return null;
+    },
+    routes: [
+      GoRoute(
+        path: '/',
+        redirect: (context, state) => '/splash',
+      ),
+      GoRoute(
+        path: '/splash',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const SplashPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/get-started',
+        redirect: (_, __) => '/login',
+      ),
+      GoRoute(
+        path: '/login',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const LoginPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/forgot-password',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const ForgotPasswordPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/reset-password',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: ResetPasswordPage(
+            initialToken: state.uri.queryParameters['token'],
+          ),
+        ),
+      ),
+      // Aliases
+      GoRoute(path: '/dashboard', redirect: (_, __) => '/home'),
+      GoRoute(path: '/history', redirect: (_, __) => '/purchase'),
+      GoRoute(
+        path: '/contacts',
+        name: 'contacts',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: ContactsPage(
+            initialTab: contactsTabIndexFromQuery(
+              state.uri.queryParameters['tab'],
+            ),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/catalog',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const CatalogPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/scan/:token',
+        redirect: (context, state) {
+          final t = state.pathParameters['token'] ?? '';
+          if (t.isEmpty) return '/login';
+          return '/item/$t';
+        },
+      ),
+      GoRoute(
+        path: '/item/:lookupKey',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: PublicItemScanPage(
+            lookupKey: state.pathParameters['lookupKey'] ?? '',
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/barcode/scan',
+        name: 'barcode_scan',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const BarcodeScanPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/barcode/scan-history',
+        name: 'barcode_scan_history',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const BarcodeScanHistoryPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/barcode/audit-session',
+        name: 'stock_audit_session',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const StockAuditSessionPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/barcode/audit-summary',
+        name: 'stock_audit_summary',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const StockAuditSummaryPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/barcode/print/:itemId',
+        name: 'barcode_print',
+        pageBuilder: (context, state) {
+          final itemId = state.pathParameters['itemId'] ?? '';
+          final preload = state.uri.queryParameters['preloadItemId'] ??
+              state.uri.queryParameters['itemId'];
+          return iosPushPage(
+            key: state.pageKey,
+            child: BarcodePrintPage(
+              itemId: itemId,
+              preloadItemId: preload,
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/barcode/bulk-print',
+        name: 'barcode_bulk_print',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const BulkBarcodePrintPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/catalog/missing-codes',
+        name: 'catalog_missing_codes',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const CatalogMissingCodesPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/stock/missing-barcodes',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const StockMissingLabelsPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/catalog/item/create',
+        redirect: (_, __) => '/catalog/quick-add',
+      ),
+      GoRoute(
+        path: '/catalog/quick-add-from-scan',
+        pageBuilder: (context, state) {
+          final barcode = state.uri.queryParameters['barcode']?.trim() ?? '';
+          return iosPushPage(
+            key: state.pageKey,
+            child: BarcodeQuickCreatePage(barcode: barcode),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/catalog/setup-reorder-levels',
+        name: 'catalog_setup_reorder_levels',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const CatalogSetupReorderLevelsPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/catalog/quick-add',
+        name: 'catalog_quick_add',
+        pageBuilder: (context, state) {
+          final sup = state.uri.queryParameters['defaultSupplierId']?.trim();
+          final bro = state.uri.queryParameters['defaultBrokerId']?.trim();
+          final returnResult =
+              state.uri.queryParameters['returnToPurchase'] == '1';
+          return iosPushPage(
+            key: state.pageKey,
+            child: CatalogItemCreatePage(
+              defaultSupplierId:
+                  sup != null && sup.isNotEmpty ? sup : null,
+              defaultBrokerId:
+                  bro != null && bro.isNotEmpty ? bro : null,
+              returnResultOnSave: returnResult,
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/catalog/taxonomy',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const CatalogTaxonomyHubPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/catalog/new-category',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const CatalogAddCategoryPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/catalog/category/:categoryId/new-subcategory',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['categoryId'];
+          if (id == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          return iosPushPage(
+            key: state.pageKey,
+            child: CatalogAddSubcategoryPage(categoryId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/catalog/category/:categoryId/type/:typeId/add-item',
+        pageBuilder: (context, state) {
+          final cid = state.pathParameters['categoryId'];
+          final tid = state.pathParameters['typeId'];
+          if (cid == null || tid == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          final sid = state.uri.queryParameters['defaultSupplierId']?.trim();
+          final bid = state.uri.queryParameters['defaultBrokerId']?.trim();
+          return iosPushPage(
+            key: state.pageKey,
+            child: CatalogAddItemPage(
+              categoryId: cid,
+              typeId: tid,
+              defaultSupplierId: sid != null && sid.isNotEmpty ? sid : null,
+              defaultBrokerId: bid != null && bid.isNotEmpty ? bid : null,
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/catalog/item/:itemId',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['itemId'];
+          if (id == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          return iosPushPage(
+            key: state.pageKey,
+            child: HexaPageErrorBoundary(
+              title: 'Item could not load',
+              shellBranchIndex: null,
+              child: ItemDetailPage(itemId: id),
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/catalog/item/:itemId/edit',
+        name: 'item_edit',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['itemId'];
+          if (id == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          return iosPushPage(
+            key: state.pageKey,
+            child: ItemEditPage(itemId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/catalog/item/:itemId/timeline',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['itemId'];
+          if (id == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          return iosPushPage(
+            key: state.pageKey,
+            child: CatalogItemTimelinePage(itemId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/stock/movement',
+        redirect: (_, __) => '/stock?tab=movement',
+      ),
+      GoRoute(
+        path: '/stock/changes',
+        redirect: (_, __) => '/stock?tab=changes',
+      ),
+      GoRoute(
+        path: '/stock/reorder-suggestions',
+        redirect: (_, __) => '/stock/reorder',
+      ),
+      GoRoute(
+        path: '/stock/reorder',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const ReorderListPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/stock/opening-setup',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const OpeningStockSetupPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/stock/staff-purchases',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const StaffPurchaseLogsPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/stock/low-stock',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const LowStockDashboardPage(staffMode: false),
+        ),
+      ),
+      GoRoute(
+        path: '/stock/today-feed',
+        redirect: (_, __) => '/stock?tab=today',
+      ),
+      GoRoute(
+        path: '/stock/intelligence/:itemId',
+        redirect: (context, state) {
+          final id = state.pathParameters['itemId'];
+          if (id == null) return '/home';
+          return '/catalog/item/$id?source=intelligence';
+        },
+      ),
+      GoRoute(
+        path: '/stock/:itemId/history',
+        redirect: (context, state) {
+          final id = state.pathParameters['itemId'];
+          if (id == null) return '/home';
+          final name = state.uri.queryParameters['name'];
+          final q = name != null && name.isNotEmpty
+              ? '?tab=history&name=${Uri.encodeComponent(name)}'
+              : '?tab=history';
+          return '/catalog/item/$id$q';
+        },
+      ),
+      GoRoute(
+        path: '/catalog/item/:itemId/purchase-history',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['itemId'];
+          if (id == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          return iosPushPage(
+            key: state.pageKey,
+            child: ItemHistoryPage(catalogItemId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/catalog/item/:itemId/ledger',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['itemId'];
+          if (id == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          return iosPushPage(
+            key: state.pageKey,
+            child: TradeLedgerPage(
+              kind: TradeLedgerKind.catalogItem,
+              entityId: id,
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/catalog/category/:categoryId',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['categoryId'];
+          if (id == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          return iosPushPage(
+            key: state.pageKey,
+            child: CatalogCategoryDetailPage(categoryId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/catalog/category/:categoryId/type/:typeId',
+        pageBuilder: (context, state) {
+          final cid = state.pathParameters['categoryId'];
+          final tid = state.pathParameters['typeId'];
+          if (cid == null || tid == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          return iosPushPage(
+            key: state.pageKey,
+            child: CatalogTypeItemsPage(categoryId: cid, typeId: tid),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/supplier/:supplierId',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['supplierId'];
+          if (id == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          return iosPushPage(
+            key: state.pageKey,
+            child: SupplierDetailPage(supplierId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/supplier/:supplierId/ledger',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['supplierId'];
+          if (id == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          return iosPushPage(
+            key: state.pageKey,
+            child: SupplierLedgerPage(supplierId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/supplier/:supplierId/batch-items',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['supplierId'];
+          if (id == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          return iosPushPage(
+            key: state.pageKey,
+            child: BatchItemCreatePage(supplierId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/broker/:brokerId',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['brokerId'];
+          if (id == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          return iosPushPage(
+            key: state.pageKey,
+            child: BrokerDetailPage(brokerId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/broker/:brokerId/ledger',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['brokerId'];
+          if (id == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          return iosPushPage(
+            key: state.pageKey,
+            child: BrokerHistoryPage(brokerId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/contacts/category',
+        pageBuilder: (context, state) {
+          final raw = state.uri.queryParameters['name'] ?? '';
+          return iosPushPage(
+            key: state.pageKey,
+            child: CategoryItemsPage(category: raw),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/item-analytics/:itemKey',
+        pageBuilder: (context, state) {
+          final enc = state.pathParameters['itemKey'];
+          if (enc == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          final name = Uri.decodeComponent(enc);
+          return iosPushPage(
+            key: state.pageKey,
+            child: ItemAnalyticsRedirectPage(itemName: name),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/settings',
+        name: 'settings',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const SettingsPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/business',
+        name: 'settings_business',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const BusinessProfilePage(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/backup',
+        name: 'settings_backup',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const BackupPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/help',
+        name: 'settings_help',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const HelpGuidePage(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/users',
+        name: 'settings_users',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const UserManagementPage(),
+        ),
+        routes: [
+          GoRoute(
+            path: ':userId',
+            name: 'settings_user_detail',
+            pageBuilder: (context, state) {
+              final id = state.pathParameters['userId'];
+              if (id == null) {
+                return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+              }
+              return iosPushPage(
+                key: state.pageKey,
+                child: UserProfilePage(userId: id),
+              );
+            },
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/staff/receive',
+        name: 'staff_receive_list',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const StaffPendingDeliveriesPage(),
+        ),
+        routes: [
+          GoRoute(
+            path: ':purchaseId',
+            name: 'staff_receive_detail',
+            pageBuilder: (context, state) {
+              final id = state.pathParameters['purchaseId'];
+              if (id == null) {
+                return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+              }
+              return iosPushPage(
+                key: state.pageKey,
+                child: StaffReceiveShipmentPage(
+                  purchaseId: id,
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/staff/low-stock',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const LowStockDashboardPage(staffMode: true),
+        ),
+      ),
+      GoRoute(
+        path: '/staff/items',
+        name: 'staff_items',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: StaffItemGalleryPage(
+            initialFilter: state.uri.queryParameters['filter'],
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/staff/settings',
+        name: 'staff_settings',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const SettingsPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/staff/purchase-history',
+        name: 'staff_purchase_history',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const StaffPurchaseHistoryPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/staff/activity',
+        name: 'staff_activity',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const StaffActivityPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/staff/purchase-history/:purchaseId',
+        name: 'staff_purchase_detail',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['purchaseId'];
+          if (id == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          return iosPushPage(
+            key: state.pageKey,
+            child: StaffPurchaseOrderDetailPage(
+              purchaseId: id,
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/entries',
+        redirect: (context, state) => '/purchase',
+      ),
+      GoRoute(
+        path: '/analytics',
+        redirect: (context, state) => '/reports',
+      ),
+      GoRoute(
+        path: '/purchase/new',
+        name: 'purchase_new',
+        pageBuilder: (context, state) {
+          final cid = state.uri.queryParameters['catalogItemId']?.trim();
+          PurchaseDraft? seed;
+          bool resumeDraft =
+              state.uri.queryParameters['resumeDraft'] == 'true' ||
+                  state.uri.queryParameters['resume'] == '1';
+          final ex = state.extra;
+          if (ex is PurchaseDraft) {
+            seed = ex;
+          } else if (ex is Map) {
+            try {
+              final m = Map<String, dynamic>.from(ex);
+              final rd = m['resumeDraft'];
+              resumeDraft |= rd == true || '$rd'.toLowerCase() == 'true';
+              final d = m['initialDraft'];
+              if (d is PurchaseDraft) seed = d;
+              final ed = m['entryDraft'];
+              if (seed == null && ed is Map) {
+                try {
+                  seed = purchaseDraftFromAssistantEntryMap(
+                    Map<String, dynamic>.from(ed),
+                  );
+                } catch (_) {}
+              }
+            } catch (_) {}
+          }
+          return iosPushPage(
+            key: ValueKey(
+              'purchase_new_${seed != null ? 'seed' : resumeDraft ? 'resume' : 'fresh'}_${(cid != null && cid.isNotEmpty) ? cid : 'none'}',
+            ),
+            child: PurchaseEntryWizardV2(
+              initialCatalogItemId:
+                  (cid != null && cid.isNotEmpty) ? cid : null,
+              initialDraft: seed,
+              resumeDraft: resumeDraft && seed == null,
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/purchase/scan',
+        redirect: (_, __) => '/purchase/new',
+      ),
+      GoRoute(
+        path: '/purchase/scan-draft',
+        redirect: (_, __) => '/purchase/new',
+      ),
+      GoRoute(
+        path: '/purchase/edit/:purchaseId',
+        name: 'purchase_edit',
+        redirect: (context, state) {
+          final id = state.pathParameters['purchaseId']?.trim() ?? '';
+          if (id.isEmpty) return '/purchase';
+          return null;
+        },
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['purchaseId'];
+          if (id == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          final trimmedId = id.trim();
+          final ex = state.extra;
+          final seed = ex is TradePurchase ? ex : null;
+          final seedOk = seed != null && seed.id == trimmedId;
+          return iosPushPage(
+            key: state.pageKey,
+            child: PurchaseEntryWizardV2(
+              editingId: trimmedId,
+              seedPurchase: seedOk ? seed : null,
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/purchase/detail/:purchaseId',
+        name: 'purchase_detail',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['purchaseId'];
+          if (id == null) {
+            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+          }
+          final ex = state.extra;
+          final seed = ex is TradePurchase ? ex : null;
+          final seedOk = seed != null && seed.id == id;
+          return iosPushPage(
+            key: state.pageKey,
+            child: PurchaseDetailPage(
+              purchaseId: id,
+              seedPurchase: seedOk ? seed : null,
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/contacts/supplier/new',
+        name: 'supplier_create',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const SupplierCreateSimple(),
+        ),
+      ),
+      GoRoute(
+        path: '/suppliers/quick-create',
+        name: 'supplier_quick_create',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const SupplierCreateSimple(),
+        ),
+      ),
+      GoRoute(
+        path: '/brokers/quick-create',
+        name: 'broker_quick_create',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const BrokerWizardPage(selectionReturnOnSave: true),
+        ),
+      ),
+      GoRoute(
+        path: '/notifications',
+        name: 'notifications',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const NotificationsPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/operations/usage',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const DailyUsagePage(),
+        ),
+      ),
+      GoRoute(
+        path: '/operations/checklist',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const StaffChecklistPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/operations/owner-tasks',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const OwnerTasksPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/catalog/duplicates',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const CatalogDuplicatesPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/stock/dead',
+        redirect: (_, __) => '/reports?tab=stock&section=dead',
+      ),
+      GoRoute(
+        path: '/stock/fast-moving',
+        redirect: (_, __) => '/reports?tab=stock&section=fast',
+      ),
+      GoRoute(
+        path: '/stock/slow-moving',
+        redirect: (_, __) => '/reports?tab=stock&section=slow',
+      ),
+      GoRoute(
+        path: '/reports/item/:catalogItemId',
+        name: 'reports_item_bi',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['catalogItemId'] ?? '';
+          if (id.isEmpty) {
+            return iosPushPage(
+              key: state.pageKey,
+              child: const Scaffold(
+                body: Center(child: Text('Item not found')),
+              ),
+            );
+          }
+          final rawName = state.uri.queryParameters['name'];
+          final name =
+              rawName != null ? Uri.decodeComponent(rawName) : null;
+          return iosPushPage(
+            key: state.pageKey,
+            child: ReportsItemReportPage(
+              catalogItemId: id,
+              itemName: name,
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/reports/purchase/:purchaseId',
+        name: 'reports_purchase_report',
+        pageBuilder: (context, state) {
+          final extra = state.extra;
+          return iosPushPage(
+            key: state.pageKey,
+            child: ReportsPurchaseReportPage(
+              purchaseId: state.pathParameters['purchaseId'] ?? '',
+              initialPurchase:
+                  extra is TradePurchase ? extra : null,
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/reports/item-detail',
+        name: 'reports_item_detail',
+        pageBuilder: (context, state) {
+          final k = state.uri.queryParameters['k'] ?? '';
+          final n = Uri.decodeComponent(state.uri.queryParameters['n'] ?? '');
+          return iosPushPage(
+            key: state.pageKey,
+            child: ReportsItemReportFallbackPage(
+              itemKey: k,
+              itemName: n.isEmpty ? 'Item' : n,
+            ),
+          );
+        },
+      ),
+      // Main app tabs: keep navigation in this shell only
+      // or `context.go('/home'|'/reports'|...)` — avoid `push` onto the root stack for these paths
+      // or the active tab and visible content can disagree.
+      StatefulShellRoute.indexedStack(
+        // Use [pageBuilder] so the shell is the [Page] child directly. The default
+        // shell path (widget-only [builder] inside [MaterialPage]) can receive a
+        // tiny max height on web; [Scaffold] then collapses to ~bottom bar height
+        // and sits centered with a blank body. [NoTransitionPage] + expand fixes that.
+        pageBuilder: (context, state, navigationShell) =>
+            NoTransitionPage<void>(
+          key: state.pageKey,
+          name: state.name ?? state.path,
+          restorationId: state.pageKey.value,
+          child: SizedBox.expand(
+            child: ShellScreen(navigationShell: navigationShell),
+          ),
+        ),
+        branches: [
+          // Branch 0 — Home dashboard
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/home',
+                name: 'home',
+                builder: (context, state) => HexaPageErrorBoundary(
+                  title: 'Home could not load',
+                  fallbackRoute: '/home',
+                  shellBranchIndex: ShellBranch.home,
+                  child: const HomePage(),
+                ),
+                routes: [
+                  GoRoute(
+                    path: 'activity',
+                    name: 'home_activity',
+                    builder: (context, state) =>
+                        const HomeWarehouseActivityPage(),
+                  ),
+                  GoRoute(
+                    path: 'breakdown-more',
+                    name: 'home_breakdown_more',
+                    builder: (context, state) {
+                      final tab = homeBreakdownTabFromQuery(
+                            state.uri.queryParameters['tab'],
+                          ) ??
+                          HomeBreakdownTab.category;
+                      return HomeBreakdownListPage(tab: tab);
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+          // Branch 1 — Stock list
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/stock',
+                name: 'stock_tab',
+                builder: (context, state) => HexaPageErrorBoundary(
+                  title: 'Stock could not load',
+                  fallbackRoute: '/home',
+                  shellBranchIndex: ShellBranch.stock,
+                  child: StockPage(
+                      mode: StockPageMode.owner,
+                      initialTab: state.uri.queryParameters['tab'],
+                      initialStatus: state.uri.queryParameters['status'],
+                    ),
+                ),
+              ),
+            ],
+          ),
+          // Branch 2 — Reports (full analytics UI)
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/reports',
+                name: 'reports_full',
+                builder: (context, state) => HexaPageErrorBoundary(
+                      title: 'Reports could not load',
+                      fallbackRoute: '/home',
+                      shellBranchIndex: ShellBranch.reports,
+                      child: const FullReportsPage(
+                        key: ValueKey('reports_shell'),
+                      ),
+                    ),
+              ),
+            ],
+          ),
+          // Branch 3 — History (purchase list)
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/purchase',
+                name: 'purchase',
+                builder: (context, state) => HexaPageErrorBoundary(
+                  title: 'Purchases could not load',
+                  fallbackRoute: '/home',
+                  shellBranchIndex: ShellBranch.history,
+                  child: const PurchaseHomePage(),
+                ),
+              ),
+            ],
+          ),
+          // Branch 4 — Global search (tab).
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/search',
+                name: 'search_tab',
+                builder: (context, state) =>
+                    const SearchPage(embeddedInShell: true),
+              ),
+            ],
+          ),
+        ],
+      ),
+      StatefulShellRoute.indexedStack(
+        pageBuilder: (context, state, navigationShell) =>
+            NoTransitionPage<void>(
+          key: state.pageKey,
+          name: state.name ?? state.path,
+          restorationId: state.pageKey.value,
+          child: SizedBox.expand(
+            child: StaffShellScreen(navigationShell: navigationShell),
+          ),
+        ),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/staff/home',
+                name: 'staff_home',
+                builder: (context, state) => HexaPageErrorBoundary(
+                  title: 'Staff home could not load',
+                  fallbackRoute: '/login',
+                  shellBranchIndex: StaffShellBranch.home,
+                  child: const StaffHomePage(),
+                ),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/staff/stock',
+                name: 'staff_stock',
+                builder: (context, state) => StockPage(
+                      mode: StockPageMode.staff,
+                      initialTab: state.uri.queryParameters['tab'],
+                      initialStatus: state.uri.queryParameters['status'],
+                    ),
+                routes: [
+                  GoRoute(
+                    path: 'changes',
+                    redirect: (_, __) => '/staff/stock?tab=changes',
+                  ),
+                ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/staff/scan',
+                name: 'staff_scan',
+                builder: (context, state) => const BarcodeScanPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/staff/search',
+                name: 'staff_search',
+                builder: (context, state) => const SearchPage(
+                  staffShellEmbedded: true,
+                ),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/staff/deliveries',
+                name: 'staff_deliveries',
+                builder: (context, state) => const StaffPendingDeliveriesPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/staff/tasks',
+                name: 'staff_tasks',
+                builder: (context, state) =>
+                    const StaffChecklistPage(embeddedInShell: true),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+});
+
+/// Full-screen fallback for unknown routes or navigation errors.
+class GoRouterErrorScreen extends ConsumerWidget {
+  const GoRouterErrorScreen({
+    super.key,
+    required this.uri,
+    this.routerError,
+  });
+
+  final Uri uri;
+  final Object? routerError;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(sessionProvider);
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Could not open this page.',
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              SelectableText(
+                uri.toString(),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              if (kDebugMode && routerError != null) ...[
+                const SizedBox(height: 12),
+                SelectableText(
+                  routerError.toString(),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+              const Spacer(),
+              FilledButton(
+                onPressed: () {
+                  if (session != null) {
+                    context.go(authenticatedHomePath(session));
+                  } else {
+                    context.go('/login');
+                  }
+                },
+                child: Text(session != null ? 'Go home' : 'Go to login'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

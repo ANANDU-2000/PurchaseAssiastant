@@ -1,0 +1,149 @@
+﻿-- 019 smart unit intelligence (Postgres / Supabase). Idempotent-ish via IF NOT EXISTS.
+-- Run via Supabase MCP execute_sql or apply_migration; Alembic revision: 019_smart_unit_intelligence.
+
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS normalized_name varchar(512);
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS selling_unit varchar(32);
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS stock_unit varchar(32);
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS display_unit varchar(32);
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS package_type varchar(32);
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS package_size numeric(14,4);
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS package_measurement varchar(16);
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS package_volume numeric(14,4);
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS package_weight numeric(14,4);
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS conversion_factor numeric(14,6);
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS ai_detected_unit varchar(32);
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS smart_classification varchar(64);
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS unit_confidence numeric(5,2);
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS packaging_confidence numeric(5,2);
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS is_loose_item boolean;
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS is_packaged_item boolean;
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS auto_detect_enabled boolean NOT NULL DEFAULT true;
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS ml_profile jsonb;
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS validation_status varchar(32);
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+
+CREATE INDEX IF NOT EXISTS ix_catalog_items_deleted_at ON catalog_items (deleted_at);
+CREATE INDEX IF NOT EXISTS ix_catalog_items_normalized_name ON catalog_items (normalized_name);
+
+CREATE TABLE IF NOT EXISTS item_packaging_profiles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id uuid NOT NULL REFERENCES businesses(id),
+  catalog_item_id uuid NOT NULL REFERENCES catalog_items(id) ON DELETE CASCADE,
+  package_type varchar(32),
+  package_size numeric(14,4),
+  package_measurement varchar(16),
+  selling_unit varchar(32),
+  stock_unit varchar(32),
+  display_unit varchar(32),
+  conversion_factor numeric(14,6),
+  confidence_score numeric(5,2),
+  ai_generated boolean NOT NULL DEFAULT false,
+  updated_by_learning boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_item_packaging_profiles_business_id ON item_packaging_profiles (business_id);
+CREATE INDEX IF NOT EXISTS ix_item_packaging_profiles_catalog_item_id ON item_packaging_profiles (catalog_item_id);
+
+CREATE TABLE IF NOT EXISTS ocr_item_aliases (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id uuid NOT NULL REFERENCES businesses(id),
+  alias varchar(512) NOT NULL,
+  normalized_alias varchar(512) NOT NULL,
+  catalog_item_id uuid NOT NULL REFERENCES catalog_items(id) ON DELETE CASCADE,
+  confidence numeric(5,2),
+  source varchar(32),
+  usage_count integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT uq_ocr_alias_item_norm UNIQUE (business_id, normalized_alias, catalog_item_id)
+);
+CREATE INDEX IF NOT EXISTS ix_ocr_item_aliases_business_id ON ocr_item_aliases (business_id);
+CREATE INDEX IF NOT EXISTS ix_ocr_item_aliases_catalog_item_id ON ocr_item_aliases (catalog_item_id);
+CREATE INDEX IF NOT EXISTS ix_ocr_item_aliases_normalized_alias ON ocr_item_aliases (normalized_alias);
+
+CREATE TABLE IF NOT EXISTS smart_unit_rules (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id uuid REFERENCES businesses(id) ON DELETE CASCADE,
+  keyword_pattern varchar(255) NOT NULL,
+  category varchar(128),
+  resulting_unit varchar(32),
+  package_type varchar(32),
+  confidence numeric(5,2),
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_smart_unit_rules_business_id ON smart_unit_rules (business_id);
+CREATE INDEX IF NOT EXISTS ix_smart_unit_rules_category ON smart_unit_rules (category);
+
+CREATE TABLE IF NOT EXISTS item_learning_history (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id uuid NOT NULL REFERENCES businesses(id),
+  catalog_item_id uuid NOT NULL REFERENCES catalog_items(id) ON DELETE CASCADE,
+  detected_pattern varchar(512),
+  selected_unit varchar(32),
+  corrected_by_user boolean NOT NULL DEFAULT true,
+  learning_score numeric(8,3),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_item_learning_history_business_id ON item_learning_history (business_id);
+CREATE INDEX IF NOT EXISTS ix_item_learning_history_catalog_item_id ON item_learning_history (catalog_item_id);
+CREATE INDEX IF NOT EXISTS ix_item_learning_history_created_at ON item_learning_history (created_at);
+
+CREATE TABLE IF NOT EXISTS unit_confidence_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id uuid NOT NULL REFERENCES businesses(id),
+  catalog_item_id uuid REFERENCES catalog_items(id) ON DELETE SET NULL,
+  source varchar(64),
+  score numeric(5,2),
+  payload_json jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_unit_confidence_logs_business_id ON unit_confidence_logs (business_id);
+CREATE INDEX IF NOT EXISTS ix_unit_confidence_logs_catalog_item_id ON unit_confidence_logs (catalog_item_id);
+CREATE INDEX IF NOT EXISTS ix_unit_confidence_logs_created_at ON unit_confidence_logs (created_at);
+
+CREATE TABLE IF NOT EXISTS ai_item_profiles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id uuid NOT NULL REFERENCES businesses(id),
+  catalog_item_id uuid NOT NULL REFERENCES catalog_items(id) ON DELETE CASCADE,
+  profile_json jsonb,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT uq_ai_item_profile_item UNIQUE (business_id, catalog_item_id)
+);
+CREATE INDEX IF NOT EXISTS ix_ai_item_profiles_business_id ON ai_item_profiles (business_id);
+CREATE INDEX IF NOT EXISTS ix_ai_item_profiles_catalog_item_id ON ai_item_profiles (catalog_item_id);
+
+CREATE TABLE IF NOT EXISTS smart_package_rules (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id uuid REFERENCES businesses(id) ON DELETE CASCADE,
+  keyword_pattern varchar(255) NOT NULL,
+  package_type varchar(32) NOT NULL,
+  priority integer NOT NULL DEFAULT 0,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_smart_package_rules_business_id ON smart_package_rules (business_id);
+
+INSERT INTO master_units (unit_code, display_name, category, conversion_supported, active, created_at)
+SELECT v.code, v.dname, v.cat, true, true, now()
+FROM (VALUES
+  ('BAG', 'Bag', 'count'),
+  ('KG', 'Kilogram', 'weight'),
+  ('BOX', 'Box', 'count'),
+  ('PCS', 'Pieces', 'count'),
+  ('TIN', 'Tin', 'count'),
+  ('PACK', 'Pack', 'count'),
+  ('SACK', 'Sack', 'count'),
+  ('LTR', 'Litre', 'volume'),
+  ('ML', 'Millilitre', 'volume'),
+  ('GM', 'Gram', 'weight'),
+  ('CAN', 'Can', 'count'),
+  ('BOTTLE', 'Bottle', 'count'),
+  ('CASE', 'Case', 'count'),
+  ('ROLL', 'Roll', 'count'),
+  ('TRAY', 'Tray', 'count')
+) AS v(code, dname, cat)
+WHERE NOT EXISTS (SELECT 1 FROM master_units mu WHERE mu.unit_code = v.code);
+

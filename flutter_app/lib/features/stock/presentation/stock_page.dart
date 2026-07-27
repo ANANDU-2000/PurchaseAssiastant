@@ -1,0 +1,1159 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
+
+import '../../../core/config/app_config.dart';
+import '../../../core/auth/auth_failure_policy.dart';
+import '../../../core/auth/provider_api_guard.dart';
+import '../../../core/auth/session_notifier.dart';
+import '../../../core/providers/api_degraded_provider.dart';
+import '../../../core/providers/api_health_snapshot_provider.dart';
+import '../../../core/models/session.dart';
+import '../../../core/providers/stock_list_exceptions.dart';
+import '../../../core/services/stock_list_pdf.dart' deferred as stockPdf;
+import '../../../core/services/pdf_actions.dart' deferred as pdfActions;
+import '../../../core/json_coerce.dart';
+import '../../../core/providers/business_write_event.dart';
+import '../../../core/providers/home_dashboard_provider.dart';
+import '../../../core/providers/stock_providers.dart';
+import '../../../core/design_system/hexa_responsive.dart';
+import '../../../core/design_system/hexa_web_page_frame.dart';
+import '../../../core/router/post_auth_route.dart';
+import '../../../core/router/shell_navigation.dart';
+import '../../../features/shell/shell_branch_provider.dart';
+import '../../../core/widgets/friendly_load_error.dart';
+import '../../../core/widgets/list_skeleton.dart';
+import '../../../shared/widgets/hexa_empty_state.dart';
+import '../stock_list_merge.dart';
+import '../stock_list_row_patch.dart' as row_patch;
+import '../stock_period_utils.dart';
+import 'widgets/stock_pagination_bar.dart';
+import 'widgets/stock_operational_top_bar.dart';
+import 'widgets/stock_changes_tab.dart';
+import 'widgets/staff_delivered_detail_sheet.dart';
+import 'widgets/stock_row_actions.dart';
+import 'widgets/stock_warehouse_row.dart';
+import 'widgets/stock_warehouse_table_header.dart';
+import 'widgets/stock_inline_search_bar.dart';
+import 'widgets/stock_desktop_detail_pane.dart';
+import 'widgets/operational_stock_filter_sheet.dart'
+    show showOperationalStockFilter, stockActiveFilterSummary;
+import 'widgets/stock_warehouse_filter_sheet.dart'
+    show countWarehouseActiveFilters;
+import 'widgets/stock_delivery_filter_chips.dart';
+import 'widgets/stock_status_quick_chips.dart';
+import 'widgets/stock_row_metrics.dart';
+
+enum StockPageMode { auto, staff, owner }
+
+class StockPage extends ConsumerStatefulWidget {
+  const StockPage({
+    super.key,
+    this.mode = StockPageMode.auto,
+    this.initialTab,
+    this.initialStatus,
+  });
+
+  final StockPageMode mode;
+  /// `list` | `activity`
+  final String? initialTab;
+  /// `all` | `low` | `shortage` | `out` from route query
+  final String? initialStatus;
+
+  @override
+  ConsumerState<StockPage> createState() => _StockPageState();
+}
+
+class _StockPageState extends ConsumerState<StockPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs;
+  final _searchCtrl = TextEditingController();
+  final _subcatCtrl = TextEditingController();
+  final _scroll = ScrollController();
+  Timer? _debounce;
+  Timer? _deliveryCountsPoll;
+  bool _loadingMore = false;
+  bool _searchExpanded = false;
+  bool _emptyListAutoRetried = false;
+  bool _transientListRetryScheduled = false;
+  int _transientListRetryCount = 0;
+  static const _maxTransientListRetries = 12;
+  String _instantSearch = '';
+  Map<String, dynamic>? _mergedData;
+  double? _pendingScrollOffset;
+
+  static int _tabIndex(String? tab) {
+    switch (tab) {
+      case 'changes':
+      case 'movement':
+      case 'today':
+      case 'activity':
+        return 1;
+      default:
+        return 0;
+    }
+  }
+
+  static String? _mapRouteStatus(String? raw) {
+    final status = raw?.trim().toLowerCase();
+    if (status == null || status.isEmpty) return null;
+    return switch (status) {
+      'out' => 'out',
+      'low' || 'shortage' => 'shortage',
+      'all' => 'all',
+      _ => null,
+    };
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _tabs = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: _tabIndex(widget.initialTab),
+    );
+    _tabs.addListener(_onStockTabChanged);
+    final initialQuery = ref.read(stockListQueryProvider);
+    _searchCtrl.text = initialQuery.q.trim();
+    _searchCtrl.addListener(_onSearchChanged);
+    _searchCtrl.addListener(_onSearchUiChanged);
+    _subcatCtrl.text = initialQuery.subcategory;
+    _scroll.addListener(_onScrollLoadMore);
+
+    // Shell IndexedStack + tab resume gates can block stock/list while other XHRs succeed.
+    clearStuckAuthGates(ref);
+
+    _deliveryCountsPoll = Timer.periodic(const Duration(seconds: 90), (_) {
+      if (!mounted) return;
+      if (providerSkipApi(ref)) return;
+      ref.invalidate(stockDeliveryIndicatorCountsProvider);
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _bootstrapStockListQueryOnce();
+      ref.read(stockChangesTabActiveProvider.notifier).state = _tabs.index == 1;
+      if (!_scroll.hasClients) return;
+      final saved = ref.read(stockListScrollOffsetProvider);
+      if (saved > 0) {
+        final max = _scroll.position.maxScrollExtent;
+        _scroll.jumpTo(saved.clamp(0.0, max));
+      }
+    });
+  }
+
+  /// One query sync on mount — avoids double stockListProvider restart (init + route sync).
+  void _bootstrapStockListQueryOnce() {
+    final period = ref.read(stockPagePeriodProvider);
+    final range = homePeriodRange(period);
+    final endInclusive = range.end.subtract(const Duration(days: 1));
+    var q = ref.read(stockListQueryProvider);
+    final routeStatus = _mapRouteStatus(widget.initialStatus) ??
+        _mapRouteStatus(GoRouterState.of(context).uri.queryParameters['status']);
+    if (routeStatus != null && q.status != routeStatus) {
+      q = q.copyWith(status: routeStatus, page: 1);
+    }
+    final normalized = q.copyWith(
+      perPage: 50,
+      page: 1,
+      sort: 'recent',
+      includePeriod: true,
+      periodStart: stockApiDate(range.start),
+      periodEnd: stockApiDate(endInclusive),
+    );
+    if (normalized.toCacheKey() == ref.read(stockListQueryProvider).toCacheKey()) {
+      final cached = stockListCachedDataForCurrentQuery(ref);
+      if (cached != null && _mergedData == null && mounted) {
+        setState(() {
+          _mergedData = mergeStockListPage(
+            previous: null,
+            incoming: cached,
+            page: 1,
+          );
+        });
+      }
+      return;
+    }
+    ref.read(stockListQueryProvider.notifier).state = normalized;
+    ref.read(stockSelectedItemIdProvider.notifier).state = null;
+    clearStockListEtagCache(ref);
+    _resetMerged();
+  }
+
+  void _scheduleTransientStockListRetry() {
+    if (_transientListRetryScheduled || !mounted) return;
+    if (_transientListRetryCount >= _maxTransientListRetries) return;
+    _transientListRetryScheduled = true;
+    unawaited(
+      Future<void>.delayed(const Duration(milliseconds: 900), () async {
+        _transientListRetryScheduled = false;
+        if (!mounted) return;
+        _transientListRetryCount++;
+        final deadline = DateTime.now().add(const Duration(seconds: 10));
+        while (providerSkipApi(ref) && DateTime.now().isBefore(deadline)) {
+          await Future<void>.delayed(const Duration(milliseconds: 120));
+        }
+        if (!mounted) return;
+        clearStockListEtagCache(ref);
+        _resetMerged();
+        ref.invalidate(stockListProvider);
+      }),
+    );
+  }
+
+  Future<void> _awaitStockListFutureSafely() async {
+    try {
+      await ref.read(stockListProvider.future);
+    } on StockListFetchBlockedException catch (_) {
+      _scheduleTransientStockListRetry();
+    } on ProviderFetchAborted catch (_) {
+      // Benign auto-dispose while tab hidden.
+    }
+  }
+
+  void _maybeRetryEmptyListMismatch({
+    required int chipAll,
+    required int total,
+    required int itemCount,
+    required int filterCount,
+    required String searchQ,
+  }) {
+    if (_emptyListAutoRetried ||
+        chipAll <= 0 ||
+        total > 0 ||
+        itemCount > 0 ||
+        filterCount > 0 ||
+        searchQ.isNotEmpty) {
+      return;
+    }
+    _emptyListAutoRetried = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      clearStockListEtagCache(ref);
+      _resetMerged();
+      ref.invalidate(stockListProvider);
+      ref.invalidate(stockStatusCountsProvider);
+    });
+  }
+
+  @override
+  void deactivate() {
+    if (_scroll.hasClients) {
+      ref.read(stockListScrollOffsetProvider.notifier).state = _scroll.offset;
+    }
+    super.deactivate();
+  }
+
+  void _onStockTabChanged() {
+    if (_tabs.indexIsChanging || !mounted) return;
+    final active = _tabs.index == 1;
+    ref.read(stockChangesTabActiveProvider.notifier).state = active;
+    if (active) {
+      ref.invalidate(stockChangesFeedProvider);
+    }
+  }
+
+  @override
+  void dispose() {
+    _tabs.removeListener(_onStockTabChanged);
+    _tabs.dispose();
+    _debounce?.cancel();
+    _deliveryCountsPoll?.cancel();
+    _searchCtrl.dispose();
+    _subcatCtrl.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  bool get _isStaffMode {
+    if (widget.mode == StockPageMode.staff) return true;
+    if (widget.mode == StockPageMode.owner) return false;
+    final session = ref.read(sessionProvider);
+    return session != null && sessionIsStaff(session);
+  }
+
+  void _resetMerged() => _mergedData = null;
+
+  void _persistScrollOffset() {
+    if (_scroll.hasClients) {
+      ref.read(stockListScrollOffsetProvider.notifier).state = _scroll.offset;
+    }
+  }
+
+  void _restoreScrollOffset() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      final saved = ref.read(stockListScrollOffsetProvider);
+      if (saved > 0) {
+        final max = _scroll.position.maxScrollExtent;
+        _scroll.jumpTo(saved.clamp(0.0, max));
+      }
+    });
+  }
+
+  Future<void> _retryStockAfterAuthOrApiBlock() async {
+    ref.read(authApiGateProvider.notifier).reset();
+    ref.read(authSessionExpiredProvider.notifier).clear();
+    final session = ref.read(sessionProvider);
+    try {
+      final snap = await ref.read(apiHealthSnapshotProvider.future);
+      if (!snap.liveOk) {
+        throw StateError('health_live_failed');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final sc = e is DioException ? e.response?.statusCode : null;
+      final offline = sc == 503 ||
+          sc == 502 ||
+          sc == 504 ||
+          (e is DioException &&
+              (e.type == DioExceptionType.connectionError ||
+                  e.type == DioExceptionType.connectionTimeout));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            offline
+                ? 'Cloud API is offline (${AppConfig.apiHostLabel}). '
+                    'Wait ~1 min for the server to wake, then tap Retry.'
+                : 'Cannot reach API right now. Check network and try again.',
+          ),
+          duration: const Duration(seconds: 8),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    if (session != null) {
+      _resetMerged();
+      ref.invalidate(stockListProvider);
+      ref.invalidate(stockStatusCountsProvider);
+      return;
+    }
+    await ref.read(sessionProvider.notifier).logout();
+    if (mounted) context.go('/login');
+  }
+
+  void _clearSearch() {
+    _searchCtrl.clear();
+    ref.read(stockListQueryProvider.notifier).state =
+        ref.read(stockListQueryProvider).copyWith(q: '', page: 1);
+    _resetMerged();
+    ref.invalidate(stockListProvider);
+  }
+
+  void _onSearchUiChanged() {
+    final raw = _searchCtrl.text.trim();
+    if (raw != _instantSearch && mounted) {
+      setState(() => _instantSearch = raw);
+    } else if (_searchExpanded && mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onSearchChanged() {
+    final raw = _searchCtrl.text.trim();
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 180), () {
+      if (!mounted) return;
+      final q = ref.read(stockListQueryProvider);
+      if (q.q == raw) return;
+      _resetMerged();
+      ref.read(stockListQueryProvider.notifier).state =
+          q.copyWith(q: raw, page: 1);
+    });
+  }
+
+  void _onScrollLoadMore() {
+    if (!_scroll.hasClients || _loadingMore) return;
+    final pos = _scroll.position;
+    if (pos.maxScrollExtent <= 0) return;
+    if (pos.pixels < pos.maxScrollExtent * 0.8) return;
+    _goNextPage();
+  }
+
+  void _goNextPage() {
+    final q = ref.read(stockListQueryProvider);
+    final total = coerceToInt(_mergedData?['total']);
+    final maxPage = stockListMaxPage(total, q.perPage);
+    if (q.page >= maxPage) return;
+    setState(() => _loadingMore = true);
+    ref.read(stockListQueryProvider.notifier).state =
+        q.copyWith(page: q.page + 1);
+  }
+
+  List<Map<String, dynamic>> _prepareItems(List<Map<String, dynamic>> raw) {
+    final patches = ref.watch(stockListRowPatchProvider);
+    if (patches.isNotEmpty) {
+      raw = raw
+          .map((m) => row_patch.mergeStockListRowMap(m, patches))
+          .toList(growable: false);
+    }
+    final op = ref.read(stockOperationalFiltersProvider);
+    final q = ref.read(stockListQueryProvider);
+    final deliveryFilter = ref.read(stockDeliveryFilterProvider);
+    var items = filterStockListClient(raw, op);
+    if (deliveryFilter != StockDeliveryFilter.all) {
+      items = items
+          .where(
+            (it) => StockRowMetrics.matchesDeliveryFilter(it, deliveryFilter),
+          )
+          .toList();
+    }
+    final search = _instantSearch.isNotEmpty
+        ? _instantSearch.toLowerCase()
+        : q.q.trim().toLowerCase();
+    sortStockListOperational(
+      items,
+      searchQuery: search,
+      sort: q.sort,
+    );
+    return items;
+  }
+
+  Future<void> _openRowActions(Map<String, dynamic> item) async {
+    _persistScrollOffset();
+    await showStockRowActions(
+      context: context,
+      ref: ref,
+      item: item,
+      isStaffMode: _isStaffMode,
+      onBeforeNavigate: _persistScrollOffset,
+      onAfterNavigateReturn: _restoreScrollOffset,
+    );
+    if (!mounted) return;
+  }
+
+  Future<void> _exportStockPdf() async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final data = _mergedData ?? ref.read(stockListProvider).valueOrNull;
+    if (data == null) return;
+    final raw = [
+      for (final e in (data['items'] as List? ?? []))
+        if (e is Map) Map<String, dynamic>.from(e),
+    ];
+    final items = _prepareItems(raw);
+    if (items.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No stock rows to export.')),
+      );
+      return;
+    }
+    final listQ = ref.read(stockListQueryProvider);
+    final op = ref.read(stockOperationalFiltersProvider);
+    final summary = stockActiveFilterSummary(listQ, op);
+    try {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Preparing stock PDF…')),
+        );
+      }
+      await Future.wait([stockPdf.loadLibrary(), pdfActions.loadLibrary()]);
+      final bytes = await stockPdf.buildStockListPdf(
+        businessName: session.primaryBusiness.effectiveDisplayTitle,
+        rows: items.take(500).toList(),
+        filterSummary: summary.isEmpty ? null : summary,
+      );
+      if (!mounted) return;
+      final result = kIsWeb
+          ? await pdfActions.savePdfBytes(
+              buildBytes: () async => bytes,
+              filename: 'harisree_stock_statement.pdf',
+              subject: 'Harisree stock statement',
+              source: 'stock_list_pdf',
+            )
+          : await stockPdf.shareStockListPdf(
+              bytes: bytes,
+              filename: 'harisree_stock_statement.pdf',
+            );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.message)),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not create stock PDF. Try fewer filters.'),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _exportStockExcel() async {
+    final data = _mergedData ?? ref.read(stockListProvider).valueOrNull;
+    if (data == null) return;
+    final raw = [
+      for (final e in (data['items'] as List? ?? []))
+        if (e is Map) Map<String, dynamic>.from(e),
+    ];
+    final rows = _prepareItems(raw);
+    if (rows.isEmpty) return;
+    String esc(String s) => '"${s.replaceAll('"', '""')}"';
+    final b = StringBuffer();
+    b.writeln('Item,Category,Subcategory,Unit,Current Stock,Opening Stock,Purchased,Reorder Level,Last Updated');
+    for (final r in rows) {
+      b.writeln([
+        esc(r['name']?.toString() ?? ''),
+        esc(r['category_name']?.toString() ?? ''),
+        esc(r['subcategory_name']?.toString() ?? ''),
+        esc((r['stock_unit'] ?? r['unit'])?.toString() ?? ''),
+        coerceToDouble(r['current_stock']).toString(),
+        coerceToDouble(r['opening_stock_qty']).toString(),
+        coerceToDouble(r['period_purchased_qty']).toString(),
+        coerceToDouble(r['reorder_level']).toString(),
+        esc(r['last_stock_updated_at']?.toString() ?? ''),
+      ].join(','));
+    }
+    final bytes = utf8.encode(b.toString());
+    await Share.shareXFiles(
+      [
+        XFile.fromData(
+          bytes,
+          mimeType: 'text/csv',
+          name: 'harisree_stock_export.csv',
+        ),
+      ],
+      text: 'Stock export',
+    );
+    if (!mounted) return;
+  }
+
+  Future<void> _openFilters() async {
+    await showOperationalStockFilter(
+      context: context,
+      ref: ref,
+      subcategoryCtrl: _subcatCtrl,
+      isStaffMode: _isStaffMode,
+    );
+    if (!mounted) return;
+    // Filter sheet updates query/op providers — list refetches without clearing UI.
+  }
+
+  void _openMovementTab() {
+    if (_tabs.index != 1) {
+      _tabs.animateTo(1);
+    }
+  }
+
+  void _showPeriodPicker() {
+    final current = ref.read(stockPagePeriodProvider);
+    showHexaBottomSheet<void>(
+      context: context,
+      compact: true,
+      child: _StockPeriodSheet(
+        current: current,
+        onPick: (p) {
+          Navigator.pop(context);
+          applyStockPagePeriod(ref, p);
+          _resetMerged();
+        },
+      ),
+    );
+  }
+
+  Map<String, dynamic>? _selectedItem(List<Map<String, dynamic>> items) {
+    final id = ref.read(stockSelectedItemIdProvider);
+    if (id == null || id.isEmpty) {
+      return items.isNotEmpty ? items.first : null;
+    }
+    for (final row in items) {
+      if (row['id']?.toString() == id) return row;
+    }
+    return items.isNotEmpty ? items.first : null;
+  }
+
+  Widget _buildListBody({
+    required Map<String, dynamic> data,
+    required bool isReloading,
+    required StockDeliveryFilter deliveryFilter,
+    required Map<String, int> chipCounts,
+  }) {
+    final raw = [
+      for (final e in (data['items'] as List? ?? []))
+        if (e is Map) Map<String, dynamic>.from(e),
+    ];
+    final items = _prepareItems(raw);
+    final deliveryCounts =
+        ref.watch(stockDeliveryIndicatorCountsProvider).valueOrNull ??
+            StockRowMetrics.countDeliveryIndicators(raw);
+    final listQ = ref.watch(stockListQueryProvider);
+    final chipAll = chipCounts['all'] ?? 0;
+    final total = coerceToInt(data['total']);
+    final maxPage = stockListMaxPage(total, listQ.perPage);
+    final bottomPad = 24.0;
+    final op = ref.watch(stockOperationalFiltersProvider);
+    final filterCount = countWarehouseActiveFilters(listQ, op);
+
+    _maybeRetryEmptyListMismatch(
+      chipAll: chipAll,
+      total: total,
+      itemCount: items.length,
+      filterCount: filterCount,
+      searchQ: listQ.q,
+    );
+
+    final desktop =
+        MediaQuery.sizeOf(context).width >= kDesktopMin;
+    final selected = desktop ? _selectedItem(items) : null;
+    if (desktop && items.isNotEmpty) {
+      final sid = selected?['id']?.toString();
+      if (sid != null &&
+          ref.read(stockSelectedItemIdProvider) != sid) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ref.read(stockSelectedItemIdProvider.notifier).state = sid;
+          }
+        });
+      }
+    }
+
+    final listSlivers = <Widget>[
+      SliverToBoxAdapter(
+        child: StockStatusQuickChips(
+          selectedStatus: listQ.status,
+          onSelected: (status) {
+            ref.read(stockListQueryProvider.notifier).state =
+                listQ.copyWith(status: status, page: 1);
+            _resetMerged();
+            ref.invalidate(stockListProvider);
+          },
+        ),
+      ),
+      if (_searchExpanded)
+        SliverToBoxAdapter(
+          child: StockInlineSearchBar(
+            controller: _searchCtrl,
+            onClear: _clearSearch,
+          ),
+        ),
+      if (deliveryCounts.pending > 0 || deliveryCounts.delivered > 0)
+        SliverToBoxAdapter(
+          child: StockDeliveryFilterChips(
+            selected: deliveryFilter,
+            pendingCount: deliveryCounts.pending,
+            deliveredCount: deliveryCounts.delivered,
+            onSelected: (f) =>
+                ref.read(stockDeliveryFilterProvider.notifier).state = f,
+          ),
+        ),
+      if (items.isNotEmpty) ...[
+        SliverToBoxAdapter(
+          child: const StockWarehouseTableHeader(),
+        ),
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (ctx, i) {
+              final row = items[i];
+              final id = row['id']?.toString() ?? '';
+              final isSelected =
+                  desktop && id.isNotEmpty && id == selected?['id']?.toString();
+              return RepaintBoundary(
+                child: StockWarehouseRow(
+                  item: row,
+                  ref: ref,
+                  isStaffMode: _isStaffMode,
+                  isFirstRow: i == 0,
+                  isSelected: isSelected,
+                  onTap: () => unawaited(_openRowActions(row)),
+                  onDeliveredDetail: _isStaffMode &&
+                          StockRowMetrics.deliveryIndicator(row) ==
+                              StockDeliveryIndicator.delivered
+                      ? () => unawaited(
+                            showStaffDeliveredDetailSheet(
+                              context: context,
+                              ref: ref,
+                              item: row,
+                            ),
+                          )
+                      : null,
+                  onSelect: desktop && id.isNotEmpty
+                      ? () => ref
+                          .read(stockSelectedItemIdProvider.notifier)
+                          .state = id
+                      : null,
+                ),
+              );
+            },
+            childCount: items.length,
+          ),
+        ),
+        if (items.length < total || _loadingMore)
+          SliverToBoxAdapter(
+            child: StockPaginationBar(
+              showingCount: items.length,
+              totalCount: total,
+              currentPage: listQ.page,
+              maxPage: maxPage,
+              loading: _loadingMore,
+              scrollOnly: true,
+              onPrev: null,
+              onNext: null,
+            ),
+          ),
+      ],
+      if (items.isEmpty)
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: HexaEmptyState(
+            icon: Icons.inventory_2_outlined,
+            title: chipAll > 0 &&
+                    items.isEmpty &&
+                    total == 0 &&
+                    filterCount == 0 &&
+                    listQ.q.isEmpty &&
+                    deliveryFilter == StockDeliveryFilter.all
+                ? 'Stock list did not load'
+                : filterCount > 0 ||
+                        listQ.q.isNotEmpty ||
+                        deliveryFilter != StockDeliveryFilter.all
+                    ? 'No items match filters'
+                    : 'No stock items yet',
+            subtitle: chipAll > 0 &&
+                    items.isEmpty &&
+                    total == 0 &&
+                    filterCount == 0 &&
+                    listQ.q.isEmpty
+                ? 'Counts show $chipAll items but the list request failed. Tap Refresh or sign in again.'
+                : filterCount > 0 ||
+                        listQ.q.isNotEmpty ||
+                        deliveryFilter != StockDeliveryFilter.all
+                    ? 'Open Filters and tap Clear advanced, or change the status chips above.'
+                    : 'Add catalog items to start tracking warehouse stock.',
+            primaryActionLabel: chipAll > 0 &&
+                    items.isEmpty &&
+                    total == 0 &&
+                    filterCount == 0
+                ? 'Retry load'
+                : filterCount > 0
+                    ? 'Clear filters'
+                    : 'Refresh',
+            onPrimaryAction: chipAll > 0 &&
+                    items.isEmpty &&
+                    total == 0 &&
+                    filterCount == 0
+                ? () {
+                    ref.read(authApiGateProvider.notifier).reset();
+                    clearStockListEtagCache(ref);
+                    _resetMerged();
+                    ref.invalidate(stockListProvider);
+                    ref.invalidate(stockStatusCountsProvider);
+                  }
+                : filterCount > 0
+                ? () {
+                    ref.read(stockListQueryProvider.notifier).state =
+                        listQ.copyWith(
+                      status: 'all',
+                      subcategory: '',
+                      supplier: '',
+                      q: '',
+                      page: 1,
+                    );
+                    ref.read(stockOperationalFiltersProvider.notifier).state =
+                        const StockOperationalFilters();
+                    ref.read(stockDeliveryFilterProvider.notifier).state =
+                        StockDeliveryFilter.all;
+                    _searchCtrl.clear();
+                    _resetMerged();
+                    ref.invalidate(stockListProvider);
+                  }
+                : () => ref.invalidate(stockListProvider),
+          ),
+        ),
+      SliverToBoxAdapter(child: SizedBox(height: bottomPad)),
+    ];
+
+    final scroll = RefreshIndicator(
+      onRefresh: () async {
+        _resetMerged();
+        clearStockListEtagCache(ref);
+        ref.invalidate(stockListProvider);
+        await _awaitStockListFutureSafely();
+      },
+      child: CustomScrollView(
+        key: const PageStorageKey<String>('stock_operational_list'),
+        controller: _scroll,
+        slivers: listSlivers,
+      ),
+    );
+
+    if (!desktop) return scroll;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(flex: 5, child: scroll),
+        const VerticalDivider(width: 1, thickness: 1),
+        Expanded(
+          flex: 4,
+          child: StockDesktopDetailPane(item: selected),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Register patch dependency on every build path (not only inside _prepareItems).
+    ref.watch(stockListRowPatchProvider);
+
+    ref.listen(businessWriteEventProvider, (prev, next) {
+      if (prev == null || prev.revision == next.revision) return;
+      ref.invalidate(stockChangesFeedProvider);
+      if (next.affectedItemIds.isEmpty) {
+        ref.invalidate(stockListProvider);
+      }
+    });
+    // Warehouse realtime fan-out lives in [ShellRealtimeListener] — avoid double invalidation here.
+
+    ref.listen(stockListQueryProvider, (prev, next) {
+      if (prev == null) return;
+      if (prev.page == 1 &&
+          next.page == 1 &&
+          (prev.q != next.q ||
+              prev.subcategory != next.subcategory ||
+              prev.status != next.status ||
+              prev.periodStart != next.periodStart ||
+              prev.periodEnd != next.periodEnd)) {
+        _resetMerged();
+      }
+    });
+
+    ref.listen(stockOperationalFiltersProvider, (prev, next) {
+      if (prev == null || prev == next) return;
+      _resetMerged();
+    });
+
+    ref.listen<Session?>(sessionProvider, (prev, next) {
+      if (prev == null && next != null) {
+        _resetMerged();
+        ref.invalidate(stockListProvider);
+        ref.invalidate(stockStatusCountsProvider);
+      }
+    });
+
+    ref.listen<bool>(auth401CircuitOpenProvider, (prev, next) {
+      if (next && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          context.go('/login');
+        });
+      }
+    });
+
+    ref.listen(stockListProvider, (prev, next) {
+      if (next.isLoading &&
+          prev?.hasValue == true &&
+          ref.read(stockListQueryProvider).page == 1 &&
+          _scroll.hasClients) {
+        _pendingScrollOffset = _scroll.offset;
+      }
+      if (next is! AsyncData<Map<String, dynamic>>) return;
+      final q = ref.read(stockListQueryProvider);
+      final restoreOffset = _pendingScrollOffset;
+      final incoming = next.value;
+      if (q.page == 1 && _mergedData == null) {
+        final merged = mergeStockListPage(
+          previous: null,
+          incoming: incoming,
+          page: 1,
+        );
+        if (mounted) {
+          setState(() {
+            _loadingMore = false;
+            _mergedData = merged;
+          });
+        }
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        try {
+          final rows = [
+            for (final e in (incoming['items'] as List? ?? []))
+              if (e is Map) Map<String, dynamic>.from(e),
+          ];
+          reconcileStockListRowPatches(ref, rows);
+          final merged = mergeStockListPage(
+            previous: q.page > 1 ? _mergedData : null,
+            incoming: incoming,
+            page: q.page,
+          );
+          if (_mergedData == merged) {
+            if (_loadingMore) setState(() => _loadingMore = false);
+          } else {
+            setState(() {
+              _loadingMore = false;
+              _mergedData = merged;
+            });
+          }
+        } catch (_) {
+          if (!mounted) return;
+          setState(() => _loadingMore = false);
+        }
+        if (restoreOffset != null && _scroll.hasClients) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || !_scroll.hasClients) return;
+            final max = _scroll.position.maxScrollExtent;
+            _scroll.jumpTo(restoreOffset.clamp(0.0, max));
+            _pendingScrollOffset = null;
+          });
+        }
+      });
+    });
+
+    final listAsync = ref.watch(stockListProvider);
+    final listQ = ref.watch(stockListQueryProvider);
+    if (listQ.page == 1) {
+      ref.watch(stockShellBundleProvider);
+    }
+    // Rebuild when RAM/live snapshot updates even if FutureProvider misses completion.
+    ref.watch(stockListCachedBodyProvider);
+    ref.watch(stockListLiveSnapshotProvider);
+    final op = ref.watch(stockOperationalFiltersProvider);
+    final filterCount = countWarehouseActiveFilters(listQ, op);
+    final ramCache = stockListCachedDataForCurrentQuery(ref);
+    final pageOneRaw = listQ.page <= 1
+        ? (listAsync.valueOrNull ?? ramCache)
+        : null;
+    final data = listQ.page <= 1
+        ? (pageOneRaw ?? _mergedData)
+        : (_mergedData ?? listAsync.valueOrNull ?? ramCache);
+    final isReloading = listAsync.isLoading && data != null;
+    final showInitialSkeleton = data == null && !listAsync.hasValue;
+    final showDebounceProgress = _debounce?.isActive ?? false;
+
+    // First paint: don't wait for _mergedData post-frame when page-1 data is ready.
+    if (data != null &&
+        _mergedData == null &&
+        listAsync.hasValue &&
+        ref.read(stockListQueryProvider).page == 1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _mergedData != null) return;
+        final snap = ref.read(stockListProvider).valueOrNull;
+        if (snap == null) return;
+        setState(() {
+          _mergedData = mergeStockListPage(
+            previous: null,
+            incoming: snap,
+            page: 1,
+          );
+        });
+      });
+    }
+
+    final authExpired = ref.watch(authSessionExpiredProvider);
+    final authCircuit = ref.watch(auth401CircuitOpenProvider);
+    final sessionForAuth = ref.watch(sessionProvider);
+    final apiDegraded = ref.watch(apiDegradedProvider);
+    final authBlocked = authExpired ||
+        authCircuit ||
+        (sessionForAuth == null && !listAsync.isLoading);
+    final apiLikelyDown = apiDegraded != null &&
+        !apiDegraded.toLowerCase().contains('session');
+
+    Widget body;
+    if (authBlocked) {
+      final stillSignedIn = sessionForAuth != null;
+      body = FriendlyLoadError(
+        message: apiLikelyDown && stillSignedIn
+            ? 'Cloud API unavailable'
+            : 'Sign in to load stock',
+        subtitle: apiLikelyDown && stillSignedIn
+            ? apiDegraded
+            : stillSignedIn
+                ? 'Requests were blocked after auth errors. Tap Retry — '
+                    'sign in again only if Retry does not load stock.'
+                : 'Warehouse list needs a valid session. Sign in and try again.',
+        onRetry: () => unawaited(_retryStockAfterAuthOrApiBlock()),
+      );
+    } else if (showInitialSkeleton &&
+        (listAsync.isLoading || listAsync.isRefreshing)) {
+      body = const ListSkeleton(rowCount: 12);
+    } else if (listAsync.hasError && data == null) {
+      final err = listAsync.error;
+      final transient = err is ProviderFetchAborted ||
+          isStockListTransientBlock(err);
+      if (transient && _transientListRetryCount < _maxTransientListRetries) {
+        _scheduleTransientStockListRetry();
+        body = const ListSkeleton(rowCount: 12);
+      } else if (transient) {
+        body = FriendlyLoadError(
+          message: 'Stock list is still loading',
+          subtitle:
+              'Session refresh took too long. Tap Retry or sign in again if this persists.',
+          onRetry: () {
+            _transientListRetryCount = 0;
+            ref.read(authApiGateProvider.notifier).reset();
+            clearStuckAuthGates(ref);
+            clearStockListEtagCache(ref);
+            _resetMerged();
+            ref.invalidate(stockListProvider);
+            ref.invalidate(stockStatusCountsProvider);
+          },
+        );
+      } else {
+      final blocked = err is StockListFetchBlockedException
+          ? err.reason
+          : null;
+      final isAuth = isStockListAuthFailure(err) ||
+          (err is DioException && err.response?.statusCode == 401);
+      body = FriendlyLoadError(
+        message: isAuth ? 'Sign in to load stock' : 'Unable to load stock',
+        subtitle: isAuth
+            ? 'Warehouse list needs a valid session. Sign in and try again.'
+            : blocked == 'tab_not_visible'
+                ? 'Stock list paused while another tab is open. Switch back to Stock and tap Retry.'
+                : isStockListTransientBlock(err)
+                    ? 'Session is refreshing. Wait a moment, then tap Retry.'
+                    : blocked == 'etag_stale'
+                        ? 'Cached stock list was stale. Tap Retry to reload.'
+                        : null,
+        onRetry: () {
+          if (isAuth) {
+            ref.read(authApiGateProvider.notifier).reset();
+          }
+          clearStockListEtagCache(ref);
+          _resetMerged();
+          ref.invalidate(stockListProvider);
+          ref.invalidate(stockStatusCountsProvider);
+        },
+      );
+      }
+    } else if (data != null) {
+      final deliveryFilter = ref.watch(stockDeliveryFilterProvider);
+      final chipCounts = ref.watch(stockStatusCountsProvider).valueOrNull ?? const {};
+      body = _buildListBody(
+        data: data,
+        isReloading: isReloading,
+        deliveryFilter: deliveryFilter,
+        chipCounts: chipCounts,
+      );
+    } else if (listAsync.hasError) {
+      body = FriendlyLoadError(
+        message: 'Unable to load stock',
+        onRetry: () {
+          clearStockListEtagCache(ref);
+          _resetMerged();
+          ref.invalidate(stockListProvider);
+          ref.invalidate(stockStatusCountsProvider);
+        },
+      );
+    } else {
+      if (_transientListRetryCount < _maxTransientListRetries) {
+        _scheduleTransientStockListRetry();
+      }
+      body = const ListSkeleton(rowCount: 12);
+    }
+
+    final listTab = Column(
+      children: [
+        if (showDebounceProgress)
+          const LinearProgressIndicator(minHeight: 2),
+        Expanded(child: body),
+      ],
+    );
+
+    final session = ref.watch(sessionProvider);
+    final homePath =
+        session != null ? authenticatedHomePath(session) : '/home';
+    final returnBranch = ref.watch(shellReturnBranchProvider);
+
+    final scaffold = Scaffold(
+      backgroundColor: const Color(0xFFF5F3EE),
+      appBar: StockOperationalTopBar(
+        isStaffMode: _isStaffMode,
+        filterCount: filterCount,
+        searchExpanded: _searchExpanded,
+        isReloading: isReloading,
+        currentPeriod: ref.watch(stockPagePeriodProvider),
+        onToggleSearch: () =>
+            setState(() => _searchExpanded = !_searchExpanded),
+        onOpenPeriod: _showPeriodPicker,
+        onOpenFilters: _openFilters,
+        onOpenMovement: _openMovementTab,
+        onExportPdf: _isStaffMode ? null : _exportStockPdf,
+        onExportExcel: _isStaffMode ? null : _exportStockExcel,
+        tabController: _tabs,
+      ),
+      body: HexaWebPageFrame(
+        child: TabBarView(
+          controller: _tabs,
+          children: [
+            listTab,
+            StockChangesTab(isStaffMode: _isStaffMode),
+          ],
+        ),
+      ),
+    );
+
+    if (_isStaffMode || returnBranch == null) return scaffold;
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        popShellTabOrGoHome(context, ref, homePath: homePath);
+      },
+      child: scaffold,
+    );
+  }
+}
+
+class _StockPeriodSheet extends StatelessWidget {
+  const _StockPeriodSheet({required this.current, required this.onPick});
+
+  final HomePeriod current;
+  final void Function(HomePeriod) onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final options = [
+      (HomePeriod.today, Icons.today_rounded, 'Today', 'Bought today'),
+      (HomePeriod.week, Icons.view_week_rounded, 'This Week', 'Last 7 days'),
+      (HomePeriod.month, Icons.calendar_month_rounded, 'This Month', 'Last 30 days'),
+      (HomePeriod.year, Icons.calendar_view_month_rounded, 'This Year', 'From Jan 1'),
+      (HomePeriod.allTime, Icons.all_inclusive_rounded, 'All Time', 'Full history'),
+    ];
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Text(
+              'Filter by period',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+          ),
+          const Divider(height: 1),
+          ...options.map(
+            (o) => ListTile(
+              leading: Icon(o.$2),
+              title: Text(
+                o.$3,
+                style: TextStyle(
+                  fontWeight: current == o.$1 ? FontWeight.w800 : FontWeight.w500,
+                ),
+              ),
+              subtitle: Text(o.$4),
+              trailing: current == o.$1 ? const Icon(Icons.check_rounded) : null,
+              onTap: () => onPick(o.$1),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}

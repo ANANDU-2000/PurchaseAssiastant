@@ -1,0 +1,241 @@
+import uuid
+from pathlib import Path
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import Settings, get_settings
+from app.database import get_db
+from app.deps import (
+    get_current_user,
+    require_membership,
+    require_owner_membership,
+    require_permission,
+)
+from app.models import Business, Membership, User
+from app.models.contacts import Broker, Supplier
+from app.services.default_workspace import bootstrap_user_workspace
+from app.services.permissions import membership_permissions
+
+_MAX_LOGO_BYTES = 2 * 1024 * 1024
+_LOGO_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+
+router = APIRouter(prefix="/v1/me", tags=["me"])
+
+
+def _business_brief(b: Business, role: str, permissions: dict[str, bool]) -> "BusinessBrief":
+    return BusinessBrief(
+        id=b.id,
+        name=b.name,
+        role=role,
+        permissions=permissions,
+        branding_title=b.branding_title,
+        branding_logo_url=b.branding_logo_url,
+        gst_number=b.gst_number,
+        address=b.address,
+        phone=b.phone,
+        contact_email=b.contact_email,
+    )
+
+
+class UserProfileOut(BaseModel):
+    id: uuid.UUID
+    email: str
+    username: str
+    name: str | None = None
+    is_super_admin: bool = False
+
+    model_config = {"from_attributes": False}
+
+
+class UserProfilePatch(BaseModel):
+    name: str | None = Field(None, max_length=255)
+
+
+@router.get("/profile", response_model=UserProfileOut)
+async def get_my_profile(user: Annotated[User, Depends(get_current_user)]):
+    return UserProfileOut(
+        id=user.id,
+        email=user.email,
+        username=user.username,
+        name=user.name,
+        is_super_admin=bool(user.is_super_admin),
+    )
+
+
+@router.patch("/profile", response_model=UserProfileOut)
+async def patch_my_profile(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    body: UserProfilePatch,
+):
+    if body.name is not None:
+        t = body.name.strip()
+        user.name = t if t else None
+    await db.commit()
+    await db.refresh(user)
+    return UserProfileOut(
+        id=user.id,
+        email=user.email,
+        username=user.username,
+        name=user.name,
+        is_super_admin=bool(user.is_super_admin),
+    )
+
+
+class BusinessBrief(BaseModel):
+    id: uuid.UUID
+    name: str
+    role: str
+    permissions: dict[str, bool] = Field(default_factory=dict)
+    branding_title: str | None = None
+    branding_logo_url: str | None = None
+    gst_number: str | None = None
+    address: str | None = None
+    phone: str | None = None
+    contact_email: str | None = None
+
+    model_config = {"from_attributes": False}
+
+
+class BootstrapWorkspaceOut(BaseModel):
+    business_id: uuid.UUID
+    created_business: bool
+    seeded: bool
+    seed_stats: dict[str, int] | None = None
+
+
+@router.post("/bootstrap-workspace", response_model=BootstrapWorkspaceOut)
+async def post_bootstrap_workspace(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    """Idempotent: ensure a workspace + default catalog/suppliers for this user (single-tenant mode)."""
+    data = await bootstrap_user_workspace(db, user, settings)
+    return BootstrapWorkspaceOut(**data)
+
+
+@router.get("/businesses", response_model=list[BusinessBrief])
+async def my_businesses(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    q = await db.execute(
+        select(Membership, Business)
+        .join(Business, Business.id == Membership.business_id)
+        .where(Membership.user_id == user.id)
+    )
+    rows = q.all()
+    out: list[BusinessBrief] = []
+    for m, b in rows:
+        perms = await membership_permissions(m)
+        out.append(_business_brief(b, m.role, perms))
+    return out
+
+
+class BusinessBrandingPatch(BaseModel):
+    name: str | None = Field(None, max_length=255)
+    branding_title: str | None = Field(None, max_length=128)
+    branding_logo_url: str | None = Field(None, max_length=512)
+    gst_number: str | None = Field(None, max_length=20)
+    address: str | None = None
+    phone: str | None = Field(None, max_length=32)
+    contact_email: str | None = Field(None, max_length=255)
+
+
+@router.patch("/businesses/{business_id}/branding", response_model=BusinessBrief)
+async def patch_my_business_branding(
+    business_id: uuid.UUID,
+    _owner: Annotated[Membership, Depends(require_owner_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    body: BusinessBrandingPatch,
+):
+    """Owner: set optional display name + logo URL for this workspace (data stays isolated by business_id)."""
+    if _owner.business_id != business_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Not owner of this business")
+    r = await db.execute(select(Business).where(Business.id == business_id))
+    b = r.scalar_one_or_none()
+    if not b:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Business not found")
+    data = body.model_dump(exclude_unset=True)
+    if "name" in data:
+        n = data["name"]
+        if n is None or (isinstance(n, str) and not n.strip()):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="Business name cannot be empty",
+            )
+        if isinstance(n, str):
+            b.name = n.strip()
+    if "branding_title" in data:
+        t = data["branding_title"]
+        b.branding_title = (t.strip() or None) if isinstance(t, str) else t
+    if "branding_logo_url" in data:
+        u = data["branding_logo_url"]
+        b.branding_logo_url = (u.strip() or None) if isinstance(u, str) else u
+    if "gst_number" in data:
+        g = data["gst_number"]
+        if g is None or (isinstance(g, str) and not g.strip()):
+            b.gst_number = None
+        elif isinstance(g, str):
+            b.gst_number = g.strip().upper()
+    if "address" in data:
+        a = data["address"]
+        b.address = (a.strip() or None) if isinstance(a, str) else a
+    if "phone" in data:
+        p = data["phone"]
+        b.phone = (p.strip() or None) if isinstance(p, str) else p
+    if "contact_email" in data:
+        e = data["contact_email"]
+        if e is None or (isinstance(e, str) and not e.strip()):
+            b.contact_email = None
+        elif isinstance(e, str):
+            b.contact_email = e.strip().lower()
+    await db.commit()
+    await db.refresh(b)
+    perms = await membership_permissions(_owner)
+    return _business_brief(b, _owner.role, perms)
+
+
+def _branding_storage_dir() -> Path:
+    return Path(__file__).resolve().parents[2] / "static" / "branding"
+
+
+@router.post("/businesses/{business_id}/branding/logo", response_model=BusinessBrief)
+async def upload_business_logo(
+    business_id: uuid.UUID,
+    _owner: Annotated[Membership, Depends(require_owner_membership)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    file: UploadFile = File(...),
+):
+    """Owner: upload a logo (JPEG/PNG/WebP, max 2MB). Stored under /static/branding/."""
+    if _owner.business_id != business_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Not owner of this business")
+    ct = (file.content_type or "").split(";")[0].strip().lower()
+    if ct not in _LOGO_TYPES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Use JPEG, PNG, or WebP")
+    raw = await file.read()
+    if len(raw) > _MAX_LOGO_BYTES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Logo must be 2MB or smaller")
+    dest_dir = _branding_storage_dir()
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    ext = _LOGO_TYPES[ct]
+    fname = f"{business_id}{ext}"
+    dest = dest_dir / fname
+    dest.write_bytes(raw)
+    base = settings.app_url.rstrip("/")
+    public_url = f"{base}/static/branding/{fname}"
+    r = await db.execute(select(Business).where(Business.id == business_id))
+    b = r.scalar_one_or_none()
+    if not b:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Business not found")
+    b.branding_logo_url = public_url
+    await db.commit()
+    await db.refresh(b)
+    perms = await membership_permissions(_owner)
+    return _business_brief(b, _owner.role, perms)

@@ -1,0 +1,144 @@
+{
+  "version": "11.0",
+  "master_units": [
+    "BAG", "KG", "BOX", "PCS", "TIN", "PACK", "SACK", "LTR", "ML", "GM",
+    "CAN", "BOTTLE", "CASE", "ROLL", "TRAY"
+  ],
+  "package_aliases": {
+    "BAG": ["SACK", "BAG", "SCK"],
+    "PCS": ["PIECE", "PIECES", "PCS", "PKT", "PACKET"],
+    "BOX": ["BOX", "CARTON", "CASE"],
+    "TIN": ["TIN", "CAN"],
+    "BOTTLE": ["BOT", "BOTTLE"]
+  },
+  "spice_tokens": ["JEERAKAM", "ELAKKA", "KURUMULAK", "CUMIN", "CARDAMOM", "PEPPER"],
+  "category_rules": {
+    "RICE": {
+      "default_unit": "BAG",
+      "patterns": ["25KG", "30KG", "50KG"],
+      "package_type": "SACK"
+    },
+    "SUGAR": {
+      "default_unit": "BAG",
+      "patterns": ["25KG", "50KG"],
+      "package_type": "SACK"
+    },
+    "FLOUR": {
+      "default_unit": "BAG",
+      "patterns": ["25KG", "50KG"],
+      "package_type": "SACK"
+    },
+    "SPICES": {
+      "default_unit": "KG",
+      "loose_default": true
+    },
+    "BRANDED_GROCERY": {
+      "default_unit": "BOX",
+      "patterns": ["GM", "ML", "LTR", "PACK", "PKT"]
+    },
+    "OIL": {
+      "default_unit": "TIN",
+      "patterns": ["15LTR", "10LTR", "5LTR"]
+    }
+  },
+  "smart_detection_rules": [
+    {
+      "condition": {
+        "contains_any": ["5KG", "10KG", "5 KG", "10 KG", "1KG", "2KG", "1 KG", "2 KG"],
+        "excludes_any": ["BAG", "SACK", "25KG", "30KG", "50KG"]
+      },
+      "result": {
+        "selling_unit": "PCS",
+        "package_type": "RETAIL_PACKET",
+        "stock_unit": "PIECE"
+      }
+    },
+    {
+      "condition": {
+        "contains_any": ["50KG", "30KG", "25KG", "30 KG", "25 KG", "50 KG"],
+        "category_any": ["RICE", "SUGAR", "FLOUR", "GRAIN", "MAIDA ATTA SOOJI", "PULSES"]
+      },
+      "result": {
+        "selling_unit": "BAG",
+        "package_type": "SACK",
+        "stock_unit": "KG"
+      }
+    },
+    {
+      "condition": {
+        "contains_any": ["25KG", "30KG", "40KG", "45KG", "50KG", "55KG", "25 KG", "30 KG", "50 KG"],
+        "name_regex": "(SUGAR|RICE|FLOUR|MAIDA|SOOJI|DAL|GRAM|PULSE)",
+        "excludes_any": ["5 KG", "5KG", "10 KG", "10KG"]
+      },
+      "result": {
+        "selling_unit": "BAG",
+        "package_type": "SACK",
+        "stock_unit": "BAG"
+      }
+    },
+    {
+      "condition": {
+        "contains_any": ["15LTR", "10LTR", "5LTR", "15 LTR"],
+        "category_any": ["OIL", "OILS", "EDIBLE OIL"]
+      },
+      "result": {
+        "selling_unit": "TIN",
+        "package_type": "TIN"
+      }
+    },
+    {
+      "condition": { "contains_any": ["DALDA", "15LTR", "15 LTR"] },
+      "result": {
+        "selling_unit": "TIN",
+        "package_type": "TIN"
+      }
+    },
+    {
+      "condition": {
+        "contains_any": ["850GM", "500GM", "425GM", "200GM", "100GM", "1LTR", "500ML", "200ML", "5LTR"]
+      },
+      "result": {
+        "selling_unit": "BOX",
+        "package_type": "BOX"
+      }
+    },
+    {
+      "condition": {
+        "name_regex": "(JEERAKAM|ELAKKA|KURUMULAK|JEERA|CUMIN).*(30|25|50)\\s*KG"
+      },
+      "result": {
+        "selling_unit": "BAG",
+        "package_type": "SACK",
+        "stock_unit": "KG"
+      }
+    },
+    {
+      "condition": {
+        "contains_any": ["JEERAKAM", "ELAKKA", "KURUMULAK", "CUMIN", "JEERA"],
+        "excludes_any": ["50KG", "30KG", "25KG", "30 KG", "25 KG", "50 KG", " BAG", "BAG "]
+      },
+      "result": {
+        "selling_unit": "KG",
+        "package_type": "LOOSE",
+        "stock_unit": "KG"
+      }
+    },
+    {
+      "condition": { "contains_any": ["TIN", "CAN"], "excludes_any": ["LTR", "ML", "GM"] },
+      "result": { "selling_unit": "TIN", "package_type": "TIN" }
+    },
+    {
+      "condition": { "contains_any": ["PCS", "PIECE"] },
+      "result": { "selling_unit": "PCS" }
+    },
+    {
+      "condition": { "contains_any": ["LOOSE"] },
+      "result": {
+        "selling_unit": "KG",
+        "package_type": "LOOSE",
+        "stock_unit": "KG",
+        "conversion_factor": 1
+      }
+    }
+  ]
+}

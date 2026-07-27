@@ -1,0 +1,5 @@
+{
+  "name": "purchase-assistant-monorepo",
+  "private": true,
+  "description": "Vercel uses vercel.json + scripts/vercel-flutter-build.sh; this file satisfies the platform installer."
+}

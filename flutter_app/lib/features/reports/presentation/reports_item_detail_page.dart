@@ -1,0 +1,188 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+
+import '../../../core/providers/reports_provider.dart';
+import '../../../core/reporting/trade_report_aggregate.dart';
+import '../../../core/router/navigation_ext.dart';
+import '../../../core/theme/hexa_colors.dart';
+import '../reporting/reports_item_metrics.dart';
+
+String _inr0(num n) =>
+    NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(n);
+
+String _kg(num n) {
+  if (n < 1e-9) return '0';
+  if ((n - n.roundToDouble()).abs() < 1e-6) return '${n.round()}';
+  return n.toStringAsFixed(1);
+}
+
+/// Drill-down: totals + vertical transaction list for one report item key.
+class ReportsItemDetailPage extends ConsumerWidget {
+  const ReportsItemDetailPage({
+    super.key,
+    required this.itemKey,
+    required this.itemName,
+  });
+
+  final String itemKey;
+  final String itemName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final merged = ref.watch(reportsPurchasesMergedProvider);
+    final txns = reportItemTransactions(merged, itemKey);
+    final aggAll = buildTradeReportAgg(merged);
+    TradeReportItemRow? sumRow;
+    for (final r in aggAll.itemsAll) {
+      if (r.key == itemKey) {
+        sumRow = r;
+        break;
+      }
+    }
+    final qtyLine = sumRow == null ? '' : reportQtySummaryBoldLine(sumRow);
+    final sumAmt = sumRow?.amountInr ?? 0.0;
+
+    final df = DateFormat('d MMM');
+
+    return Scaffold(
+      backgroundColor: HexaColors.brandBackground,
+      appBar: AppBar(
+        title: Text(itemName, maxLines: 1, overflow: TextOverflow.ellipsis),
+        backgroundColor: HexaColors.brandBackground,
+        foregroundColor: HexaColors.brandPrimary,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+        children: [
+          Text(
+            'Total',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          const SizedBox(height: 6),
+          if (qtyLine.isNotEmpty)
+            Text(
+              qtyLine,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+          const SizedBox(height: 4),
+          Text(
+            _inr0(sumAmt.round()),
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+          ),
+          const SizedBox(height: 10),
+          Card(
+            margin: EdgeInsets.zero,
+            color: Colors.white,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'TOTAL PURCHASED',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                      color: Color(0xFF888888),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  if (qtyLine.isNotEmpty)
+                    Text(
+                      qtyLine,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF1A1A1A),
+                          ),
+                    ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _inr0(sumAmt.round()),
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF1A1A1A),
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Transactions',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          const SizedBox(height: 8),
+          if (txns.isEmpty)
+            Text(
+              'No classified lines for this item in the selected period.',
+              style: TextStyle(color: HexaColors.textBody),
+            )
+          else
+            ...List.generate(txns.length, (i) {
+              final t = txns[i];
+              final sell = t.sellRate != null && t.sellRate! > 0
+                  ? reportKgWeightedRateLabel(t.sellRate)
+                  : '—';
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    RichText(
+                      text: TextSpan(
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              color: const Color(0xFF1A1A1A),
+                            ),
+                        children: [
+                          TextSpan(
+                            text: '${i + 1}. ${df.format(t.date)} — ',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          TextSpan(
+                            text: t.supplierName,
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${_kg(t.kg)} kg',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF333333),
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${reportKgWeightedRateLabel(t.buyRate)} → $sell',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFF555555),
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          const SizedBox(height: 24),
+          OutlinedButton(
+            onPressed: () => context.popOrGo('/reports'),
+            child: const Text('Back'),
+          ),
+        ],
+      ),
+    );
+  }
+}

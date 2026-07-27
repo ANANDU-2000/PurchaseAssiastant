@@ -1,0 +1,125 @@
+# Python
+backend/.venv/
+backend/**/__pycache__/
+*.pyc
+.pytest_cache/
+backend/.pytest_tmp/
+.mypy_cache/
+
+# Env
+.env
+backend/.env
+backend/.env.render
+backend/.env.prod
+*.pgdump
+restore_log.txt
+backend/hexa_dev.db
+backend/hexa_demo.db
+backend/hexa_seed_demo.db
+backend/hexa_fullstack.db
+backend/_dbg_entry.db
+backend/hexa_verify.db
+backend/_test_login.db
+backend/_verify_login.db
+
+# Uploaded workspace logos (POST /v1/me/branding-logo → served under /static/branding/)
+backend/static/branding/
+
+# Node
+admin_web/node_modules/
+admin_web/dist/
+
+# Flutter
+flutter_app/.dart_tool/
+flutter_app/build/
+flutter_app/.flutter-plugins-dependencies
+# Platform toolchains regenerate these (local plugins, intermediates)
+flutter_app/**/ephemeral/
+
+# Release / packaging artifacts
+release_pack/
+*.zip
+
+# Local sample bill images (keep out of git)
+samplsimages/
+
+# Local data (images from chat / screenshots)
+data/*.jpg
+data/*.jpeg
+data/*.png
+data/*.webp
+
+# Cursor project settings
+.cursor/settings.json
+.cursor/KICHU
+flutter_app/clean_analyze.txt
+flutter_app/analyze_errors.txt
+flutter_app/build_log.txt
+
+# IDE
+.idea/
+.vscode/
+
+# Cursor — local MCP secrets (use committed config/supabase.mcp.template.json as source)
+.cursor/mcp.json
+
+# Agent debug artifacts
+debug-*.log
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Auto-generated Cursor docs — do not commit
+*_AUDIT.md
+*_REPORT.md
+*_CHECKLIST.md
+PROGRESS_LOG.md
+CURRENT_CONTEXT.md
+V[0-9]*.md
+HARISREE_*.md
+PERFORMANCE_*.md
+PRODUCTION_*.md
+PROJECT_STATUS.md
+ARCHITECTURE_STATE.md
+TRACK.md
+SCAN_ENGINE.md
+MATCH_ENGINE.md
+REPORT_ENGINE.md
+
+# Local agent / Codex runner logs (never commit)
+backend/.codex-backend.err.log
+backend/.codex-backend.out.log
+
+# Accidental local archives (add intentionally if you need them in git)
+purhcaseappss.zip
+
+# Dev credentials / MCP scratch (never commit)
+login-test.json
+mcp_query.json
+config/github.pat.local
+
+# Local scratch / debug dumps
+build,md/
+migration_pre_counts.txt
+migration_post_validate.txt
+flutter_app/build_error_full.txt
+backend/schema_audit_chunks.txt
+backend/scripts/_api_routes.txt
+schema_expected.json
+master_item_profiles.json
+
+# Agent / session scratch at repo root (canonical docs: docs/, TASKS.md, README.md)
+PLAN.md
+PROMPT.md
+UX_REBUILD_PLAN.md
+DATABASE_REFACTOR.md
+
+# One-off schema audit dumps (regenerate via backend/scripts; keep schema_expected.json locally)
+backend/schema_live_rows.json
+backend/schema_audit_query.json
+backend/schema_audit_missing.sql
+backend/schema_audit_chunk_*.sql
+
+# Python bytecode accidentally committed
+**/__pycache__/

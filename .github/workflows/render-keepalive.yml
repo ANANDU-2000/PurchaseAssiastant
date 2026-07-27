@@ -1,0 +1,31 @@
+# Keeps Render API warm and surfaces outages early (workflow_dispatch for manual ping).
+name: Render API keep-alive
+
+on:
+  schedule:
+    - cron: "*/4 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: GET /health/ready
+        run: |
+          set -euo pipefail
+          ok=0
+          for i in 1 2 3; do
+            code=$(curl -sS -o /tmp/ready.json -w "%{http_code}" \
+              --max-time 30 "https://my-purchases-api.onrender.com/health/ready")
+            echo "Attempt $i: HTTP $code"
+            cat /tmp/ready.json || true
+            if [ "$code" = "200" ]; then
+              ok=1
+              break
+            fi
+            sleep 10
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::warning::Render /health/ready did not return 200 after retries"
+            exit 1
+          fi

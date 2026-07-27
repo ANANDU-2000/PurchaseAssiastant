@@ -1,0 +1,1523 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart'
+    show debugPrint, kDebugMode, kIsWeb;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:dio/dio.dart';
+
+import '../../features/shell/shell_branch_provider.dart';
+import '../api/hexa_api.dart';
+import '../auth/auth_failure_policy.dart'
+    show
+        auth401CircuitOpenProvider,
+        authRefreshInFlightProvider,
+        authResumeGateProvider,
+        authSessionExpiredProvider;
+import '../auth/session_notifier.dart' show activeSessionProvider, hexaApiProvider;
+import '../json_coerce.dart';
+import '../models/trade_purchase_models.dart';
+import '../services/offline_store.dart';
+import '../utils/line_display.dart';
+import '../utils/report_date_params.dart';
+import '../reporting/trade_report_aggregate.dart';
+import 'api_degraded_provider.dart';
+import 'catalog_providers.dart';
+import 'warehouse_alerts_provider.dart' show WarehouseAlerts;
+
+/// Period chips on the home dashboard. [custom] uses
+/// [homeCustomDateRangeProvider] (inclusive start/end dates).
+enum HomePeriod { today, week, month, year, allTime, custom }
+
+extension HomePeriodX on HomePeriod {
+  String get label => switch (this) {
+        HomePeriod.today => 'Today',
+        HomePeriod.week => 'Week',
+        HomePeriod.month => 'Month',
+        HomePeriod.year => 'Year',
+        HomePeriod.allTime => 'All time',
+        HomePeriod.custom => 'Custom',
+      };
+}
+
+/// Optional inclusive date range when [HomePeriod.custom] is selected.
+final homeCustomDateRangeProvider =
+    StateProvider<({DateTime start, DateTime endInclusive})?>(
+  (_) => null,
+);
+
+/// Returns the half-open window `[start, end)` in local date space.
+({DateTime start, DateTime end}) homePeriodRange(
+  HomePeriod p, {
+  DateTime? now,
+  ({DateTime start, DateTime endInclusive})? custom,
+}) {
+  final t = now ?? DateTime.now();
+  final endOfDay =
+      DateTime(t.year, t.month, t.day).add(const Duration(days: 1));
+  if (p == HomePeriod.custom && custom != null) {
+    final s = DateTime(
+      custom.start.year,
+      custom.start.month,
+      custom.start.day,
+    );
+    final e = DateTime(
+      custom.endInclusive.year,
+      custom.endInclusive.month,
+      custom.endInclusive.day,
+    ).add(const Duration(days: 1));
+    return (start: s, end: e);
+  }
+  return switch (p) {
+    HomePeriod.today => (
+        start: DateTime(t.year, t.month, t.day),
+        end: endOfDay,
+      ),
+    HomePeriod.week => (
+        start:
+            DateTime(t.year, t.month, t.day).subtract(const Duration(days: 6)),
+        end: endOfDay,
+      ),
+    // Rolling 30 calendar days through today inclusive (half-open `[start, end)`).
+    HomePeriod.month => (
+        start: DateTime(t.year, t.month, t.day)
+            .subtract(const Duration(days: 29)),
+        end: endOfDay,
+      ),
+    HomePeriod.year => (start: DateTime(t.year, 1, 1), end: endOfDay),
+    HomePeriod.allTime => (
+        start: DateTime(1970, 1, 1),
+        end: DateTime(2099, 12, 31, 23, 59, 59, 999),
+      ),
+    HomePeriod.custom => (
+        start: DateTime(t.year, t.month, 1),
+        end: endOfDay,
+      ),
+  };
+}
+
+final homePeriodProvider = StateProvider<HomePeriod>((_) => HomePeriod.month);
+
+class CategoryUnitTotals {
+  CategoryUnitTotals({this.bags = 0, this.boxes = 0, this.tins = 0});
+  double bags;
+  double boxes;
+  double tins;
+
+  bool get isEmpty => bags == 0 && boxes == 0 && tins == 0;
+}
+
+class CategoryItemStat {
+  const CategoryItemStat({
+    required this.name,
+    required this.qty,
+    required this.unit,
+    required this.amount,
+    this.catalogItemId,
+  });
+
+  final String name;
+  final double qty;
+  final String unit;
+  final double amount;
+  final String? catalogItemId;
+}
+
+class CategoryStat {
+  const CategoryStat({
+    required this.categoryId,
+    required this.categoryName,
+    required this.totalAmount,
+    required this.totalQty,
+    required this.units,
+    required this.items,
+    this.subtitleSupplier,
+    this.subtitleBroker,
+  });
+
+  final String categoryId;
+  final String categoryName;
+  final double totalAmount;
+  final double totalQty;
+  final CategoryUnitTotals units;
+  /// Sorted by amount (desc) — first is the category top item.
+  final List<CategoryItemStat> items;
+  final String? subtitleSupplier;
+  final String? subtitleBroker;
+}
+
+/// One row in the “Subcategory” (CategoryType) view — `label` is e.g. "Rice — Biriyani".
+class SubcategoryStat {
+  const SubcategoryStat({
+    required this.id,
+    required this.label,
+    required this.totalAmount,
+    required this.totalQty,
+  });
+
+  final String id;
+  final String label;
+  final double totalAmount;
+  final double totalQty;
+}
+
+/// One slice/row in the “Items” donut and breakdown list.
+class ItemSliceStat {
+  const ItemSliceStat({
+    required this.name,
+    this.catalogItemId,
+    required this.totalAmount,
+    required this.totalQty,
+    required this.unit,
+  });
+
+  final String name;
+  final String? catalogItemId;
+  final double totalAmount;
+  final double totalQty;
+  final String unit;
+}
+
+/// Owner-home operational slice from `home_operational` on home-overview shell_bundle.
+class HomeOperationalBundle {
+  const HomeOperationalBundle({
+    required this.stockStatusCounts,
+    required this.warehouseAlerts,
+    required this.deliveryPipeline,
+    required this.notificationsUnread,
+    this.lowStockTop = const [],
+  });
+
+  final Map<String, int> stockStatusCounts;
+  final WarehouseAlerts warehouseAlerts;
+  final Map<String, dynamic> deliveryPipeline;
+  final int notificationsUnread;
+  final List<Map<String, dynamic>> lowStockTop;
+
+  bool get hasStockCounts => stockStatusCounts.isNotEmpty;
+
+  int get stockAttentionCount =>
+      (stockStatusCounts['low'] ?? 0) +
+      (stockStatusCounts['critical'] ?? 0) +
+      (stockStatusCounts['out'] ?? 0);
+
+  static HomeOperationalBundle? fromSnapshot(Map<String, dynamic> snap) {
+    final raw = snap['home_operational'];
+    if (raw is! Map) return null;
+    final m = Map<String, dynamic>.from(raw);
+    final countsRaw = m['stock_status_counts'];
+    final counts = <String, int>{};
+    if (countsRaw is Map) {
+      for (final e in countsRaw.entries) {
+        counts[e.key.toString()] = coerceToInt(e.value);
+      }
+    }
+    final whRaw = m['warehouse_alerts'];
+    final wh = whRaw is Map
+        ? WarehouseAlerts(
+            pendingDeliveries: coerceToInt(whRaw['pending_deliveries']),
+            lowStock: coerceToInt(whRaw['low_stock']),
+            criticalStock: coerceToInt(whRaw['critical_stock']),
+            pendingVerifications: coerceToInt(whRaw['pending_verifications']),
+            missingBarcode: coerceToInt(whRaw['missing_barcode']),
+            missingUsageLogs: coerceToInt(whRaw['missing_usage_logs']),
+            evictionCount: coerceToInt(whRaw['eviction_count']),
+            checklistCompletionPct:
+                coerceToDoubleNullable(whRaw['checklist_completion_pct']) ??
+                    100,
+          )
+        : const WarehouseAlerts();
+    final pipe = m['delivery_pipeline'] is Map
+        ? Map<String, dynamic>.from(m['delivery_pipeline'] as Map)
+        : <String, dynamic>{};
+    final lowTopRaw = m['low_stock_top'];
+    final lowTop = <Map<String, dynamic>>[];
+    if (lowTopRaw is List) {
+      for (final e in lowTopRaw) {
+        if (e is Map) lowTop.add(Map<String, dynamic>.from(e));
+      }
+    }
+    return HomeOperationalBundle(
+      stockStatusCounts: counts,
+      warehouseAlerts: wh,
+      deliveryPipeline: pipe,
+      notificationsUnread: coerceToInt(m['notifications_unread']),
+      lowStockTop: lowTop,
+    );
+  }
+}
+
+/// Point-in-time stock totals from home-overview `stock_in_hand`.
+class HomeStockInHandSummary {
+  const HomeStockInHandSummary({
+    this.totalValueInr = 0,
+    this.bags = 0,
+    this.boxes = 0,
+    this.tins = 0,
+    this.kg = 0,
+    this.itemCount = 0,
+  });
+
+  final double totalValueInr;
+  final double bags;
+  final double boxes;
+  final double tins;
+  final double kg;
+  final int itemCount;
+
+  static HomeStockInHandSummary? fromSnapshot(Map<String, dynamic> snap) {
+    final raw = snap['stock_in_hand'];
+    if (raw is! Map) return null;
+    final m = Map<String, dynamic>.from(raw);
+    return HomeStockInHandSummary(
+      totalValueInr: coerceToDouble(m['total_value_inr']),
+      bags: coerceToDouble(m['bags']),
+      boxes: coerceToDouble(m['boxes']),
+      tins: coerceToDouble(m['tins']),
+      kg: coerceToDouble(m['kg']),
+      itemCount: coerceToInt(m['item_count']),
+    );
+  }
+}
+
+/// Lazy-fetch gates for Home satellite providers (reduce cold-load GET count).
+final homeLowStockDetailFetchEnabledProvider = StateProvider<bool>((ref) => false);
+/// >0 while [LowStockDashboardPage] is mounted (overlay from Home must still fetch).
+final lowStockDashboardMountedProvider = StateProvider<int>((ref) => 0);
+final homeStockMovementSectionVisibleProvider = StateProvider<bool>((ref) => false);
+final homeLowStockTopFetchEnabledProvider = StateProvider<bool>((ref) => false);
+final homePriorPeriodFetchEnabledProvider = StateProvider<bool>((ref) => false);
+final homeActivityFeedFetchEnabledProvider = StateProvider<bool>((ref) => false);
+final homeNotificationsListFetchEnabledProvider = StateProvider<bool>((ref) => false);
+final homeChecklistFetchEnabledProvider = StateProvider<bool>((ref) => false);
+final homeStaffSessionsFetchEnabledProvider = StateProvider<bool>((ref) => false);
+final homePendingDamageFetchEnabledProvider = StateProvider<bool>((ref) => false);
+final homePageSatellitesEnabledProvider = StateProvider<bool>((ref) => false);
+
+/// Satellites defer until primary home-overview has data (avoids duplicate cold GETs).
+bool homeOverviewReadyForSatellites(dynamic ref) {
+  if (!shellBranchIsVisible(ref, ShellBranch.home)) return false;
+  if (homeTabHasOperationalBundle(ref)) return true;
+  final dash = ref.watch(homeDashboardDataProvider);
+  if (dash.refreshing) return false;
+  return !dash.snapshot.data.isEmpty;
+}
+
+/// True when Home tab can use bundled operational counts from [homeDashboardDataProvider].
+bool homeTabHasOperationalBundle(dynamic ref) {
+  if (!shellBranchIsVisible(ref, ShellBranch.home)) return false;
+  return ref.watch(homeDashboardDataProvider).snapshot.data.operational != null;
+}
+
+Map<String, int>? homeBundledStockStatusCounts(Ref ref) {
+  if (!homeTabHasOperationalBundle(ref)) return null;
+  final operational = ref.watch(homeDashboardDataProvider).snapshot.data.operational;
+  if (operational == null) return null;
+  return operational.stockStatusCounts;
+}
+
+class HomeDashboardData {
+  const HomeDashboardData({
+    required this.period,
+    required this.totalPurchase,
+    required this.totalQtyAllLines,
+    required this.totalKg,
+    required this.totalBags,
+    required this.totalBoxes,
+    required this.totalTins,
+    required this.purchaseCount,
+    required this.categories,
+    required this.subcategories,
+    required this.itemSlices,
+    this.totalLanding = 0,
+    this.totalSelling = 0,
+    this.totalProfit = 0,
+    this.profitPercent,
+    this.pendingDeliveryCount = 0,
+    this.supplierCount = 0,
+    this.brokerCount = 0,
+    this.receivedDeliveryCount = 0,
+    this.negativeStockCount = 0,
+    this.operational,
+    this.stockInHand,
+  });
+
+  final HomePeriod period;
+  final double totalPurchase;
+  /// Landing (purchase) side total; matches [totalLanding] when the API sends it.
+  final double totalLanding;
+  final double totalSelling;
+  final double totalProfit;
+  final double? profitPercent;
+  /// Sum of line `qty` in range (for display next to purchase count).
+  final double totalQtyAllLines;
+  final double totalKg;
+  final double totalBags;
+  final double totalBoxes;
+  final double totalTins;
+  final int purchaseCount;
+  final List<CategoryStat> categories;
+  final List<SubcategoryStat> subcategories;
+  final List<ItemSliceStat> itemSlices;
+  /// Purchases not marked delivered (excludes deleted/cancelled); from API summary.
+  final int pendingDeliveryCount;
+  final int supplierCount;
+  final int brokerCount;
+  final int receivedDeliveryCount;
+  final int negativeStockCount;
+  final HomeOperationalBundle? operational;
+  final HomeStockInHandSummary? stockInHand;
+
+  bool get isEmpty => purchaseCount == 0;
+
+  static const empty = HomeDashboardData(
+    period: HomePeriod.month,
+    totalPurchase: 0,
+    totalLanding: 0,
+    totalSelling: 0,
+    totalProfit: 0,
+    profitPercent: null,
+    totalQtyAllLines: 0,
+    totalKg: 0,
+    totalBags: 0,
+    totalBoxes: 0,
+    totalTins: 0,
+    purchaseCount: 0,
+    categories: [],
+    subcategories: [],
+    itemSlices: [],
+    pendingDeliveryCount: 0,
+    supplierCount: 0,
+    brokerCount: 0,
+    receivedDeliveryCount: 0,
+    negativeStockCount: 0,
+  );
+}
+
+String _apiDate(DateTime d) {
+  return '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+}
+
+/// Server-side trade report snapshot (line amounts + [trade_query] statuses) for one date window.
+HomeDashboardData homeDashboardDataFromApiSnapshot(
+  HomePeriod period,
+  Map<String, dynamic> snap,
+) {
+  final clean = Map<String, dynamic>.from(snap)
+    ..remove('degraded')
+    ..remove('degraded_reason');
+  final summary =
+      (clean['summary'] is Map) ? clean['summary']! as Map : const {};
+  final unitTotals = (clean['unit_totals'] is Map)
+      ? clean['unit_totals']! as Map
+      : const {};
+  final deals = coerceToInt(summary['deals']);
+  final totalPurchase = coerceToDouble(summary['total_purchase']);
+  final totalLandingRaw = coerceToDoubleNullable(summary['total_landing']);
+  final totalLanding = totalLandingRaw ?? totalPurchase;
+  final totalSelling = coerceToDouble(summary['total_selling']);
+  final totalProfit = coerceToDoubleNullable(summary['total_profit']) ??
+      (totalSelling - totalLanding);
+  final profitPercent = coerceToDoubleNullable(summary['profit_percent']);
+  final pendingDeliveryCount = coerceToInt(summary['pending_delivery_count']);
+  final supplierCount = coerceToInt(summary['supplier_count']);
+  final brokerCount = coerceToInt(summary['broker_count']);
+  final receivedDeliveryCount = coerceToInt(summary['received_delivery_count']);
+  final negativeStockCount = coerceToInt(summary['negative_stock_count']);
+  final totalQtyAllLines = coerceToDouble(summary['total_qty']);
+  final totalKg = coerceToDouble(unitTotals['total_kg']);
+  final totalBags = coerceToDouble(unitTotals['total_bags']);
+  final totalBoxes = coerceToDouble(unitTotals['total_boxes']);
+  final totalTins = coerceToDouble(unitTotals['total_tins']);
+
+  final rawCats = clean['categories'];
+  final categories = <CategoryStat>[];
+  if (rawCats is List) {
+    for (final c in rawCats) {
+      if (c is! Map) continue;
+      final m = Map<String, dynamic>.from(c);
+      final u = m['units'];
+      final umap = u is Map ? Map<String, dynamic>.from(u) : const {};
+      final itemRows = <CategoryItemStat>[];
+      final items = m['items'];
+      if (items is List) {
+        for (final it in items) {
+          if (it is! Map) continue;
+          final im = Map<String, dynamic>.from(it);
+          final cid = im['catalog_item_id']?.toString();
+          itemRows.add(
+            CategoryItemStat(
+              name: im['name']?.toString() ?? '—',
+              qty: coerceToDouble(im['qty']),
+              unit: im['unit']?.toString() ?? '—',
+              amount: coerceToDouble(im['amount']),
+              catalogItemId: (cid != null && cid.isNotEmpty) ? cid : null,
+            ),
+          );
+        }
+      }
+      itemRows.sort((a, b) => b.amount.compareTo(a.amount));
+      categories.add(
+        CategoryStat(
+          categoryId: m['category_id']?.toString() ?? '_uncat',
+          categoryName: m['category_name']?.toString() ?? 'Uncategorised',
+          totalAmount: coerceToDouble(m['total_purchase']),
+          totalQty: coerceToDouble(m['total_qty']),
+          units: CategoryUnitTotals(
+            bags: coerceToDouble(umap['bags']),
+            boxes: coerceToDouble(umap['boxes']),
+            tins: coerceToDouble(umap['tins']),
+          ),
+          items: itemRows,
+          subtitleSupplier: m['subtitle_supplier']?.toString(),
+          subtitleBroker: m['subtitle_broker']?.toString(),
+        ),
+      );
+    }
+  }
+  categories.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+
+  final subcategories = <SubcategoryStat>[];
+  final rawTypes = clean['subcategories'];
+  if (rawTypes is List) {
+    for (final t in rawTypes) {
+      if (t is! Map) continue;
+      final tm = Map<String, dynamic>.from(t);
+      final cat = tm['category_name']?.toString() ?? '';
+      final tname = tm['type_name']?.toString() ?? '';
+      final label = tname.isEmpty ? '$cat — No type' : '$cat — $tname';
+      final id = '$cat|${tm['type_name'] ?? 'none'}';
+      subcategories.add(
+        SubcategoryStat(
+          id: id,
+          label: label,
+          totalAmount: coerceToDouble(tm['total_purchase']),
+          totalQty: coerceToDouble(tm['total_qty']),
+        ),
+      );
+    }
+  }
+  subcategories.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+
+  final itemSlices = <ItemSliceStat>[];
+  final rawItems = clean['item_slices'];
+  if (rawItems is List) {
+    for (final it in rawItems) {
+      if (it is! Map) continue;
+      final im = Map<String, dynamic>.from(it);
+      itemSlices.add(
+        ItemSliceStat(
+          name: im['item_name']?.toString() ?? '—',
+          catalogItemId: im['catalog_item_id']?.toString(),
+          totalAmount: coerceToDouble(im['total_purchase']),
+          totalQty: coerceToDouble(im['total_qty']),
+          unit: im['unit']?.toString() ?? '—',
+        ),
+      );
+    }
+  }
+  itemSlices.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+
+  return HomeDashboardData(
+    period: period,
+    totalPurchase: totalPurchase,
+    totalLanding: totalLanding,
+    totalSelling: totalSelling,
+    totalProfit: totalProfit,
+    profitPercent: profitPercent,
+    totalQtyAllLines: totalQtyAllLines,
+    totalKg: totalKg,
+    totalBags: totalBags,
+    totalBoxes: totalBoxes,
+    totalTins: totalTins,
+    purchaseCount: deals,
+    categories: categories,
+    subcategories: subcategories,
+    itemSlices: itemSlices,
+    pendingDeliveryCount: pendingDeliveryCount,
+    supplierCount: supplierCount,
+    brokerCount: brokerCount,
+    receivedDeliveryCount: receivedDeliveryCount,
+    negativeStockCount: negativeStockCount,
+    operational: HomeOperationalBundle.fromSnapshot(clean),
+    stockInHand: HomeStockInHandSummary.fromSnapshot(clean),
+  );
+}
+
+bool _snapshotHasTradeActivity(HomeDashboardData d) =>
+    d.purchaseCount > 0 || d.totalPurchase.abs() > 1e-9;
+
+/// Inclusive local-day filter consistent with [_aggregate] purchase window `[start,end)`.
+bool _purchaseInInclusiveLocalRange(
+  DateTime purchaseDate,
+  DateTime from,
+  DateTime toInclusive,
+) {
+  final pd = DateTime(purchaseDate.year, purchaseDate.month, purchaseDate.day);
+  final a = DateTime(from.year, from.month, from.day);
+  final b = DateTime(toInclusive.year, toInclusive.month, toInclusive.day);
+  return !pd.isBefore(a) && !pd.isAfter(b);
+}
+
+/// Last persisted trade-dashboard snapshot for the current period (instant paint).
+final homeDashboardSyncCacheProvider =
+    Provider.autoDispose<HomeDashboardData?>((ref) {
+  final session = ref.watch(activeSessionProvider);
+  if (session == null) return null;
+  final period = ref.watch(homePeriodProvider);
+  final custom = ref.watch(homeCustomDateRangeProvider);
+  final range = homePeriodRange(period, now: DateTime.now(), custom: custom);
+  final lastInclusive = range.end.subtract(const Duration(milliseconds: 1));
+  final from = _apiDate(range.start);
+  final to = _apiDate(lastInclusive);
+  final raw = OfflineStore.getCachedTradeDashboardSnapshot(
+    session.primaryBusiness.id,
+    from,
+    to,
+  );
+  if (raw == null) return null;
+  try {
+    return homeDashboardDataFromApiSnapshot(period, raw);
+  } catch (_) {
+    return null;
+  }
+});
+
+Future<List<TradePurchase>> _fetchTradePurchasesForHomeRange({
+  required HexaApi api,
+  required String businessId,
+  required DateTime from,
+  required DateTime toInclusive,
+}) async {
+  const limit = 500;
+  final out = <TradePurchase>[];
+  final seen = <String>{};
+  final purchaseFrom = _apiDate(from);
+  final purchaseTo = _apiDate(toInclusive);
+  for (var offset = 0; offset < 50000; offset += limit) {
+    final raw = await api.listTradePurchases(
+      businessId: businessId,
+      limit: limit,
+      offset: offset,
+      status: 'all',
+      purchaseFrom: purchaseFrom,
+      purchaseTo: purchaseTo,
+    );
+    if (raw.isEmpty) break;
+    for (final e in raw) {
+      try {
+        final p = TradePurchase.fromJson(Map<String, dynamic>.from(e as Map));
+        if (p.id.isEmpty) continue;
+        if (!_purchaseInInclusiveLocalRange(
+              p.purchaseDate,
+              from,
+              toInclusive,
+            )) {
+          continue;
+        }
+        if (seen.add(p.id)) out.add(p);
+      } catch (_) {}
+    }
+    if (raw.length < limit) break;
+  }
+  return out;
+}
+
+/// Server fetch outcome for Home — always completes with data (possibly cached).
+class HomeDashboardPayload {
+  const HomeDashboardPayload({
+    required this.data,
+    this.banner,
+    this.persistAlert = false,
+    this.stale = false,
+  });
+
+  final HomeDashboardData data;
+  final String? banner;
+  final bool persistAlert;
+  /// True when [data] was served from memory/disk before a fresh network response.
+  final bool stale;
+}
+
+class _DashboardFailureStats {
+  static final Map<String, int> _s = {};
+
+  static int bump(String k) {
+    final n = (_s[k] ?? 0) + 1;
+    _s[k] = n;
+    return n;
+  }
+
+  static void reset(String k) => _s.remove(k);
+}
+
+final Map<String, Future<HomeDashboardPayload>> _dashInflight = {};
+
+/// Lets [homeShellReportsProvider] wait for the same in-flight overview and reuse `home_shell`.
+Future<void> awaitHomeDashboardInflightIfAny(String dedupeKey) async {
+  final f = _dashInflight[dedupeKey];
+  if (f != null) {
+    try {
+      await f;
+    } catch (_) {}
+  }
+}
+
+/// Raw overview JSON for a date key (includes `home_shell` when requested from API).
+Map<String, dynamic>? homeOverviewSnapForKey(String dedupeKey) =>
+    _homeOverviewSnapMemory[dedupeKey];
+
+int _homeDashBustGeneration = 0;
+
+String _mapDashboardDioBanner(DioException e) {
+  switch (e.type) {
+    case DioExceptionType.connectionTimeout:
+    case DioExceptionType.sendTimeout:
+    case DioExceptionType.receiveTimeout:
+      return 'Server waking up...';
+    case DioExceptionType.connectionError:
+      return 'No connection';
+    default:
+      break;
+  }
+  final sc = e.response?.statusCode;
+  if (sc == 503) {
+    final h = e.response?.headers.value('x-database-unavailable');
+    if (h == '1') {
+      return 'Database temporarily unavailable';
+    }
+    return 'Service temporarily unavailable';
+  }
+  if (sc == 429) return 'Too many requests — wait a moment';
+  if (sc != null && sc >= 500) return 'Temporary server issue';
+  return 'Updating data...';
+}
+
+String _dashMemKey(String bid, String from, String to) => '$bid|$from|$to';
+
+final Map<String, Map<String, dynamic>> _homeOverviewSnapMemory = {};
+final Map<String, DateTime> _homeOverviewFetchedAt = {};
+final Map<String, String> _homeOverviewEtagMemory = {};
+
+/// Clears in-flight fetches and RAM snapshots for [reportsHomeOverview] home aggregates.
+/// Call before invalidating [homeDashboardDataProvider] after purchase mutations so a
+/// concurrent request cannot resurrect pre-delete totals via [putIfAbsent] dedupe.
+void bustHomeDashboardVolatileCaches() {
+  _homeDashBustGeneration++;
+  _dashInflight.clear();
+  _homeOverviewSnapMemory.clear();
+  _homeOverviewFetchedAt.clear();
+  // Preserve ETags so post-mutation refresh can 304 instead of full 200 bodies.
+}
+
+/// Thrown when [bustHomeDashboardVolatileCaches] ran while a fetch was in flight;
+/// the notifier will invalidate and schedule a fresh pull.
+class StaleHomeDashboardFetch implements Exception {
+  StaleHomeDashboardFetch();
+}
+
+List<Map<String, dynamic>> _coerceJsonMapList(Object? v) {
+  if (v is! List) return const [];
+  return [
+    for (final e in v)
+      if (e is Map<String, dynamic>) e
+      else if (e is Map) Map<String, dynamic>.from(e),
+  ];
+}
+
+Future<void> _persistHomeShellFromOverviewSnap({
+  required String bid,
+  required String from,
+  required String to,
+  required Map<String, dynamic> snap,
+}) async {
+  final raw = snap['home_shell'];
+  if (raw is! Map) return;
+  final m = Map<String, dynamic>.from(raw);
+  final sub = _coerceJsonMapList(m['subcategories']);
+  final sup = _coerceJsonMapList(m['suppliers']);
+  final it = _coerceJsonMapList(m['items']);
+  if (sub.isEmpty && sup.isEmpty && it.isEmpty) return;
+  await OfflineStore.cacheHomeShellReports(
+    bid,
+    from,
+    to,
+    subcategories: sub,
+    suppliers: sup,
+    items: it,
+  );
+}
+
+/// Server snapshot holder + outstanding refresh flag (SWR-friendly).
+class HomeDashboardDashState {
+  const HomeDashboardDashState({
+    required this.snapshot,
+    required this.refreshing,
+  });
+
+  final HomeDashboardPayload snapshot;
+  /// True until the current [_dashInflight] attempt finishes or short-circuits offline.
+  final bool refreshing;
+}
+
+Future<HomeDashboardPayload> _homeDashboardPullFresh({
+  required Ref ref,
+  required String dedupeKey,
+  required int bustGenerationAtStart,
+  required HexaApi api,
+  required HomePeriod period,
+  required ({DateTime start, DateTime endInclusive})? custom,
+  required String bid,
+  required String from,
+  required String to,
+  required DateTime rangeStart,
+  required DateTime lastInclusive,
+}) async {
+  HomeDashboardPayload ok(
+    HomeDashboardData d, {
+    String? readDegradedBanner,
+    bool readDegraded = false,
+  }) {
+    _DashboardFailureStats.reset(dedupeKey);
+    return HomeDashboardPayload(
+      data: d,
+      banner: readDegradedBanner,
+      stale: readDegraded,
+    );
+  }
+
+  HomeDashboardData? readCache() {
+    final raw = OfflineStore.getCachedTradeDashboardSnapshot(bid, from, to);
+    if (raw == null) return null;
+    try {
+      return homeDashboardDataFromApiSnapshot(period, raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  final cachedData = readCache();
+
+  List<ConnectivityResult> reachability;
+  try {
+    reachability = await Connectivity()
+        .checkConnectivity()
+        .timeout(const Duration(seconds: 3));
+  } on TimeoutException {
+    reachability = const <ConnectivityResult>[ConnectivityResult.other];
+  } catch (_) {
+    reachability = const <ConnectivityResult>[ConnectivityResult.other];
+  }
+  final looksOffline = reachability.isEmpty ||
+      reachability.every((c) => c == ConnectivityResult.none);
+  if (looksOffline) {
+    if (cachedData != null) {
+      return HomeDashboardPayload(
+        data: cachedData,
+        banner: 'No connection — showing last data',
+        stale: true,
+      );
+    }
+    return const HomeDashboardPayload(
+      data: HomeDashboardData.empty,
+      banner: 'No connection',
+    );
+  }
+
+  // Cold path only: health wake-up adds serial latency + CORS preflight on web.
+  // Skip when we have cache (background refresh) or on Flutter web (go straight to
+  // reportsHomeOverview; Dio retries handle cold Render).
+  if (cachedData == null && !kIsWeb) {
+    Future<void> healthPreflightBestEffort() async {
+      for (var attempt = 0; attempt <= 2; attempt++) {
+        try {
+          await api.health();
+          return;
+        } catch (e) {
+          if (e is DioException &&
+              e.type == DioExceptionType.connectionError) {
+            return;
+          }
+          if (kDebugMode && attempt < 2) {
+            debugPrint('homeDashboard: health preflight retry ${attempt + 1}/2');
+          }
+          if (attempt < 2) {
+            await Future<void>.delayed(const Duration(milliseconds: 500));
+          }
+        }
+      }
+    }
+
+    await healthPreflightBestEffort();
+  }
+
+  if (bustGenerationAtStart != _homeDashBustGeneration) {
+    throw StaleHomeDashboardFetch();
+  }
+
+  final etagStored = _homeOverviewEtagMemory[dedupeKey];
+  final overviewFetchedAt = _homeOverviewFetchedAt[dedupeKey];
+  if (etagStored != null &&
+      etagStored.isNotEmpty &&
+      overviewFetchedAt != null &&
+      DateTime.now().difference(overviewFetchedAt) <
+          const Duration(seconds: 60)) {
+    final memSnap = _homeOverviewSnapMemory[dedupeKey];
+    if (memSnap != null) {
+      return ok(homeDashboardDataFromApiSnapshot(period, memSnap));
+    }
+    final hiveData = readCache();
+    if (hiveData != null) {
+      return ok(hiveData);
+    }
+  }
+
+  try {
+    final overviewSw = Stopwatch()..start();
+    Future<Map<String, dynamic>> loadOverview() => api
+        .reportsHomeOverview(
+          businessId: bid,
+          from: from,
+          to: to,
+          compact: true,
+          shellBundle: true,
+          tzOffsetMinutes: localTzOffsetMinutes,
+          ifNoneMatch: _homeOverviewEtagMemory[dedupeKey],
+        )
+        .timeout(
+          const Duration(seconds: 12),
+          onTimeout: () => throw TimeoutException('reportsHomeOverview'),
+        );
+    Map<String, dynamic> snap;
+    try {
+      snap = await loadOverview();
+    } on DioException catch (e) {
+      if (e.response?.statusCode != 429) rethrow;
+      await Future<void>.delayed(const Duration(seconds: 2));
+      snap = await loadOverview();
+    }
+    if (snap['_not_modified'] == true) {
+      final cached = _homeOverviewSnapMemory[dedupeKey];
+      if (cached != null) {
+        final fromSnapshot = homeDashboardDataFromApiSnapshot(period, cached);
+        return ok(fromSnapshot);
+      }
+      final hiveData = readCache();
+      if (hiveData != null) {
+        final raw = OfflineStore.getCachedTradeDashboardSnapshot(bid, from, to);
+        if (raw != null) {
+          _homeOverviewSnapMemory[dedupeKey] = Map<String, dynamic>.from(raw);
+        }
+        return ok(hiveData);
+      }
+      if (cachedData != null) {
+        return ok(cachedData, readDegraded: true);
+      }
+      throw StaleHomeDashboardFetch();
+    }
+    final etag = snap['_etag']?.toString();
+    if (etag != null && etag.isNotEmpty) {
+      _homeOverviewEtagMemory[dedupeKey] = etag;
+      snap.remove('_etag');
+    }
+    if (kDebugMode) {
+      debugPrint(
+        'homeDashboard: reportsHomeOverview ${overviewSw.elapsedMilliseconds}ms '
+        '($from..$to)',
+      );
+    }
+    if (bustGenerationAtStart != _homeDashBustGeneration) {
+      throw StaleHomeDashboardFetch();
+    }
+    final readDegraded = snap['degraded'] == true;
+    final readDegradedBanner =
+        readDegraded ? 'Showing last data — refresh delayed' : null;
+    await OfflineStore.cacheTradeDashboardSnapshot(
+      bid,
+      from,
+      to,
+      Map<String, dynamic>.from(snap),
+    );
+    _homeOverviewSnapMemory[dedupeKey] = Map<String, dynamic>.from(snap);
+    await _persistHomeShellFromOverviewSnap(
+      bid: bid,
+      from: from,
+      to: to,
+      snap: snap,
+    );
+
+    final fromSnapshot = homeDashboardDataFromApiSnapshot(period, snap);
+    if (_snapshotHasTradeActivity(fromSnapshot)) {
+      return ok(
+        fromSnapshot,
+        readDegradedBanner: readDegradedBanner,
+        readDegraded: readDegraded,
+      );
+    }
+
+    final purchases = await _fetchTradePurchasesForHomeRange(
+      api: api,
+      businessId: bid,
+      from: rangeStart,
+      toInclusive: lastInclusive,
+    );
+    if (bustGenerationAtStart != _homeDashBustGeneration) {
+      throw StaleHomeDashboardFetch();
+    }
+    if (purchases.isEmpty) {
+      return ok(
+        fromSnapshot,
+        readDegradedBanner: readDegradedBanner,
+        readDegraded: readDegraded,
+      );
+    }
+
+    List<Map<String, dynamic>> items;
+    List<Map<String, dynamic>> categories;
+    try {
+      final pair = await Future.wait<Object?>([
+        ref.read(catalogItemsListProvider.future),
+        ref.read(itemCategoriesListProvider.future),
+      ]);
+      items = (pair[0] as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      categories = (pair[1] as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    } catch (_) {
+      final pair = await Future.wait([
+        api.listCatalogItems(businessId: bid),
+        api.listItemCategories(businessId: bid),
+      ]);
+      items = pair[0];
+      categories = pair[1];
+    }
+    return ok(
+      aggregateHomeDashboard(
+        period: period,
+        purchases: purchases,
+        items: items,
+        categories: categories,
+        now: DateTime.now(),
+        custom: custom,
+        pendingDeliveryCount: fromSnapshot.pendingDeliveryCount,
+      ),
+      readDegradedBanner: readDegradedBanner,
+      readDegraded: readDegraded,
+    );
+  } on TimeoutException catch (_) {
+    final streak = _DashboardFailureStats.bump(dedupeKey);
+    if (cachedData != null) {
+      return HomeDashboardPayload(
+        data: cachedData,
+        banner: 'Dashboard request timed out — showing last data',
+        persistAlert: streak >= 3,
+        stale: true,
+      );
+    }
+    return HomeDashboardPayload(
+      data: HomeDashboardData.empty,
+      banner: 'Dashboard load timed out — try again',
+      persistAlert: streak >= 3,
+    );
+  } on DioException catch (e) {
+    final streak = _DashboardFailureStats.bump(dedupeKey);
+    if (cachedData != null) {
+      return HomeDashboardPayload(
+        data: cachedData,
+        banner: '${_mapDashboardDioBanner(e)} — showing last data',
+        persistAlert: streak >= 3,
+        stale: true,
+      );
+    }
+    return HomeDashboardPayload(
+      data: HomeDashboardData.empty,
+      banner: _mapDashboardDioBanner(e),
+      persistAlert: streak >= 3,
+    );
+  } catch (_) {
+    final streak = _DashboardFailureStats.bump(dedupeKey);
+    if (cachedData != null) {
+      return HomeDashboardPayload(
+        data: cachedData,
+        banner: 'Offline mode — showing last data',
+        persistAlert: streak >= 3,
+        stale: true,
+      );
+    }
+    return HomeDashboardPayload(
+      data: HomeDashboardData.empty,
+      banner: 'Temporary server issue',
+      persistAlert: streak >= 3,
+    );
+  }
+}
+
+HomeDashboardPayload? _snapshotPayloadFromStoredJson(
+  HomePeriod period,
+  Map<String, dynamic> raw,
+) {
+  try {
+    return HomeDashboardPayload(
+      data: homeDashboardDataFromApiSnapshot(period, raw),
+      stale: true,
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Aggregated snapshot: server [reportsHomeOverview] (+ compact trim) — bundled home read path.
+///
+/// To match Analytics KPI for a period, align calendar `from`/`to` with
+/// the analytics date range in `lib/core/providers/analytics_kpi_provider.dart`.
+final homeDashboardDataProvider =
+    NotifierProvider.autoDispose<HomeDashboardDataNotifier, HomeDashboardDashState>(
+  HomeDashboardDataNotifier.new,
+);
+
+/// Notification bell on Home — from shell bundle when available.
+final homeBundledNotificationsUnreadProvider = Provider<int>((ref) {
+  if (homeTabHasOperationalBundle(ref)) {
+    return ref
+        .watch(homeDashboardDataProvider)
+        .snapshot
+        .data
+        .operational!
+        .notificationsUnread;
+  }
+  return 0;
+});
+
+class HomeDashboardDataNotifier extends AutoDisposeNotifier<HomeDashboardDashState> {
+  bool _dead = false;
+
+  @override
+  HomeDashboardDashState build() {
+    ref.keepAlive();
+    _dead = false;
+    ref.onDispose(() => _dead = true);
+    final period = ref.watch(homePeriodProvider);
+    final custom = ref.watch(homeCustomDateRangeProvider);
+    final session = ref.watch(activeSessionProvider);
+
+    if (session == null || ref.watch(authSessionExpiredProvider)) {
+      return const HomeDashboardDashState(
+        snapshot: HomeDashboardPayload(data: HomeDashboardData.empty),
+        refreshing: false,
+      );
+    }
+
+    final bid = session.primaryBusiness.id;
+    final range = homePeriodRange(period, now: DateTime.now(), custom: custom);
+    final lastInclusive = range.end.subtract(const Duration(milliseconds: 1));
+    final from = _apiDate(range.start);
+    final to = _apiDate(lastInclusive);
+    final dedupeKey = _dashMemKey(bid, from, to);
+
+    final memRaw = _homeOverviewSnapMemory[dedupeKey];
+    HomeDashboardPayload? hydrated;
+    if (memRaw != null) {
+      hydrated = _snapshotPayloadFromStoredJson(period, memRaw);
+    }
+    hydrated ??= () {
+      final raw = OfflineStore.getCachedTradeDashboardSnapshot(bid, from, to);
+      return raw != null ? _snapshotPayloadFromStoredJson(period, raw) : null;
+    }();
+
+    final seed =
+        hydrated ?? const HomeDashboardPayload(data: HomeDashboardData.empty);
+
+    final onHomeTab = shellBranchIsVisible(ref, ShellBranch.home);
+    if (!onHomeTab) {
+      return HomeDashboardDashState(
+        snapshot: seed,
+        refreshing: false,
+      );
+    }
+
+    final hasRenderableCache = hydrated != null;
+    final fetchedAt = _homeOverviewFetchedAt[dedupeKey];
+    final cacheFresh = hasRenderableCache &&
+        fetchedAt != null &&
+        DateTime.now().difference(fetchedAt) < const Duration(seconds: 90);
+    if (cacheFresh) {
+      return HomeDashboardDashState(
+        snapshot: seed,
+        refreshing: false,
+      );
+    }
+
+    Future<void>.microtask(() async {
+      if (_dead) return;
+      try {
+        final bustAtStart = _homeDashBustGeneration;
+        final payload = await _dashInflight.putIfAbsent(
+          dedupeKey,
+          () => _homeDashboardPullFresh(
+                ref: ref,
+                dedupeKey: dedupeKey,
+                bustGenerationAtStart: bustAtStart,
+                api: ref.read(hexaApiProvider),
+                period: period,
+                custom: custom,
+                bid: bid,
+                from: from,
+                to: to,
+                rangeStart: range.start,
+                lastInclusive: lastInclusive,
+              ).whenComplete(() => _dashInflight.remove(dedupeKey)),
+        );
+        if (_dead) return;
+        _homeOverviewFetchedAt[dedupeKey] = DateTime.now();
+        state = HomeDashboardDashState(snapshot: payload, refreshing: false);
+      } on StaleHomeDashboardFetch {
+        // Superseded by a newer refresh — do not re-invalidate (tab storms).
+        return;
+      } on DioException catch (e) {
+        if (_dead) return;
+        final sc = e.response?.statusCode;
+        if (sc == 401 || sc == 403) {
+          final refreshBusy = ref.read(authRefreshInFlightProvider) ||
+              ref.read(authResumeGateProvider);
+          if (!refreshBusy && !ref.read(auth401CircuitOpenProvider)) {
+            try {
+              ref.read(apiDegradedProvider.notifier).notifyDegraded(
+                    'Session expired — open Settings and sign in again.',
+                  );
+            } catch (_) {}
+          }
+        }
+        state = HomeDashboardDashState(snapshot: seed, refreshing: false);
+      } catch (_) {
+        if (_dead) return;
+        state = HomeDashboardDashState(snapshot: seed, refreshing: false);
+      }
+    });
+
+    // Only show the top progress / shell skeleton when we have no snapshot to
+    // render yet. If memory or Hive already has this range, refresh in the
+    // background without flashing loaders on every provider rebuild.
+    if (!hasRenderableCache) {
+      Future<void>.delayed(const Duration(seconds: 4), () {
+        if (_dead) return;
+        if (state.refreshing) {
+          state = HomeDashboardDashState(
+            snapshot: state.snapshot,
+            refreshing: false,
+          );
+        }
+      });
+    }
+    return HomeDashboardDashState(
+      snapshot: seed,
+      refreshing: !hasRenderableCache,
+    );
+  }
+
+  /// Safety valve: force-clear the refreshing flag after a UI timeout.
+  void forceStopRefreshing() {
+    if (_dead) return;
+    if (!state.refreshing) return;
+    state = HomeDashboardDashState(
+      snapshot: state.snapshot,
+      refreshing: false,
+    );
+  }
+}
+HomeDashboardData aggregateHomeDashboard({
+  required HomePeriod period,
+  required List<TradePurchase> purchases,
+  required List<Map<String, dynamic>> items,
+  required List<Map<String, dynamic>> categories,
+  DateTime? now,
+  ({DateTime start, DateTime endInclusive})? custom,
+  int pendingDeliveryCount = 0,
+}) {
+  final range = homePeriodRange(period, now: now, custom: custom);
+  return _aggregate(
+    period: period,
+    purchases: purchases,
+    items: items,
+    categories: categories,
+    rangeStart: range.start,
+    rangeEnd: range.end,
+    pendingDeliveryCount: pendingDeliveryCount,
+  );
+}
+
+/// Matches backend `_trade_line_amount_expr`: weight lines use qty × kg_per_unit × landing_cost_per_kg.
+double _lineTradeAmount(TradePurchaseLine ln) {
+  final kpu = ln.kgPerUnit;
+  final lcpk = ln.landingCostPerKg;
+  if (kpu != null && lcpk != null && kpu > 0 && lcpk > 0) {
+    return ln.qty * kpu * lcpk;
+  }
+  return ln.qty * ln.landingCost;
+}
+
+double _lineKg(TradePurchaseLine ln) {
+  final kgPerUnit = ln.kgPerUnit;
+  final landingCostPerKg = ln.landingCostPerKg;
+  if (kgPerUnit != null &&
+      kgPerUnit > 0 &&
+      landingCostPerKg != null &&
+      landingCostPerKg > 0) {
+    return ln.qty * kgPerUnit;
+  }
+  final u = ln.unit.toUpperCase().trim();
+  if (u == 'KG' || u.endsWith('KG')) return ln.qty;
+  if (unitCountsAsBagFamily(ln.unit)) {
+    final k = ln.defaultKgPerBag ?? ln.kgPerUnit;
+    if (k != null && k > 0) return ln.qty * k;
+  }
+  return 0;
+}
+
+HomeDashboardData _aggregate({
+  required HomePeriod period,
+  required List<TradePurchase> purchases,
+  required List<Map<String, dynamic>> items,
+  required List<Map<String, dynamic>> categories,
+  required DateTime rangeStart,
+  required DateTime rangeEnd,
+  int pendingDeliveryCount = 0,
+}) {
+  final itemById = <String, Map<String, dynamic>>{
+    for (final m in items)
+      if (m['id'] != null) m['id'].toString(): m,
+  };
+  final catNameById = <String, String>{
+    for (final c in categories)
+      if (c['id'] != null)
+        c['id'].toString(): (c['name']?.toString() ?? 'Uncategorised'),
+  };
+
+  var totalPurchase = 0.0;
+  var totalSelling = 0.0;
+  var totalQtyAllLines = 0.0;
+  var totalKg = 0.0;
+  var totalBags = 0.0;
+  var totalBoxes = 0.0;
+  var totalTins = 0.0;
+  var purchaseCount = 0;
+
+  final catAgg = <String, _CatAgg>{};
+  final typeAgg = <String, _TypeAgg>{};
+  final globalItem = <String, _ItemAgg>{};
+
+  for (final p in purchases) {
+    final st = p.statusEnum;
+    if (st == PurchaseStatus.deleted || st == PurchaseStatus.cancelled) {
+      continue;
+    }
+    if (p.purchaseDate.isBefore(rangeStart) ||
+        !p.purchaseDate.isBefore(rangeEnd)) {
+      continue;
+    }
+
+    purchaseCount++;
+    totalPurchase += p.totalAmount;
+
+    for (final ln in p.lines) {
+      final amt = _lineTradeAmount(ln);
+      final sc = ln.sellingCost;
+      if (sc != null) {
+        totalSelling += ln.qty * sc;
+      }
+      totalQtyAllLines += ln.qty;
+      totalKg += _lineKg(ln);
+
+      final eff = reportEffectivePack(ln);
+      if (eff != null) {
+        switch (eff.kind) {
+          case ReportPackKind.bag:
+            totalBags += eff.packQty;
+          case ReportPackKind.box:
+            totalBoxes += eff.packQty;
+          case ReportPackKind.tin:
+            totalTins += eff.packQty;
+        }
+      } else {
+        final u = ln.unit.toUpperCase();
+        if (u.contains('BAG')) totalBags += ln.qty;
+        if (u.contains('BOX')) totalBoxes += ln.qty;
+        if (u.contains('TIN')) totalTins += ln.qty;
+      }
+
+      String catId = '_uncat';
+      String catName = 'Uncategorised';
+      final ci = ln.catalogItemId;
+      final Map<String, dynamic>? item =
+          (ci != null && ci.isNotEmpty) ? itemById[ci] : null;
+      if (item != null) {
+        final cid = item['category_id']?.toString();
+        if (cid != null && cid.isNotEmpty) {
+          catId = cid;
+          catName = catNameById[cid] ?? 'Uncategorised';
+        }
+      }
+      final tid = item?['type_id']?.toString() ?? 'none';
+      final typeKey = '$catId|$tid';
+      final tname = (item?['type_name']?.toString() ?? '').trim();
+      final typeLabel = item == null
+          ? 'Uncategorised'
+          : (tname.isEmpty ? '$catName — No type' : '$catName — $tname');
+      typeAgg
+          .putIfAbsent(
+            typeKey,
+            () => _TypeAgg(id: typeKey, label: typeLabel),
+          )
+          .add(amt, ln.qty);
+
+      final agg = catAgg.putIfAbsent(
+        catId,
+        () => _CatAgg(id: catId, name: catName),
+      );
+      agg.totalAmount += amt;
+      agg.totalQty += ln.qty;
+
+      if (eff != null) {
+        switch (eff.kind) {
+          case ReportPackKind.bag:
+            agg.units.bags += eff.packQty;
+          case ReportPackKind.box:
+            agg.units.boxes += eff.packQty;
+          case ReportPackKind.tin:
+            agg.units.tins += eff.packQty;
+        }
+      } else {
+        final u = ln.unit.toUpperCase();
+        if (unitCountsAsBagFamily(ln.unit)) agg.units.bags += ln.qty;
+        if (u.contains('BOX')) agg.units.boxes += ln.qty;
+        if (u.contains('TIN')) agg.units.tins += ln.qty;
+      }
+
+      final itemKey = ln.itemName.trim().isEmpty ? '—' : ln.itemName.trim();
+      final slot = agg.itemMap.putIfAbsent(
+        itemKey,
+        () => _ItemAgg(name: itemKey, unit: ln.unit),
+      );
+      slot.qty += ln.qty;
+      slot.amount += amt;
+      if (ci != null && ci.isNotEmpty) slot.catalogItemId ??= ci;
+
+      final gk = (ci != null && ci.isNotEmpty) ? 'id:$ci' : 'n:$itemKey';
+      final g = globalItem.putIfAbsent(
+        gk,
+        () => _ItemAgg(name: itemKey, unit: ln.unit),
+      );
+      g.qty += ln.qty;
+      g.amount += amt;
+      if (ci != null && ci.isNotEmpty) g.catalogItemId ??= ci;
+    }
+  }
+
+  final cats = <CategoryStat>[];
+  for (final a in catAgg.values) {
+    final itemRows = <CategoryItemStat>[];
+    for (final it in a.itemMap.values) {
+      if (it.qty <= 0 && it.amount <= 0) continue;
+      itemRows.add(CategoryItemStat(
+        name: it.name,
+        qty: it.qty,
+        unit: it.unit,
+        amount: it.amount,
+        catalogItemId: it.catalogItemId,
+      ));
+    }
+    itemRows.sort((x, y) => y.amount.compareTo(x.amount));
+    cats.add(CategoryStat(
+      categoryId: a.id,
+      categoryName: a.name,
+      totalAmount: a.totalAmount,
+      totalQty: a.totalQty,
+      units: a.units,
+      items: itemRows,
+    ));
+  }
+  cats.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+
+  final subRows = <SubcategoryStat>[];
+  for (final t in typeAgg.values) {
+    if (t.totalAmount <= 0) continue;
+    subRows.add(SubcategoryStat(
+      id: t.id,
+      label: t.label,
+      totalAmount: t.totalAmount,
+      totalQty: t.totalQty,
+    ));
+  }
+  subRows.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+
+  final itemRows = <ItemSliceStat>[];
+  for (final it in globalItem.values) {
+    if (it.qty <= 0 && it.amount <= 0) continue;
+    itemRows.add(ItemSliceStat(
+      name: it.name,
+      catalogItemId: it.catalogItemId,
+      totalAmount: it.amount,
+      totalQty: it.qty,
+      unit: it.unit,
+    ));
+  }
+  itemRows.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+
+  final totalLanding = totalPurchase;
+  final totalProfit = totalSelling - totalLanding;
+  final profitPercent =
+      totalLanding > 1e-9 ? (totalProfit / totalLanding) * 100.0 : null;
+  return HomeDashboardData(
+    period: period,
+    totalPurchase: totalPurchase,
+    totalLanding: totalLanding,
+    totalSelling: totalSelling,
+    totalProfit: totalProfit,
+    profitPercent: profitPercent,
+    totalQtyAllLines: totalQtyAllLines,
+    totalKg: totalKg,
+    totalBags: totalBags,
+    totalBoxes: totalBoxes,
+    totalTins: totalTins,
+    purchaseCount: purchaseCount,
+    categories: cats,
+    subcategories: subRows,
+    itemSlices: itemRows,
+    pendingDeliveryCount: pendingDeliveryCount,
+  );
+}
+
+class _CatAgg {
+  _CatAgg({required this.id, required this.name});
+  final String id;
+  final String name;
+  double totalAmount = 0;
+  double totalQty = 0;
+  final CategoryUnitTotals units = CategoryUnitTotals();
+  final Map<String, _ItemAgg> itemMap = {};
+}
+
+class _ItemAgg {
+  _ItemAgg({required this.name, required this.unit});
+  final String name;
+  final String unit;
+  String? catalogItemId;
+  double qty = 0;
+  double amount = 0;
+}
+
+class _TypeAgg {
+  _TypeAgg({required this.id, required this.label});
+  final String id;
+  final String label;
+  double totalAmount = 0;
+  double totalQty = 0;
+
+  void add(double amt, double q) {
+    totalAmount += amt;
+    totalQty += q;
+  }
+}

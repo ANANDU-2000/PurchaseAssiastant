@@ -1,0 +1,896 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../core/auth/session_notifier.dart';
+import '../../../core/providers/brokers_list_provider.dart';
+import '../../../core/providers/catalog_providers.dart';
+import '../../../core/providers/contacts_hub_provider.dart';
+import '../../../core/providers/business_aggregates_invalidation.dart';
+import '../../../core/providers/suppliers_list_provider.dart';
+import '../../../core/providers/trade_purchases_provider.dart';
+import '../../../core/widgets/async_value_form.dart';
+import '../../../core/widgets/form_feedback.dart';
+import '../../../core/widgets/form_field_scroll.dart';
+import '../../../core/widgets/friendly_load_error.dart';
+import '../../../shared/widgets/full_screen_form_scaffold.dart';
+import 'supplier_create_wizard_page.dart';
+
+bool _validPhoneDigits(String raw) {
+  final d = raw.replaceAll(RegExp(r'\D'), '');
+  return d.length >= 10 && d.length <= 15;
+}
+
+class BrokerWizardPage extends ConsumerStatefulWidget {
+  const BrokerWizardPage({
+    super.key,
+    this.brokerId,
+    this.selectionReturnOnSave = false,
+  });
+
+  final String? brokerId;
+  /// When true (purchase quick-create): `context.pop` with `{'id','name'}` on successful save.
+  final bool selectionReturnOnSave;
+
+  @override
+  ConsumerState<BrokerWizardPage> createState() => _BrokerWizardPageState();
+}
+
+class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
+  int _step = 0;
+  bool _dirty = false;
+
+  final _name = TextEditingController();
+  final _phone = TextEditingController();
+  final _location = TextEditingController();
+  final _notes = TextEditingController();
+  final _commission = TextEditingController();
+  final _paymentDays = TextEditingController();
+  final _discount = TextEditingController();
+  final _delivered = TextEditingController();
+  final _billty = TextEditingController();
+  final _searchSuppliers = TextEditingController();
+  final _searchItems = TextEditingController();
+
+  String _commissionType = 'percent';
+  final Set<String> _supplierIds = {};
+  final Set<String> _categoryIds = {};
+  final Set<String> _typeIds = {};
+  final Set<String> _itemIds = {};
+  final Map<String, String> _itemLabels = {};
+  String? _nameError;
+  String? _phoneError;
+  String? _commissionError;
+
+  List<Map<String, dynamic>> _brokerRows = [];
+  String? _dupHint;
+  Timer? _dupTimer;
+  Timer? _itemDebounce;
+  List<Map<String, dynamic>> _itemHits = [];
+  String _freightType = 'separate';
+
+  final _brkNameFocus = FocusNode();
+  final _brkPhoneFocus = FocusNode();
+  final _brkCommissionFocus = FocusNode();
+  final _brkPaymentDaysFocus = FocusNode();
+  final _brkSearchSuppliersFocus = FocusNode();
+  final _brkSearchItemsFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _name.addListener(_checkDupDebounced);
+    bindFocusNodeScrollIntoView(_brkNameFocus);
+    bindFocusNodeScrollIntoView(_brkPhoneFocus);
+    bindFocusNodeScrollIntoView(_brkCommissionFocus);
+    bindFocusNodeScrollIntoView(_brkPaymentDaysFocus);
+    bindFocusNodeScrollIntoView(_brkSearchSuppliersFocus);
+    bindFocusNodeScrollIntoView(_brkSearchItemsFocus);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_loadInitial());
+    });
+  }
+
+  @override
+  void dispose() {
+    _dupTimer?.cancel();
+    _itemDebounce?.cancel();
+    _name.dispose();
+    _phone.dispose();
+    _location.dispose();
+    _notes.dispose();
+    _commission.dispose();
+    _paymentDays.dispose();
+    _discount.dispose();
+    _delivered.dispose();
+    _billty.dispose();
+    _searchSuppliers.dispose();
+    _searchItems.dispose();
+    _brkNameFocus.dispose();
+    _brkPhoneFocus.dispose();
+    _brkCommissionFocus.dispose();
+    _brkPaymentDaysFocus.dispose();
+    _brkSearchSuppliersFocus.dispose();
+    _brkSearchItemsFocus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadInitial() async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      _brokerRows =
+          await ref.read(hexaApiProvider).listBrokers(businessId: session.primaryBusiness.id);
+    } catch (_) {}
+    if (widget.brokerId != null && widget.brokerId!.isNotEmpty) {
+      try {
+        final b = await ref.read(hexaApiProvider).getBroker(
+              businessId: session.primaryBusiness.id,
+              brokerId: widget.brokerId!,
+            );
+        if (!mounted || b.isEmpty) return;
+        setState(() {
+          _name.text = b['name']?.toString() ?? '';
+          _phone.text = b['phone']?.toString() ?? '';
+          _location.text = b['location']?.toString() ?? '';
+          _notes.text = b['notes']?.toString() ?? '';
+          _commissionType = b['commission_type']?.toString() == 'flat' ? 'flat' : 'percent';
+          _commission.text = b['commission_value']?.toString() ?? '';
+          final pd = (b['default_payment_days'] as num?)?.toInt();
+          _paymentDays.text = pd != null ? '$pd' : '';
+          _discount.text =
+              b['default_discount']?.toString() ?? '';
+          _delivered.text =
+              b['default_delivered_rate']?.toString() ?? '';
+          _billty.text =
+              b['default_billty_rate']?.toString() ?? '';
+          final ft = b['freight_type']?.toString();
+          _freightType = (ft == 'included' || ft == 'separate')
+              ? ft!
+              : 'separate';
+          _supplierIds
+            ..clear()
+            ..addAll(((b['supplier_ids'] as List?) ?? const [])
+                .map((e) => e.toString())
+                .where((e) => e.isNotEmpty));
+          final pj = b['preferences_json']?.toString();
+          if (pj != null && pj.trim().isNotEmpty) {
+            final p = jsonDecode(pj) as Map<String, dynamic>;
+            _categoryIds
+              ..clear()
+              ..addAll((p['category_ids'] as List? ?? const []).map((e) => e.toString()));
+            _typeIds
+              ..clear()
+              ..addAll((p['type_ids'] as List? ?? const []).map((e) => e.toString()));
+            _itemIds
+              ..clear()
+              ..addAll((p['item_ids'] as List? ?? const []).map((e) => e.toString()));
+          }
+          _dirty = false;
+        });
+      } catch (_) {}
+    }
+  }
+
+  void _markDirty() {
+    if (!_dirty) setState(() => _dirty = true);
+  }
+
+  void _checkDupDebounced() {
+    _dupTimer?.cancel();
+    _dupTimer = Timer(const Duration(milliseconds: 350), () {
+      final n = _name.text.trim().toLowerCase();
+      if (n.length < 2) {
+        if (mounted) setState(() => _dupHint = null);
+        return;
+      }
+      final hit = _brokerRows.where((b) {
+        final id = b['id']?.toString();
+        if (widget.brokerId != null && id == widget.brokerId) return false;
+        final bn = (b['name']?.toString() ?? '').toLowerCase();
+        return bn == n || bn.contains(n) || n.contains(bn);
+      }).firstOrNull;
+      if (!mounted) return;
+      setState(() {
+        _dupHint = hit == null ? null : 'Similar broker exists: ${hit['name']}';
+      });
+    });
+  }
+
+  bool _validateStep0() {
+    _nameError = null;
+    _phoneError = null;
+    if (_name.text.trim().isEmpty) _nameError = 'Required';
+    final rawPhone = _phone.text.trim();
+    if (rawPhone.isNotEmpty && !_validPhoneDigits(_phone.text)) {
+      _phoneError = 'Enter a valid phone (10–15 digits)';
+    }
+    setState(() {});
+    return _nameError == null && _phoneError == null;
+  }
+
+  bool _validateStep1() {
+    _commissionError = null;
+    final commRaw = _commission.text.trim();
+    if (commRaw.isNotEmpty && double.tryParse(commRaw) == null) {
+      _commissionError = 'Enter a valid number';
+    }
+    setState(() {});
+    return _commissionError == null;
+  }
+
+  /// Blocks create/rename when another broker already uses this name (case-insensitive).
+  String? _blockingDuplicateBrokerName(String candidate) {
+    final c = candidate.trim().toLowerCase();
+    if (c.isEmpty) return null;
+    final self = widget.brokerId?.trim();
+    for (final b in _brokerRows) {
+      final id = b['id']?.toString();
+      if (self != null && self.isNotEmpty && id == self) continue;
+      final bn = (b['name']?.toString() ?? '').trim().toLowerCase();
+      if (bn.isNotEmpty && bn == c) {
+        return b['name']?.toString() ?? bn;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _runItemSearch(String q) async {
+    _itemDebounce?.cancel();
+    if (q.trim().length < 2) {
+      setState(() => _itemHits = []);
+      return;
+    }
+    _itemDebounce = Timer(const Duration(milliseconds: 300), () async {
+      final session = ref.read(sessionProvider);
+      if (session == null) return;
+      try {
+        final res = await ref.read(hexaApiProvider).unifiedSearch(
+              businessId: session.primaryBusiness.id,
+              q: q.trim(),
+            );
+        final items = res['catalog_items'];
+        final out = <Map<String, dynamic>>[];
+        if (items is List) {
+          for (final e in items.take(20)) {
+            if (e is Map) out.add(Map<String, dynamic>.from(e));
+          }
+        }
+        if (mounted) setState(() => _itemHits = out);
+      } catch (_) {
+        if (mounted) setState(() => _itemHits = []);
+      }
+    });
+  }
+
+  Future<void> _save() async {
+    if (!_validateStep0()) {
+      setState(() => _step = 0);
+      return;
+    }
+    if (!_validateStep1()) {
+      setState(() => _step = 1);
+      return;
+    }
+    final dupExact = _blockingDuplicateBrokerName(_name.text);
+    if (dupExact != null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Broker "$dupExact" already exists. Use a different name.'),
+        ),
+      );
+      setState(() => _step = 0);
+      return;
+    }
+    if (widget.brokerId == null && _dupHint != null && mounted) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Similar broker'),
+          content: Text('$_dupHint\n\nContinue saving this broker?'),
+          actions: [
+            TextButton(onPressed: () => ctx.pop(false), child: const Text('Go back')),
+            FilledButton(onPressed: () => ctx.pop(true), child: const Text('Continue')),
+          ],
+        ),
+      );
+      if (go != true) return;
+    }
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final bid = session.primaryBusiness.id;
+    final cv = double.tryParse(_commission.text.trim());
+    final payDays = int.tryParse(_paymentDays.text.trim());
+    final disc = double.tryParse(_discount.text.trim());
+    final del = double.tryParse(_delivered.text.trim());
+    final bill = double.tryParse(_billty.text.trim());
+    if (_paymentDays.text.trim().isNotEmpty && payDays == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid payment days number.')),
+      );
+      setState(() => _step = 1);
+      return;
+    }
+    if (_discount.text.trim().isNotEmpty && disc == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid discount %.')),
+      );
+      setState(() => _step = 1);
+      return;
+    }
+    if (_delivered.text.trim().isNotEmpty && del == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid delivered rate.')),
+      );
+      setState(() => _step = 1);
+      return;
+    }
+    if (_billty.text.trim().isNotEmpty && bill == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid billty rate.')),
+      );
+      setState(() => _step = 1);
+      return;
+    }
+    final prefs = <String, dynamic>{
+      'category_ids': _categoryIds.toList(),
+      'type_ids': _typeIds.toList(),
+      'item_ids': _itemIds.toList(),
+    };
+    try {
+      Map<String, dynamic> out;
+      if (widget.brokerId != null && widget.brokerId!.isNotEmpty) {
+        out = await ref.read(hexaApiProvider).updateBroker(
+              businessId: bid,
+              brokerId: widget.brokerId!,
+              name: _name.text.trim(),
+              phone: _phone.text.trim().isEmpty ? null : _phone.text.trim(),
+              location: _location.text.trim().isEmpty ? null : _location.text.trim(),
+              notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+              commissionType: _commissionType,
+              commissionValue: cv,
+              defaultPaymentDays:
+                  _paymentDays.text.trim().isEmpty ? null : payDays,
+              defaultDiscount: _discount.text.trim().isEmpty ? null : disc,
+              defaultDeliveredRate:
+                  _delivered.text.trim().isEmpty ? null : del,
+              defaultBilltyRate: _billty.text.trim().isEmpty ? null : bill,
+              freightType: _freightType,
+              supplierIds: _supplierIds.toList(),
+              preferences: prefs,
+            );
+      } else {
+        out = await ref.read(hexaApiProvider).createBroker(
+              businessId: bid,
+              name: _name.text.trim(),
+              phone: _phone.text.trim().isEmpty ? null : _phone.text.trim(),
+              location: _location.text.trim().isEmpty ? null : _location.text.trim(),
+              notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+              commissionType: _commissionType,
+              commissionValue: cv,
+              defaultPaymentDays:
+                  _paymentDays.text.trim().isEmpty ? null : payDays,
+              defaultDiscount: _discount.text.trim().isEmpty ? null : disc,
+              defaultDeliveredRate:
+                  _delivered.text.trim().isEmpty ? null : del,
+              defaultBilltyRate: _billty.text.trim().isEmpty ? null : bill,
+              freightType: _freightType,
+              supplierIds: _supplierIds.toList(),
+              preferences: prefs,
+            );
+      }
+      final brokerId = out['id']?.toString();
+      if (brokerId != null && brokerId.isNotEmpty) {
+        final allSup = await ref.read(suppliersListProvider.future);
+        for (final e in allSup) {
+          final s = Map<String, dynamic>.from(e as Map);
+          final sid = s['id']?.toString();
+          if (sid == null || sid.isEmpty) continue;
+          final existing = ((s['broker_ids'] as List?) ?? const [])
+              .map((x) => x.toString())
+              .toList();
+          final shouldHave = _supplierIds.contains(sid);
+          final has = existing.contains(brokerId);
+          if (shouldHave && !has) {
+            existing.add(brokerId);
+          } else if (!shouldHave && has) {
+            existing.removeWhere((x) => x == brokerId);
+          } else {
+            continue;
+          }
+          await ref.read(hexaApiProvider).updateSupplier(
+                businessId: bid,
+                supplierId: sid,
+                brokerIds: existing,
+                brokerId: existing.isEmpty ? null : existing.first,
+              );
+        }
+      }
+      ref.invalidate(brokersListProvider);
+      ref.invalidate(contactsBrokersEnrichedProvider);
+      ref.invalidate(suppliersListProvider);
+      ref.invalidate(contactsSuppliersEnrichedProvider);
+      invalidateTradePurchaseCaches(ref);
+      invalidateBusinessAggregates(ref);
+      if (!mounted) return;
+      if (widget.selectionReturnOnSave) {
+        final rid = brokerId ?? widget.brokerId ?? '';
+        context.pop(<String, dynamic>{
+          if (rid.isNotEmpty) 'id': rid,
+          'name': _name.text.trim(),
+        });
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(widget.brokerId == null ? 'Broker created' : 'Broker updated'),
+        ),
+      );
+      context.pop();
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final code = e.response?.statusCode;
+      if (code == 409) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('A broker with this name already exists.')),
+        );
+        setState(() => _step = 0);
+        return;
+      }
+      showRetryableErrorSnackBar(context, e, onRetry: () {
+        if (context.mounted) unawaited(_save());
+      });
+    } catch (e) {
+      if (!mounted) return;
+      showRetryableErrorSnackBar(context, e, onRetry: () {
+        if (context.mounted) unawaited(_save());
+      });
+    }
+  }
+
+  Future<void> _exit() async {
+    if (!_dirty || !mounted) {
+      if (mounted) context.pop();
+      return;
+    }
+    final keep = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Save changes?'),
+        content: const Text('You have unsaved broker changes.'),
+        actions: [
+          TextButton(onPressed: () => ctx.pop(false), child: const Text('Discard')),
+          FilledButton(onPressed: () => ctx.pop(true), child: const Text('Stay')),
+        ],
+      ),
+    );
+    if (keep == false && mounted) context.pop();
+  }
+
+  InputDecoration _d(String label, {String? hint}) => InputDecoration(
+        isDense: true,
+        labelText: label,
+        hintText: hint,
+        border: const OutlineInputBorder(),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      );
+
+  Widget _step0(BuildContext context) {
+    final sp = formFieldScrollPaddingForContext(context, reserveBelowField: 200);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_dupHint != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child:
+                Text(_dupHint!, style: const TextStyle(color: Colors.orange)),
+          ),
+        TextField(
+          controller: _name,
+          focusNode: _brkNameFocus,
+          scrollPadding: sp,
+          decoration: _d('Broker Name *').copyWith(errorText: _nameError),
+          onChanged: (_) => _markDirty(),
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _phone,
+          focusNode: _brkPhoneFocus,
+          scrollPadding: sp,
+          decoration: _d('Phone (optional)').copyWith(errorText: _phoneError),
+          keyboardType: const TextInputType.numberWithOptions(signed: false, decimal: false),
+          onChanged: (_) => _markDirty(),
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _location,
+          scrollPadding: sp,
+          decoration: _d('Location'),
+          onChanged: (_) => _markDirty(),
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _notes,
+          scrollPadding: sp,
+          decoration: _d('Notes'),
+          minLines: 2,
+          maxLines: 3,
+          onChanged: (_) => _markDirty(),
+        ),
+      ],
+    );
+  }
+
+  Widget _step1(BuildContext context) {
+    final sp = formFieldScrollPaddingForContext(context, reserveBelowField: 200);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'percent', label: Text('Percentage %')),
+            ButtonSegment(value: 'flat', label: Text('Fixed ₹')),
+          ],
+          selected: {_commissionType},
+          onSelectionChanged: (v) {
+            setState(() {
+              _commissionType = v.first;
+              _markDirty();
+            });
+          },
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _commission,
+          focusNode: _brkCommissionFocus,
+          scrollPadding: sp,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: _d(_commissionType == 'percent'
+                  ? 'Commission Value (%)'
+                  : 'Commission Value (₹)')
+              .copyWith(errorText: _commissionError),
+          onChanged: (_) => _markDirty(),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          'Default deal terms for new purchases',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _paymentDays,
+          focusNode: _brkPaymentDaysFocus,
+          scrollPadding: sp,
+          keyboardType: TextInputType.number,
+          decoration: _d('Payment days (optional)'),
+          onChanged: (_) => _markDirty(),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _discount,
+          scrollPadding: sp,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: _d('Header discount % (optional)'),
+          onChanged: (_) => _markDirty(),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _delivered,
+          scrollPadding: sp,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: _d('Default delivered rate ₹ (optional)'),
+          onChanged: (_) => _markDirty(),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _billty,
+          scrollPadding: sp,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: _d('Default billty rate ₹ (optional)'),
+          onChanged: (_) => _markDirty(),
+        ),
+        const SizedBox(height: 10),
+        Text('Freight handling', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 6),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'included', label: Text('Included')),
+            ButtonSegment(value: 'separate', label: Text('Separate')),
+          ],
+          selected: {_freightType},
+          onSelectionChanged: (v) {
+            setState(() {
+              _freightType = v.first;
+              _markDirty();
+            });
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _step2(BuildContext context) {
+    final sp = formFieldScrollPaddingForContext(context, reserveBelowField: 200);
+    final suppliersAsync = ref.watch(suppliersListProvider);
+    final q = _searchSuppliers.text.trim().toLowerCase();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _searchSuppliers,
+                focusNode: _brkSearchSuppliersFocus,
+                scrollPadding: sp,
+                decoration: _d('Search suppliers'),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: () => Navigator.of(context, rootNavigator: true).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SupplierCreateWizardPage(),
+                  fullscreenDialog: true,
+                ),
+              ),
+              child: const Text('Create Supplier'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        suppliersAsync.whenForm(
+          initialLoading: () => const LinearProgressIndicator(),
+          reloadingBanner: (_) => formReloadBanner(),
+          error: (e, __) => FriendlyLoadError(
+            message: 'Could not load suppliers',
+            onRetry: () => ref.invalidate(suppliersListProvider),
+          ),
+          data: (rows) {
+            final filtered = rows
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .where((s) =>
+                    q.isEmpty || (s['name']?.toString().toLowerCase().contains(q) ?? false))
+                .toList();
+            return Column(
+              children: filtered.map((s) {
+                final sid = s['id']?.toString() ?? '';
+                final checked = _supplierIds.contains(sid);
+                return CheckboxListTile(
+                  dense: true,
+                  value: checked,
+                  onChanged: (v) {
+                    setState(() {
+                      if (v == true) {
+                        _supplierIds.add(sid);
+                      } else {
+                        _supplierIds.remove(sid);
+                      }
+                      _markDirty();
+                    });
+                  },
+                  title: Text(s['name']?.toString() ?? ''),
+                  subtitle: Text(s['location']?.toString() ?? ''),
+                );
+              }).toList(),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _step3(BuildContext context) {
+    final sp = formFieldScrollPaddingForContext(context, reserveBelowField: 200);
+    final cats = ref.watch(itemCategoriesListProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _searchItems,
+          focusNode: _brkSearchItemsFocus,
+          scrollPadding: sp,
+          decoration: _d('Search items / categories'),
+          onChanged: (v) => _runItemSearch(v),
+        ),
+        const SizedBox(height: 8),
+        cats.whenForm(
+          initialLoading: () => const LinearProgressIndicator(),
+          reloadingBanner: (_) => formReloadBanner(),
+          data: (rows) => Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: rows.map((c) {
+              final id = c['id']?.toString() ?? '';
+              final sel = _categoryIds.contains(id);
+              return FilterChip(
+                label: Text(c['name']?.toString() ?? ''),
+                selected: sel,
+                onSelected: (v) {
+                  setState(() {
+                    if (v) {
+                      _categoryIds.add(id);
+                    } else {
+                      _categoryIds.remove(id);
+                    }
+                    _markDirty();
+                  });
+                },
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 10),
+        ..._itemHits.map((h) {
+          final id = h['id']?.toString();
+          if (id == null || id.isEmpty) return const SizedBox.shrink();
+          final name = h['name']?.toString() ?? h['item_name']?.toString() ?? 'Item';
+          final selected = _itemIds.contains(id);
+          return ListTile(
+            dense: true,
+            title: Text(name),
+            subtitle: Text(h['category']?.toString() ?? ''),
+            trailing:
+                Icon(selected ? Icons.check_circle_rounded : Icons.add_circle_outline_rounded),
+            onTap: () {
+              setState(() {
+                if (selected) {
+                  _itemIds.remove(id);
+                } else {
+                  _itemIds.add(id);
+                }
+                _itemLabels[id] = name;
+                _markDirty();
+              });
+            },
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _body() {
+    switch (_step) {
+      case 0:
+        return SingleChildScrollView(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.paddingOf(context).bottom + 8,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _step0(context),
+              const SizedBox(height: 4),
+              Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: Text(
+                    'Advanced (optional)',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF0F172A),
+                        ),
+                  ),
+                  subtitle: Text(
+                    'Link suppliers & item preferences — can be edited later from broker detail',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  children: [
+                    Text(
+                      'Linked suppliers',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF0F172A),
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    _step2(context),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Preferred items & categories',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF0F172A),
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    _step3(context),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      default:
+        return _step1(context);
+    }
+  }
+
+  Widget _footer() {
+    final finalStep = _step == 1;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      child: Row(
+        children: [
+          TextButton(
+            onPressed: _exit,
+            child: const Text('Cancel'),
+          ),
+          const Spacer(),
+          if (finalStep)
+            FilledButton(
+              onPressed: _save,
+              child: const Text('Save Broker'),
+            )
+          else
+            FilledButton(
+              onPressed: () {
+                if (!_validateStep0()) return;
+                setState(() {
+                  _step = 1;
+                  _dirty = true;
+                });
+              },
+              child: const Text('Next'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final titles = [
+      'Broker details',
+      'Commission',
+    ];
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_step > 0) {
+          setState(() => _step--);
+          return;
+        }
+        await _exit();
+      },
+      child: FullScreenFormScaffold(
+        title: widget.brokerId == null ? 'New broker' : 'Edit broker',
+        subtitle: '${titles[_step]} · Step ${_step + 1} of ${titles.length}',
+        onBackPressed: () {
+          if (_step > 0) {
+            setState(() => _step--);
+          } else {
+            unawaited(_exit());
+          }
+        },
+        body: _body(),
+        bottom: SafeArea(
+          minimum: const EdgeInsets.only(bottom: 8),
+          child: _footer(),
+        ),
+      ),
+    );
+  }
+}
