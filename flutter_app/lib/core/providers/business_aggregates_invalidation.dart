@@ -483,8 +483,12 @@ void invalidateStockRowSaveSurfaces(
   ref.invalidate(stockFilteredStatusCountsProvider);
   ref.invalidate(stockDeliveryIndicatorCountsProvider);
   if (itemId.isNotEmpty) {
-    unawaited(patchStockItemInCache(ref, itemId: itemId));
-    deferInvalidateDelayed(ref, stockListProvider, delay: const Duration(seconds: 5));
+    if (immediateListReconcile) {
+      ref.invalidate(stockListProvider);
+    } else {
+      unawaited(patchStockItemInCache(ref, itemId: itemId));
+      deferInvalidateDelayed(ref, stockListProvider, delay: const Duration(seconds: 5));
+    }
   } else if (immediateListReconcile) {
     ref.invalidate(stockListProvider);
   } else if (deferFullList) {

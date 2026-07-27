@@ -6,6 +6,10 @@ import 'stock_list_providers.dart';
 import 'stock_detail_providers.dart';
 
 /// Realtime single-item refresh: fetch one row and patch list cache (no full list refetch).
+///
+/// If the item's patch sequence advanced while the fetch was in-flight (meaning
+/// another, more recent patch was applied), the server response is skipped to
+/// avoid overwriting newer data with stale data.
 Future<void> patchStockItemInCache(
   dynamic ref, {
   required String itemId,
@@ -13,11 +17,13 @@ Future<void> patchStockItemInCache(
   if (itemId.isEmpty) return;
   final session = ref.read(sessionProvider);
   if (session == null) return;
+  final seqBefore = captureItemPatchSeq(itemId);
   try {
     final detail = await ref.read(hexaApiProvider).getStockItem(
           businessId: session.primaryBusiness.id,
           itemId: itemId,
         );
+    if (captureItemPatchSeq(itemId) != seqBefore) return;
     final patch = <String, dynamic>{
       ...stockListPatchFromStockDetail(detail),
       ...stockListPatchFromPhysicalCount(detail),

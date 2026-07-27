@@ -13,6 +13,8 @@ import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/json_coerce.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart'
     show invalidateStockRowSaveSurfaces;
+import '../../../core/providers/business_write_event.dart'
+    show emitBusinessWriteEvent;
 import '../../../core/notifications/local_notifications_service.dart';
 import '../../../core/providers/stock_providers.dart'
     show
@@ -333,6 +335,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
       if (phys != null) 'physical_stock_difference_qty': phys - system,
     };
     applyStockListRowPatch(parentRef, itemId: itemId, patch: patch);
+    applyStockItemDetailPatch(parentRef, itemId: itemId, patch: patch);
   }
 
   static Future<void> _afterSaveBackgroundWithRef({
@@ -410,6 +413,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         parsed: parsed,
       );
       parentRef.invalidate(stockStatusCountsProvider);
+      emitBusinessWriteEvent(parentRef, kind: 'stock', affectedItemIds: {itemId});
       if (mode == StockUpdateMode.physical) {
         messenger?.showSnackBar(
           const SnackBar(

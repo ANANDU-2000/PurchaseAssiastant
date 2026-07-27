@@ -699,9 +699,6 @@ final bulkStockListProvider =
   };
 });
 
-/// Request sequence counter for rapid-edit race ordering.
-int _stockPatchSeq = 0;
-
 /// Optimistic list-row overlays until the next `/stock/list` fetch replaces them.
 final stockListRowPatchProvider =
     StateProvider<Map<String, Map<String, dynamic>>>((ref) => const {});
@@ -736,13 +733,21 @@ void _patchStockListSnapshot(
   patchProvider(stockListLiveSnapshotProvider);
 }
 
+final Map<String, int> _itemPatchSeq = {};
+int _globalPatchSeq = 0;
+
+int captureItemPatchSeq(String itemId) {
+  return _itemPatchSeq[itemId] ?? 0;
+}
+
 void applyStockListRowPatch(
   dynamic ref, {
   required String itemId,
   required Map<String, dynamic> patch,
 }) {
   if (itemId.isEmpty || patch.isEmpty) return;
-  final seq = ++_stockPatchSeq;
+  final seq = ++_globalPatchSeq;
+  _itemPatchSeq[itemId] = seq;
   ref.read(stockListRowPatchProvider.notifier).update((current) {
     return {
       ...current,
