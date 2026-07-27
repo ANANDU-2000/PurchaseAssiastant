@@ -4,6 +4,15 @@ import ssl
 import time
 from collections.abc import AsyncGenerator
 
+# Use OS trust store (Ubuntu on Render) — needed for SSL to Render Postgres
+# when certifi alone does not include the necessary CA chain.
+try:
+    import truststore
+
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
+
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
