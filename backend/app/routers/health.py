@@ -38,13 +38,13 @@ async def root_head():
 
 @router.get("/health/live")
 async def health_live():
-    """Instant liveness for Render platform health checks (no DB)."""
+    """Instant liveness health check (no DB)."""
     return {"alive": True}
 
 
 @router.get("/health")
 async def health(settings: Settings = Depends(get_settings)):
-    """Liveness + non-secret config hints for ops (Render/Vercel smoke tests)."""
+    """Liveness + non-secret config hints for smoke tests."""
     prov = (settings.ai_provider or "stub").strip().lower()
     gemini_k = bool((settings.google_ai_api_key or "").strip())
     groq_k = bool((settings.groq_api_key or "").strip())
@@ -83,10 +83,10 @@ async def health(settings: Settings = Depends(get_settings)):
 
 @router.get("/health/ready")
 async def health_ready(db: AsyncSession = Depends(get_db)):
-    """Readiness for load balancers (Render health checks, uptime monitors).
+    """Readiness for load balancers and uptime monitors.
 
     Returns **200** when `SELECT 1` succeeds; **503** if the database is unreachable.
-    Response includes **db_ms** — use Render logs + `SLOW_HTTP` / `HTTP 503` to correlate.
+    Response includes **db_ms** — use with `SLOW_HTTP` / `HTTP 503` to correlate.
     """
     t0 = time.perf_counter()
     try:

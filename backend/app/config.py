@@ -60,19 +60,8 @@ class Settings(BaseSettings):
 
     # Local dev without Postgres: sqlite+aiosqlite:///./hexa_dev.db (file created next to cwd when running uvicorn from backend/)
     database_url: str = "postgresql+asyncpg://user:password@localhost:5432/hexa"
-    # Optional: Supabase pooler (Session or Transaction) from Dashboard → Connect → pooler URI, port 6543.
-    # On some hosts (e.g. Render) direct db.<ref>.supabase.co:5432 can fail with "Network is unreachable";
-    # set this to the pooler URL and keep DATABASE_URL as fallback or duplicate — engine uses this when set.
-    database_pooler_url: str | None = None
-    # When set, overrides any password embedded in DATABASE_POOLER_URL. Use with a URI that has no
-    # password in the userinfo (postgresql+asyncpg://USER@HOST:PORT/DB) so special chars like @ in the
-    # password do not break parsing (avoids gaierror / "Name or service not known" on Render).
-    database_pooler_password: str | None = None
-    # Dev-only: if TLS fails with CERTIFICATE_VERIFY_FAILED (AV/corporate proxy MITM), set true. Forbidden in production.
-    database_ssl_insecure: bool = False
-    # Encrypted TLS to Postgres, but skip verifying the server certificate chain. Some PaaS (e.g. Render) + Supabase
-    # pooler combinations fail SSL verify despite valid AWS certs; opt-in only. Prefer false once CA trust works.
-    database_ssl_skip_verify: bool = False
+    # Enable SSL for Postgres connection (for cross-network or cloud-hosted DB). False for local/inner-network.
+    database_ssl: bool = False
     # Async SQLAlchemy QueuePool knobs (PostgreSQL only; SQLite ignores).
     database_pool_size: int = Field(
         default=10,
@@ -103,14 +92,13 @@ class Settings(BaseSettings):
     database_get_read_failsafe: bool = True
     # asyncio wait_for cap for curated heavy GET aggregates (snapshot, home-overview, month dashboard).
     # 0 disables. Mutations rely on database_command_timeout_seconds instead.
-    # 8s default: Render cold home-overview can exceed 4s; home-overview also uses 10s override.
     api_read_budget_seconds: float = 8.0
 
     # Log WARNING when HTTP round-trip exceeds this many ms (all routes). 0 disables slow-request WARN.
     http_slow_request_warning_ms: int = 500
     # Echo X-Request-Id through responses (reuse client-supplied UUID or allocate one).
     http_propagate_request_id: bool = True
-    # Structured HTTP_JSON on every request (noisy on Render; keep false in production).
+    # Structured HTTP_JSON on every request (keep false in production).
     http_access_log_all: bool = False
 
     redis_url: str | None = "redis://localhost:6379/0"
@@ -239,8 +227,7 @@ class Settings(BaseSettings):
             raise RuntimeError("JWT secrets must be changed in production")
         if len(self.jwt_secret) < 32 or len(self.jwt_refresh_secret) < 32:
             raise RuntimeError("JWT secrets must be at least 32 characters in production")
-        if self.database_ssl_insecure:
-            raise RuntimeError("DATABASE_SSL_INSECURE must be false in production")
+        # SSL is enabled/disabled per environment; no production guard needed.
 
 
 @lru_cache

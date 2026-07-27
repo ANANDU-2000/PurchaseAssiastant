@@ -1,7 +1,6 @@
 """In-process coarse realtime invalidation events.
 
-This is intentionally lightweight: Render runs one API process today, and the
-events only tell clients which surfaces to refresh. Database state remains the
+Events only tell clients which surfaces to refresh. Database state remains the
 source of truth.
 """
 

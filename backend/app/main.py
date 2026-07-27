@@ -124,7 +124,7 @@ async def lifespan(app: FastAPI):
             from alembic import command
             from alembic.config import Config
 
-            # Render start command does `cd backend && uvicorn ...`, so `alembic.ini`
+            # Production start runs migrations from the `backend/` directory.
             # is often available as a relative path. We keep a few fallbacks to
             # avoid fragile assumptions about the current working directory.
             candidates = [
@@ -512,7 +512,7 @@ _PROD_WEB_ORIGINS = (
     "https://purchase-assiastant.vercel.app",
     "https://purchase-assistant.vercel.app",
 )
-# Always merge prod Vercel hosts — Render env can omit them or APP_ENV may be mis-set.
+# Merge prod Vercel hosts to ensure CORS works in production.
 _seen_prod = set(_origins)
 for _web in _PROD_WEB_ORIGINS:
     if _web not in _seen_prod:

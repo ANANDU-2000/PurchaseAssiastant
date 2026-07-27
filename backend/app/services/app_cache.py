@@ -1,4 +1,4 @@
-"""In-process TTL cache for single-instance Render deployments (no Redis required)."""
+"""In-process TTL cache for single-instance deployments (no Redis required)."""
 
 from __future__ import annotations
 

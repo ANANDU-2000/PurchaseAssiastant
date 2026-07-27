@@ -4,18 +4,7 @@ import ssl
 import time
 from collections.abc import AsyncGenerator
 
-
-# Use OS trust store (Ubuntu on Render) + certifi; fixes SSLCertVerificationError to Supabase/ AWS
-# when certifi alone sees "self-signed certificate in the certificate chain".
-try:
-    import truststore
-
-    truststore.inject_into_ssl()
-except ImportError:
-    pass
-
 from sqlalchemy import event
-from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
@@ -36,7 +25,7 @@ def _normalize_postgres_async_url(url: str) -> str:
     return url
 
 
-# Bypass .env pooler/postgres when Supabase is unreachable (e.g. SSL hang). Set HEXA_USE_SQLITE=1.
+# Set HEXA_USE_SQLITE=1 to use local SQLite for development/testing.
 if os.environ.get("HEXA_USE_SQLITE", "").strip().lower() in ("1", "true", "yes"):
     _default_sqlite = "sqlite+aiosqlite:///./hexa_dev.db"
     raw = (os.environ.get("DATABASE_URL") or "").strip()
@@ -50,117 +39,25 @@ if os.environ.get("HEXA_USE_SQLITE", "").strip().lower() in ("1", "true", "yes")
             )
         _sqlite_url = _default_sqlite
     _sqlite = True
-    _pooler = ""
     _effective_url = _sqlite_url
     logger.info("HEXA_USE_SQLITE: using local SQLite (%s)", _sqlite_url)
 else:
     _sqlite = settings.database_url.startswith("sqlite")
-    _pooler = (settings.database_pooler_url or "").strip()
-    if _pooler:
-        _pl = _pooler.lower()
-        if "[your-password]" in _pl or "your-password" in _pl:
-            logger.error(
-                "DATABASE_POOLER_URL still contains the Supabase placeholder [YOUR-PASSWORD]. "
-                "Set DATABASE_POOLER_PASSWORD to your real DB password and use a URI with no password in the string "
-                "(postgresql+asyncpg://postgres.PROJECT_REF@HOST:6543/postgres)."
-            )
-        if "postgres.[" in _pooler or "postgres:[" in _pooler:
-            logger.error(
-                "Invalid URI: do not wrap the password in square brackets. "
-                "Use postgres.PROJECT_REF@host (see DATABASE_POOLER_PASSWORD)."
-            )
-    _effective_url = _pooler if _pooler else settings.database_url
-    if not _sqlite:
-        _effective_url = _normalize_postgres_async_url(_effective_url)
-
-    # Optional: password only in DATABASE_POOLER_PASSWORD — keeps @/#/ etc. out of the URI string.
-    if _pooler and settings.database_pooler_password and settings.database_pooler_password.strip():
-        try:
-            _u = make_url(_effective_url)
-            _effective_url = _u.set(
-                password=settings.database_pooler_password.strip(),
-            ).render_as_string(hide_password=False)
-            logger.info("Applied DATABASE_POOLER_PASSWORD (URI should omit password; userinfo user@host only).")
-        except Exception as e:  # noqa: BLE001
-            logger.warning("Could not merge DATABASE_POOLER_PASSWORD into pooler URL: %s", e)
-
-    if _pooler:
-        logger.info("Using DATABASE_POOLER_URL for SQLAlchemy engine")
-        if not _pooler.startswith(("postgresql+asyncpg://", "postgres+asyncpg://")) and (
-            _pooler.startswith("postgresql://") or _pooler.startswith("postgres://")
-        ):
-            logger.info(
-                "Normalized DATABASE_POOLER_URL to postgresql+asyncpg:// (Supabase often pastes postgresql://)."
-            )
-        elif not _pooler.startswith(("postgresql+asyncpg://", "postgres+asyncpg://")):
-            logger.warning(
-                "DATABASE_POOLER_URL should use postgresql+asyncpg:// (or plain postgresql://, which we normalize)."
-            )
-        # Direct host + 5432 is NOT the pooler — Render often gets Errno 101 to db.*.supabase.co.
-        if (
-            "db." in _pooler
-            and ".supabase.co" in _pooler
-            and ":5432" in _pooler
-            and "pooler.supabase.com" not in _pooler
-        ):
-            logger.warning(
-                "DATABASE_POOLER_URL looks like a direct Supabase URL (db.*.supabase.co:5432). "
-                "Copy the pooler string from Supabase Dashboard → Connect → "
-                "Transaction pooler (host aws-0-*.pooler.supabase.com, port 6543) or Session pooler."
-            )
+    _effective_url = settings.database_url if _sqlite else _normalize_postgres_async_url(settings.database_url)
 
 _connect_args: dict = {"check_same_thread": False} if _sqlite else {}
-# asyncpg caches prepared statements per connection. PgBouncer (transaction mode) and
-# Supabase pooler reuse connections across clients — stale stmt names →
-# InvalidSQLStatementNameError. Disabling the cache is the standard fix.
+# asyncpg caches prepared statements per connection. Disable for PgBouncer/pooler
+# compatibility; can be re-enabled for direct Postgres connections.
 if not _sqlite:
     _connect_args["statement_cache_size"] = 0
 
 if not _sqlite and settings.database_command_timeout_seconds and settings.database_command_timeout_seconds > 0:
     _connect_args["command_timeout"] = float(settings.database_command_timeout_seconds)
 
-if not _sqlite and (
-    "supabase.co" in _effective_url or "pooler.supabase.com" in _effective_url
-):
-    if settings.database_ssl_skip_verify:
-        logger.warning(
-            "DATABASE_SSL_SKIP_VERIFY=true: using TLS to Postgres without verifying the server certificate. "
-            "Traffic is still encrypted; only chain validation is skipped (workaround for some Render+Supabase SSL issues)."
-        )
-        _ctx = ssl.create_default_context()
-        _ctx.check_hostname = False
-        _ctx.verify_mode = ssl.CERT_NONE
-        _connect_args["ssl"] = _ctx
-    elif settings.database_ssl_insecure:
-        _ctx = ssl.create_default_context()
-        _ctx.check_hostname = False
-        _ctx.verify_mode = ssl.CERT_NONE
-        _connect_args["ssl"] = _ctx
-    else:
-        try:
-            import certifi
-
-            _ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
-            _ctx.load_verify_locations(cafile=certifi.where())
-            if hasattr(ssl, "VERIFY_X509_PARTIAL_CHAIN"):
-                _ctx.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN  # type: ignore[attr-defined]
-            _connect_args["ssl"] = _ctx
-        except Exception:  # noqa: BLE001
-            _connect_args["ssl"] = True
+if not _sqlite and settings.database_ssl:
+    _ctx = ssl.create_default_context()
+    _connect_args["ssl"] = _ctx
 _connect_args.setdefault("timeout", float(settings.database_connect_timeout_seconds))
-
-try:
-    _diag = make_url(_effective_url)
-    if not _sqlite and _diag.host and "@" in _diag.host:
-        logger.error(
-            "Database URL is misparsed (hostname contains '@'). Put the password in "
-            "DATABASE_POOLER_PASSWORD and set DATABASE_POOLER_URL to "
-            "postgresql+asyncpg://USER@HOST:PORT/DB with no password in the string."
-        )
-    elif not _sqlite and _pooler and _diag.host:
-        logger.info("Pooler DB host=%s port=%s database=%s", _diag.host, _diag.port, _diag.database)
-except Exception:  # noqa: BLE001
-    pass
 
 
 def is_sqlite_runtime() -> bool:
@@ -168,25 +65,8 @@ def is_sqlite_runtime() -> bool:
     return _sqlite
 
 
-if not _sqlite:
-    try:
-        _eu = make_url(_effective_url)
-        _h = (_eu.host or "").lower()
-        if _h.startswith("db.") and "supabase.co" in _h and "pooler" not in _h:
-            logger.error(
-                "Effective DB host is Supabase DIRECT (db.*.supabase.co). From Render this often fails with "
-                "OSError: [Errno 101] Network is unreachable (IPv4 vs IPv6). Fix: Supabase → Connect → "
-                "Transaction pooler → set DATABASE_POOLER_URL to "
-                "postgresql+asyncpg://postgres.PROJECT_REF@aws-0-REGION.pooler.supabase.com:6543/postgres "
-                "(no password in URL) and DATABASE_POOLER_PASSWORD; leave DATABASE_URL as fallback or any value."
-            )
-    except Exception:  # noqa: BLE001
-        pass
-
 def _sqlalchemy_echo() -> bool:
-    """SQL echo doubles log volume and slows Render; keep off in cloud unless explicitly enabled."""
-    if os.environ.get("RENDER", "").strip().lower() in ("true", "1", "yes"):
-        return os.environ.get("SQLALCHEMY_ECHO", "").strip().lower() in ("1", "true", "yes")
+    """SQL echo doubles log volume; keep off in cloud unless explicitly enabled."""
     return settings.app_env == "development"
 
 
@@ -210,14 +90,6 @@ if not _sqlite:
 
 engine = create_async_engine(_effective_url, **_engine_kwargs)
 if not _sqlite:
-    if (
-        os.environ.get("RENDER", "").strip().lower() in ("true", "1", "yes")
-        and not _engine_kwargs.get("echo")
-    ):
-        logger.info(
-            "Render: SQLAlchemy echo is off (set SQLALCHEMY_ECHO=1 to debug SQL). "
-            "Set APP_ENV=production for production safety checks."
-        )
     logger.info(
         "Database engine: pool_size=%s max_overflow=%s pool_timeout=%s recycle=%ss "
         "pre_ping=%r statement_cache=%r command_timeout=%r connect_timeout=%r",
