@@ -21,6 +21,7 @@ async def resolve_provider_keys(
         "gemini": settings.google_ai_api_key,
         "groq": settings.groq_api_key,
         "openai": settings.openai_api_key,
+        "openrouter": settings.openrouter_api_key,
     }
 
 
@@ -29,6 +30,7 @@ def any_llm_key(keys: dict[str, str | None]) -> bool:
         (keys.get("gemini") or "").strip()
         or (keys.get("groq") or "").strip()
         or (keys.get("openai") or "").strip()
+        or (keys.get("openrouter") or "").strip()
     )
 
 

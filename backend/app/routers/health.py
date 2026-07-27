@@ -49,7 +49,8 @@ async def health(settings: Settings = Depends(get_settings)):
     gemini_k = bool((settings.google_ai_api_key or "").strip())
     groq_k = bool((settings.groq_api_key or "").strip())
     openai_k = bool((settings.openai_api_key or "").strip())
-    ai_key_env = bool(gemini_k or groq_k or openai_k)
+    openrouter_k = bool((settings.openrouter_api_key or "").strip())
+    ai_key_env = bool(gemini_k or groq_k or openai_k or openrouter_k)
     # Assistant always usable (stub rules + grounded queries); LLM intent needs provider + key.
     ai_ready = prov == "stub" or ai_key_env
     # Failover-ready when any key exists (Gemini -> Groq -> OpenAI order at runtime).
@@ -69,6 +70,7 @@ async def health(settings: Settings = Depends(get_settings)):
         "gemini_key_set_in_env": gemini_k,
         "groq_key_set_in_env": groq_k,
         "openai_key_set_in_env": openai_k,
+        "openrouter_key_set_in_env": openrouter_k,
         "llm_failover_ready": llm_failover_ready,
         "enable_ai": settings.enable_ai,
         "ai_ready": ai_ready,

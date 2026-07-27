@@ -463,16 +463,16 @@ void invalidateOpeningStockSaveSurfaces(
   ref.invalidate(stockChangesFeedProvider);
 }
 
-/// Tiered stock row save — immediate list reconcile by default so the user
-/// sees the updated value as soon as the sheet pops. Callers that need to
-/// avoid a list-invalidation storm (batch operations) can pass
-/// [deferFullList]=true + [immediateListReconcile]=false.
+/// Tiered stock row save — single-item patch by default for instant UI
+/// feedback, with a deferred full list reconcile for eventual consistency.
+/// Avoids the race where a full refetch returns stale data before the DB
+/// write propagates, which would clear the optimistic patch.
 void invalidateStockRowSaveSurfaces(
   dynamic ref, {
   required String itemId,
   bool reorderAlert = false,
   bool deferFullList = true,
-  bool immediateListReconcile = true,
+  bool immediateListReconcile = false,
   bool refreshItemDetail = false,
 }) {
   if (refreshItemDetail && itemId.isNotEmpty) {
@@ -482,10 +482,11 @@ void invalidateStockRowSaveSurfaces(
   ref.invalidate(stockStatusCountsProvider);
   ref.invalidate(stockFilteredStatusCountsProvider);
   ref.invalidate(stockDeliveryIndicatorCountsProvider);
-  if (immediateListReconcile) {
-    ref.invalidate(stockListProvider);
-  } else if (itemId.isNotEmpty) {
+  if (itemId.isNotEmpty) {
     unawaited(patchStockItemInCache(ref, itemId: itemId));
+    deferInvalidateDelayed(ref, stockListProvider, delay: const Duration(seconds: 5));
+  } else if (immediateListReconcile) {
+    ref.invalidate(stockListProvider);
   } else if (deferFullList) {
     ref.invalidate(stockListProvider);
   }

@@ -55,10 +55,12 @@ class HexaWebPageFrame extends StatelessWidget {
           );
         }
 
+        final viewportHeight = MediaQuery.sizeOf(context).height;
         return Align(
           alignment: Alignment.topCenter,
           child: SizedBox(
             width: width,
+            height: viewportHeight,
             child: framed,
           ),
         );

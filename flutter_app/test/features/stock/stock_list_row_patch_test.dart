@@ -45,42 +45,26 @@ void main() {
     expect(patch['physical_stock_counted_by'], 'Ananduk');
   });
 
-  test('serverRowNewerThanPatch keeps patch when server row is older', () {
-    final patch = {
-      kStockListPatchAtKey: '2026-06-13T10:00:00.000Z',
-      'physical_stock_qty': 21,
+  test('mergeStockListRowMaps merges patches by id into items list', () {
+    final data = {
+      'items': [
+        {'id': 'a', 'current_stock': 10},
+        {'id': 'b', 'current_stock': 20},
+      ],
+      'total': 2,
     };
-    final serverRow = {
-      'last_stock_updated_at': '2026-06-13T09:00:00.000Z',
+    final patches = {
+      'a': {'current_stock': 15},
     };
-    expect(serverRowNewerThanPatch(serverRow, patch), isFalse);
+    final out = mergeStockListRowMaps(data, patches);
+    final items = out['items'] as List;
+    expect((items[0] as Map)['current_stock'], 15);
+    expect((items[1] as Map)['current_stock'], 20);
   });
 
-  test('serverRowNewerThanPatch drops patch when server row is newer', () {
-    final patch = {
-      kStockListPatchAtKey: '2026-06-13T10:00:00.000Z',
-      'current_stock': 21,
-    };
-    final serverRow = {
-      'last_stock_updated_at': '2026-06-13T11:00:00.000Z',
-    };
-    expect(serverRowNewerThanPatch(serverRow, patch), isTrue);
-  });
-
-  test('mergeStockListRowMap keeps patch when server timestamp is older', () {
-    final out = mergeStockListRowMap(
-      {
-        'id': 'a',
-        'current_stock': 10,
-        'last_stock_updated_at': '2026-06-13T09:00:00.000Z',
-      },
-      {
-        'a': {
-          kStockListPatchAtKey: '2026-06-13T10:00:00.000Z',
-          'current_stock': 21,
-        },
-      },
-    );
-    expect(out['current_stock'], 21);
+  test('mergeStockListRowMap returns row unchanged when no patch matches', () {
+    final row = {'id': 'x', 'current_stock': 10};
+    final patches = <String, Map<String, dynamic>>{};
+    expect(mergeStockListRowMap(row, patches), row);
   });
 }

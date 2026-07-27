@@ -10,7 +10,9 @@ import '../../../core/json_coerce.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/staff_home_providers.dart';
-import '../../../core/providers/stock_providers.dart' show stockChangesFeedProvider;
+import '../../../core/providers/stock_providers.dart'
+    show applyStockListRowPatch, stockChangesFeedProvider;
+import '../../stock/stock_list_row_patch.dart' show stockStatusForPatchRow;
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/utils/unit_utils.dart';
@@ -153,6 +155,15 @@ class _StockQuickPurchaseBodyState
     }
     setState(() => _saving = true);
     try {
+      final currentStock = coerceToDoubleNullable(widget.item['current_stock']) ?? 0;
+      final patch = <String, dynamic>{
+        'current_stock': currentStock + parsed,
+        'stock_status': stockStatusForPatchRow({
+          'current_stock': currentStock + parsed,
+          'reorder_level': widget.item['reorder_level'],
+        }),
+      };
+      applyStockListRowPatch(ref, itemId: _itemId, patch: patch);
       await ref.read(hexaApiProvider).createStockQuickPurchase(
             businessId: session.primaryBusiness.id,
             itemId: _itemId,

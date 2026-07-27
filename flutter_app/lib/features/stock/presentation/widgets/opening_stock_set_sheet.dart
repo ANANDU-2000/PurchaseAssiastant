@@ -9,6 +9,7 @@ import '../../../../core/json_coerce.dart';
 import '../../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../../core/providers/stock_providers.dart'
     show
+        applyStockItemDetailFromSave,
         applyStockListRowPatch,
         openingStockMissingProvider,
         openingStockSetupProvider,
@@ -99,35 +100,50 @@ class _OpeningStockSetBodyState extends ConsumerState<_OpeningStockSetBody> {
     final reason = _reasonCtrl.text.trim();
     if (reasonNeeded && reason.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Reason is required when updating locked opening stock')),
+        const SnackBar(
+          content: Text('Reason is required when updating locked opening stock'),
+        ),
       );
       return;
     }
 
     setState(() => _saving = true);
     try {
-      await ref.read(hexaApiProvider).setOpeningStock(
+      final saved = await ref.read(hexaApiProvider).setOpeningStock(
             businessId: session.primaryBusiness.id,
             itemId: _itemId,
             qty: parsed,
             override: _locked,
             reason: reasonNeeded ? reason : (reason.isNotEmpty ? reason : null),
-            notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+            notes: _notesCtrl.text.trim().isEmpty
+                ? null
+                : _notesCtrl.text.trim(),
             idempotencyKey: _idempotencyKey,
           );
 
-      invalidateStockRowSaveSurfaces(
+      applyStockItemDetailFromSave(
         ref,
         itemId: _itemId,
-        refreshItemDetail: true,
+        saved: {
+          ...saved,
+          'opening_stock_qty': parsed,
+          'opening_stock_locked': _locked || parsed > 0,
+        },
       );
       applyStockListRowPatch(
         ref,
         itemId: _itemId,
         patch: {
+          ...saved,
           'opening_stock_qty': parsed,
           'opening_stock_locked': _locked || parsed > 0,
         },
+      );
+      invalidateStockRowSaveSurfaces(
+        ref,
+        itemId: _itemId,
+        refreshItemDetail: true,
+        immediateListReconcile: false,
       );
       ref.invalidate(openingStockSetupProvider);
       ref.invalidate(openingStockMissingProvider);

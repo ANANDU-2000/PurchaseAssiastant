@@ -6,6 +6,7 @@ import '../../../../core/auth/session_notifier.dart';
 import '../../../../core/auth/session_permissions.dart';
 import '../../../../core/errors/user_facing_errors.dart';
 import '../../../../core/providers/business_aggregates_invalidation.dart';
+import '../../../../core/providers/stock_providers.dart' show applyStockListRowPatch;
 import '../../../../core/providers/catalog_providers.dart';
 import '../../../../core/design_system/hexa_responsive.dart';
 
@@ -98,16 +99,27 @@ Future<bool> showAssignBarcodeSheet({
                           }
                           return;
                         }
-                        await ref.read(hexaApiProvider).patchCatalogItemBarcode(
+                        final saved = await ref
+                            .read(hexaApiProvider)
+                            .patchCatalogItemBarcode(
                               businessId: session.primaryBusiness.id,
                               itemId: itemId,
                               barcode: code,
                             );
+                        applyStockListRowPatch(
+                          ref,
+                          itemId: itemId,
+                          patch: {
+                            ...saved,
+                            'barcode': code,
+                            'missing_barcode': false,
+                          },
+                        );
                         invalidateCatalogItemSaveSurfaces(ref, itemId: itemId);
                         invalidateStockRowSaveSurfaces(
                           ref,
                           itemId: itemId,
-                          immediateListReconcile: true,
+                          immediateListReconcile: false,
                         );
                         ref.invalidate(catalogItemDetailProvider(itemId));
                         if (context.mounted) Navigator.pop(context, true);

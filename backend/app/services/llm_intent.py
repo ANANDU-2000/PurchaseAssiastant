@@ -64,6 +64,37 @@ async def _gemini_json(prompt: str, settings: Settings, api_key: str) -> dict[st
     return _parse_json_loose(text)
 
 
+async def _openai_json(
+    prompt: str,
+    settings: Settings,
+    api_key: str,
+    *,
+    base_url: str = "https://api.openai.com/v1",
+    model: str | None = None,
+) -> dict[str, Any] | None:
+    model = model or settings.openai_model or "gpt-4o-mini"
+    payload = {
+        "model": model,
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": "Return only valid JSON."},
+            {"role": "user", "content": prompt},
+        ],
+    }
+    headers = {"Authorization": f"Bearer {api_key}"}
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        res = await client.post(
+            f"{base_url}/chat/completions",
+            headers=headers,
+            json=payload,
+        )
+        res.raise_for_status()
+    data = res.json()
+    text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    return _parse_json_loose(text)
+
+
 async def _groq_json(prompt: str, settings: Settings, api_key: str) -> dict[str, Any] | None:
     payload = {
         "model": settings.groq_model or "llama-3.1-70b-versatile",

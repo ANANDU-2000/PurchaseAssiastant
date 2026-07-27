@@ -44,8 +44,8 @@ class ReportsTopBar extends ConsumerStatefulWidget implements PreferredSizeWidge
 
   @override
   Size get preferredSize {
-    final periodExtra = showPeriodRow && selectedPeriodPreset != null ? 44.0 : 0.0;
-    return Size.fromHeight(104 + periodExtra);
+    final periodExtra = showPeriodRow && selectedPeriodPreset != null ? 52.0 : 0.0;
+    return Size.fromHeight(114 + periodExtra);
   }
 }
 
@@ -80,6 +80,7 @@ class _ReportsTopBarState extends ConsumerState<ReportsTopBar> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(4, 2, 8, 6),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(

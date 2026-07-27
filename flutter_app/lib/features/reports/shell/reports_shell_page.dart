@@ -595,13 +595,17 @@ class _ReportsShellPageState extends ConsumerState<ReportsShellPage> {
       emptyCard: emptyCard,
     );
 
-    final wideDesktop = MediaQuery.sizeOf(context).width >= 900;
+    final screenW = MediaQuery.sizeOf(context).width;
+    final wideDesktop = screenW >= 900;
+    final showSidebar = wideDesktop;
+    final showFilterDrawer = context.isReportsDesktop;
+    final totalFixed = (showSidebar ? 181.0 : 0.0) + (showFilterDrawer ? 261.0 : 0.0);
     final content = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (wideDesktop) ...[
+        if (showSidebar) ...[
           SizedBox(
-            width: 180,
+            width: screenW - totalFixed < 580 ? 140 : 180,
             child: _ReportsPeriodNav(
               selected: _presetLabel(_preset),
               onSelect: _applyDatePresetFromLabel,
@@ -624,9 +628,12 @@ class _ReportsShellPageState extends ConsumerState<ReportsShellPage> {
             ],
           ),
         ),
-        if (context.isReportsDesktop) ...[
+        if (showFilterDrawer) ...[
           const VerticalDivider(width: 1),
-          const SizedBox(width: 260, child: ReportsFilterDrawer()),
+          SizedBox(
+            width: screenW - totalFixed < 580 ? 200 : 260,
+            child: const ReportsFilterDrawer(),
+          ),
         ],
       ],
     );

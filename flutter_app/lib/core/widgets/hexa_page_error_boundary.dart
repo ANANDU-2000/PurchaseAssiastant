@@ -150,7 +150,6 @@ bool hexaErrorLikelyNonFatal(FlutterErrorDetails details) {
       s.contains('nothing to pop') ||
       s.contains('There is nothing to pop') ||
       s.contains('RenderBox was not laid out') ||
-      s.contains('Vertical viewport was given unbounded height') ||
       s.contains('HiveError') ||
       s.contains('Box not found') ||
       s.contains('modifying a provider') ||

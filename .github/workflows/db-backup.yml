@@ -1,58 +1,53 @@
-# Weekly logical backup of Render Postgres (harisree-db).
-# Schedule: Sundays 03:00 UTC. Manual run: Actions → db-backup → Run workflow.
-#
-# Required repo secret (Settings → Secrets → Actions):
-#   RENDER_DB_EXTERNAL_URL — external postgresql://… from Render Dashboard → harisree-db → Connect
-name: db-backup
+name: Database Backup
 
 on:
   schedule:
-    - cron: "0 3 * * 0"
-  workflow_dispatch:
-    inputs:
-      note:
-        description: "Optional label for this manual run (logged only)"
-        required: false
-        default: "manual"
+    - cron: '0 3 * * 0'   # Sundays 03:00 UTC
+  workflow_dispatch:       # Manual trigger via GitHub UI
 
 jobs:
   backup:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
+
+    env:
+      PGPASSWORD: ${{ secrets.RENDER_DB_PASSWORD }}
+
     steps:
-      - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Verify database URL secret
-        env:
-          RENDER_DB_EXTERNAL_URL: ${{ secrets.RENDER_DB_EXTERNAL_URL }}
         run: |
-          if [ -z "$RENDER_DB_EXTERNAL_URL" ]; then
-            echo "::error::RENDER_DB_EXTERNAL_URL secret is not set in GitHub repo settings."
+          if [ -z "${{ secrets.RENDER_DB_EXTERNAL_URL }}" ]; then
+            echo "::error::RENDER_DB_EXTERNAL_URL secret is not set"
             exit 1
           fi
-          echo "RENDER_DB_EXTERNAL_URL is configured (host redacted)."
+          echo "Secret configured for $(echo '${{ secrets.RENDER_DB_EXTERNAL_URL }}' | sed 's|.*@||' | sed 's|/.*||')"
 
-      - name: pg_dump (custom + plain SQL)
-        env:
-          RENDER_DB_EXTERNAL_URL: ${{ secrets.RENDER_DB_EXTERNAL_URL }}
+      - name: Create backup directory
+        run: mkdir -p backup
+
+      - name: Dump (custom format — pg_restore)
         run: |
-          STAMP=$(date -u +%Y%m%d)
-          echo "Backup stamp: ${STAMP} (trigger: ${{ github.event_name }})"
-          pg_dump "$RENDER_DB_EXTERNAL_URL" \
-            --no-owner --no-acl --schema=public --format=custom \
-            --file="harisree_render_${STAMP}.pgdump"
-          pg_dump "$RENDER_DB_EXTERNAL_URL" \
-            --no-owner --no-acl --schema=public --format=plain \
-            --file="harisree_render_${STAMP}.sql"
-          ls -lh "harisree_render_${STAMP}.pgdump" "harisree_render_${STAMP}.sql"
+          pg_dump \
+            --format=custom \
+            --no-owner \
+            --no-privileges \
+            --file="backup/harisree_render_$(date +%Y%m%d).pgdump" \
+            "${{ secrets.RENDER_DB_EXTERNAL_URL }}"
 
-      - name: Upload backup artifacts
+      - name: Dump (plain SQL — readable)
+        run: |
+          pg_dump \
+            --no-owner \
+            --no-privileges \
+            --file="backup/harisree_render_$(date +%Y%m%d).sql" \
+            "${{ secrets.RENDER_DB_EXTERNAL_URL }}"
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: harisree-db-backup-${{ github.run_number }}
-          path: |
-            harisree_render_*.pgdump
-            harisree_render_*.sql
+          name: harisree-db-backup-${{ github.run_id }}
+          path: backup/
           retention-days: 90
-          if-no-files-found: error

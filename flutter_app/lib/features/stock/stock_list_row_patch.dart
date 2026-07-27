@@ -1,16 +1,5 @@
 import '../../core/json_coerce.dart';
 
-/// Internal metadata on optimistic patches — stripped before list render.
-const kStockListPatchAtKey = '_patchedAt';
-
-/// Keep optimistic qty overlay briefly when list timestamps race ahead of qty.
-const Duration kStockPatchStaleQtyGrace = Duration(seconds: 45);
-
-DateTime? _parsePatchOrRowTimestamp(String? raw) {
-  if (raw == null || raw.isEmpty) return null;
-  return DateTime.tryParse(raw);
-}
-
 /// Derive list-row status when the API omits [stock_status] on a partial payload.
 String? stockStatusForPatchRow(Map<String, dynamic> detail) {
   final st = detail['stock_status']?.toString().trim();
@@ -22,59 +11,6 @@ String? stockStatusForPatchRow(Map<String, dynamic> detail) {
   final reorder = coerceToDoubleNullable(detail['reorder_level']);
   if (reorder != null && reorder > 0 && qty <= reorder) return 'low';
   return 'healthy';
-}
-
-/// True when server row timestamps are newer than the optimistic patch.
-bool serverRowNewerThanPatch(
-  Map<String, dynamic> serverRow,
-  Map<String, dynamic> patch,
-) {
-  final patchedAt = _parsePatchOrRowTimestamp(
-    patch[kStockListPatchAtKey]?.toString(),
-  );
-  if (patchedAt == null) return true;
-  final candidates = <String?>[
-    serverRow['last_stock_updated_at']?.toString(),
-    serverRow['physical_stock_counted_at']?.toString(),
-  ];
-  for (final raw in candidates) {
-    final ts = _parsePatchOrRowTimestamp(raw);
-    if (ts != null && ts.isAfter(patchedAt)) return true;
-  }
-  return false;
-}
-
-bool _patchStockQtyDiffersFromServer(
-  Map<String, dynamic> serverRow,
-  Map<String, dynamic> patch,
-) {
-  final pQty = coerceToDoubleNullable(patch['current_stock']);
-  final sQty = coerceToDoubleNullable(serverRow['current_stock']);
-  if (pQty != null &&
-      sQty != null &&
-      (pQty - sQty).abs() > 1e-6) {
-    return true;
-  }
-  final pPhys = coerceToDoubleNullable(patch['physical_stock_qty']);
-  final sPhys = coerceToDoubleNullable(serverRow['physical_stock_qty']);
-  if (pPhys != null &&
-      sPhys != null &&
-      (pPhys - sPhys).abs() > 1e-6) {
-    return true;
-  }
-  return false;
-}
-
-bool shouldKeepStockPatchDespiteServerTimestamp(
-  Map<String, dynamic> serverRow,
-  Map<String, dynamic> patch,
-) {
-  if (!_patchStockQtyDiffersFromServer(serverRow, patch)) return false;
-  final patchedAt = _parsePatchOrRowTimestamp(
-    patch[kStockListPatchAtKey]?.toString(),
-  );
-  if (patchedAt == null) return false;
-  return DateTime.now().toUtc().difference(patchedAt) < kStockPatchStaleQtyGrace;
 }
 
 /// Merges optimistic row fields into a stock list payload (items + total).
@@ -102,16 +38,7 @@ Map<String, dynamic> mergeStockListRowMap(
   if (id == null || id.isEmpty) return row;
   final patch = patches[id];
   if (patch == null || patch.isEmpty) return row;
-  final hasTimestamp = patch.containsKey(kStockListPatchAtKey);
-  if (hasTimestamp &&
-      serverRowNewerThanPatch(row, patch) &&
-      !shouldKeepStockPatchDespiteServerTimestamp(row, patch)) {
-    return row;
-  }
-  final visible = Map<String, dynamic>.from(patch)
-    ..remove(kStockListPatchAtKey);
-  if (visible.isEmpty) return row;
-  return {...row, ...visible};
+  return {...row, ...patch};
 }
 
 /// List row fields from POST `/stock/{id}/physical-count` response.

@@ -176,12 +176,14 @@ class Settings(BaseSettings):
     openai_timeout_ms: int = Field(default=60000, ge=1000, le=180000)
     enable_vision: bool = True
     enable_ai_extraction: bool = True
-    # stub | openai | groq | gemini — intent extraction uses matching key (env or platform_integration DB).
+    # stub | openai | groq | gemini | openrouter — intent extraction uses matching key (env or platform_integration DB).
     ai_provider: str = "stub"
     groq_model: str = "llama-3.3-70b-versatile"
     gemini_model: str = "gemini-2.0-flash"
     groq_api_key: str | None = None
     google_ai_api_key: str | None = None
+    openrouter_api_key: str | None = None
+    openrouter_model: str = "openai/gpt-4.1-mini"
     ocr_provider: str = "google_vision"
     ocr_api_key: str | None = None
     stt_provider: str = "openai_whisper"
