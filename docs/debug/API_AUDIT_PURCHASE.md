@@ -13,6 +13,7 @@
 | ID | Severity | Issue | Status |
 |----|----------|-------|--------|
 | PURCHASE-M1 | Medium | Slow list (~1.7s) | Track (perf / indexes) |
+| PURCHASE-M2 | Medium | Pending/paid SQL ≠ derived_status (short pages) | **Fixed** |
 | PURCHASE-L1 | Low | Duplicate parallel list fetches from client | Track |
 
 ## Open Critical

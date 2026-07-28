@@ -38,7 +38,12 @@ async def _unread_notification_count(
     db: AsyncSession,
     business_id: uuid.UUID,
     user_id: uuid.UUID,
+    *,
+    user_role: str,
 ) -> int:
+    # Match notifications list / unread-count role visibility (target_roles).
+    from app.routers.notifications import _role_visibility_sql
+
     unread_r = await db.execute(
         select(func.count())
         .select_from(AppNotification)
@@ -46,6 +51,7 @@ async def _unread_notification_count(
             AppNotification.business_id == business_id,
             AppNotification.user_id == user_id,
             AppNotification.read_at.is_(None),
+            _role_visibility_sql(user_role),
         )
     )
     return int(unread_r.scalar_one() or 0)
@@ -67,7 +73,12 @@ async def build_home_operational_bundle(
         _m=membership,
     )
     pipeline = await tps.get_trade_purchase_delivery_pipeline(db, business_id)
-    unread = await _unread_notification_count(db, business_id, membership.user_id)
+    unread = await _unread_notification_count(
+        db,
+        business_id,
+        membership.user_id,
+        user_role=(membership.role or "").strip().lower(),
+    )
     low_top = await fetch_low_stock_top_rows(db, business_id, limit=6)
     warehouse = await warehouse_alerts_from_stock(db, business_id, stock)
     return {

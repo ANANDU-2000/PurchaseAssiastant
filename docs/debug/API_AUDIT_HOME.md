@@ -17,6 +17,8 @@
 |----|----------|-------|--------|
 | HOME-C1 | Critical | Shared-session gather on snapshot + home_operational | **Fixed** `772bdc0` |
 | HOME-M1 | Medium | `SLOW_HTTP` ~500–900ms on shell_bundle | Track; not a 500 |
+| HOME-M2 | Medium | shell_bundle cache leaked per-user unread across users | **Fixed** |
+| HOME-M3 | Medium | Home unread ignored `target_roles` | **Fixed** |
 | HOME-L1 | Low | Frequent refresh / ETag 304 storms | Track (client cache) |
 
 ## Critical open

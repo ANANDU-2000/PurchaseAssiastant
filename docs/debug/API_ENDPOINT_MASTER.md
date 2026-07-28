@@ -66,6 +66,9 @@
 | STOCK-M3 | Medium | COMPLETED | Recent purchases skip deleted/cancelled/draft | (this pass) |
 | REPORTS-L1 | Low | COMPLETED | Category/type/supplier profit from line expr | (this pass) |
 | SUPPLIER-M1 | Medium | COMPLETED | Full suppliers list ordered + row cap | (this pass) |
+| PURCHASE-M2 | Medium | COMPLETED | Pending/paid list SQL matches derived_status | (this pass) |
+| HOME-M2 | Medium | COMPLETED | shell_bundle cache keyed by user | (this pass) |
+| HOME-M3 | Medium | COMPLETED | Home unread honors target_roles | (this pass) |
 
 ## Ordered work queue (one-by-one)
 

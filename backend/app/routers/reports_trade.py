@@ -332,7 +332,9 @@ def _snapshot_cache_key(
     *,
     compact: bool,
     shell_bundle: bool = False,
-) -> tuple[str, str, str, int, bool, bool]:
+    user_id: uuid.UUID | None = None,
+) -> tuple[Any, ...]:
+    # shell_bundle embeds per-user notifications_unread — scope cache by user.
     return (
         str(business_id),
         date_from.isoformat(),
@@ -340,6 +342,7 @@ def _snapshot_cache_key(
         trade_read_cache_generation(business_id),
         compact,
         shell_bundle,
+        str(user_id) if shell_bundle and user_id is not None else "",
     )
 
 
@@ -925,7 +928,12 @@ async def trade_home_overview(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="date_range_exceeds_max_span_days")
 
     cache_key = _snapshot_cache_key(
-        business_id, date_from, date_to, compact=compact, shell_bundle=shell_bundle
+        business_id,
+        date_from,
+        date_to,
+        compact=compact,
+        shell_bundle=shell_bundle,
+        user_id=_m.user_id if shell_bundle else None,
     )
     now_mono = monotonic()
     cached = _get_trade_dashboard_cache(cache_key)

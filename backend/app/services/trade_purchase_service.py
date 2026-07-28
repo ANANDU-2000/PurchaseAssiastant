@@ -895,8 +895,15 @@ def _trade_list_payment_exprs(today: date):
     paid = func.coalesce(TradePurchase.paid_amount, 0)
     remaining = total - paid
     open_balance = and_(total > 0, remaining > 0)
-    is_paid = or_(total <= 0, remaining <= 0, paid >= total)
-    not_terminal = TradePurchase.status.notin_(("cancelled", "deleted", "draft"))
+    # Align with compute_status + _normalize_purchase_status (saved → draft).
+    not_terminal = TradePurchase.status.notin_(
+        ("cancelled", "deleted", "draft", "saved")
+    )
+    is_paid = and_(
+        not_terminal,
+        total > 0,
+        or_(remaining <= 0, paid >= total),
+    )
     is_overdue = and_(
         not_terminal,
         open_balance,
@@ -917,8 +924,8 @@ def _trade_list_payment_exprs(today: date):
         not_(is_overdue),
         not_(is_due_soon),
         or_(
-            TradePurchase.status.in_(("confirmed", "saved")),
-            paid > 0,
+            TradePurchase.status == "confirmed",
+            and_(paid > 0, remaining > 0),
         ),
     )
     return {
@@ -1121,7 +1128,7 @@ async def list_trade_purchases(
         rows = [
             r
             for r in rows
-            if r.derived_status in ("confirmed", "saved", "partially_paid")
+            if r.derived_status in ("confirmed", "partially_paid")
         ]
     elif sf == "delivered":
         rows = [
