@@ -147,7 +147,9 @@ class HomeOwnerDashboardBody extends ConsumerWidget {
             final double width = constraints.maxWidth.isFinite && constraints.maxWidth > 0
                 ? constraints.maxWidth
                 : MediaQuery.sizeOf(context).width;
-            final int cols = context.isDesktopLayout ? 4 : 2;
+            // Keep 2 columns on all widths — 4-col GridView + shrinkWrap has
+            // blanked Flutter web desktop home (≥1024px) in production.
+            const int cols = 2;
             
             // Deduct space between columns only (gutter already applied by parents).
             final double cardWidth =
