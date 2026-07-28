@@ -1,5 +1,6 @@
 import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -107,7 +108,10 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final height = MediaQuery.sizeOf(context).height;
     final showRail = width > 0 && width >= kShellRailMin;
-    final railExtended = width > 0 && width >= kShellRailExtendedMin;
+    // Flutter web: extended NavigationRail has blanked the shell (≥900px) even
+    // with a width cap in some browsers — keep compact icons-only rail on web.
+    final railExtended =
+        !kIsWeb && width > 0 && width >= kShellRailExtendedMin;
     final showBottomBar = width > 0 && width < kShellBottomNavMax;
     // #region agent log
     agentDebugLog(

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -88,7 +89,9 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
     final sessionHint = ref.watch(apiDegradedProvider);
     final width = MediaQuery.sizeOf(context).width;
     final showRail = width > 0 && width >= kShellRailMin;
-    final railExtended = width > 0 && width >= kShellRailExtendedMin;
+    // Match owner shell: compact rail only on Flutter web (avoids blank desktop).
+    final railExtended =
+        !kIsWeb && width > 0 && width >= kShellRailExtendedMin;
     final showBottomBar = width > 0 && width < kShellBottomNavMax;
     final session = ref.watch(sessionProvider);
     final biz = session?.primaryBusiness;
