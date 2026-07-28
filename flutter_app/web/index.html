@@ -75,12 +75,19 @@
       width: 100%;
       height: 100%;
     }
-    #flutter-view,
+    /* Custom elements default to display:inline — width/height are ignored
+       and flt-glass-pane stays 0×0 (blank Flutter web shell). Use the tag
+       name, not #flutter-view (there is no id="flutter-view"). */
+    flutter-view,
     flt-glass-pane,
     flt-scene-host {
+      display: block !important;
+      position: fixed !important;
+      inset: 0 !important;
       width: 100% !important;
-      height: 100vh !important;
-      min-height: 100vh;
+      height: 100% !important;
+      min-height: 100vh !important;
+      min-width: 100% !important;
     }
     flt-glass-pane {
       touch-action: auto !important;
