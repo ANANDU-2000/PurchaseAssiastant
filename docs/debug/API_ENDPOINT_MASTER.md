@@ -12,7 +12,7 @@
 |--------|-------|
 | Total endpoints | 216 |
 | Completed | 17 / 216 |
-| Current focus | Reports domain (Supplier/Contacts Critical/High done) |
+| Current focus | Notifications (Reports Critical/High done) |
 
 ## Status legend
 
@@ -32,14 +32,17 @@
 | SUPPLIER-C1 | Critical | COMPLETED | Delete supplier/broker clears M2M (+ defaults) | (this pass) |
 | SUPPLIER-H1 | High | COMPLETED | Supplier metrics avg_landing = money÷qty | (this pass) |
 | SUPPLIER-H2 | High | COMPLETED | contacts/search brokers use `_broker_out` | (this pass) |
+| REPORTS-C1 | Critical | COMPLETED | Item report StockPhysicalCount.counted_qty | (this pass) |
+| REPORTS-H1 | High | COMPLETED | trade-suppliers avg_landing money÷qty | (this pass) |
+| REPORTS-H2 | High | COMPLETED | trade-items category/supplier SQL filters | (this pass) |
+| REPORTS-H3 | High | COMPLETED | Item bundle rate_avg money÷qty | (this pass) |
 
 ## Ordered work queue (one-by-one)
 
 1. ~~AUTH-C1~~ · ~~AUTH-H1~~ · ~~AUTH-H4~~ · ~~HOME-C1 isce~~
 2. **AUTH-H2 / AUTH-H3** — wait for your approval (email / object storage)
-3. ~~Stock~~ · ~~Purchase~~ · ~~Supplier / Contacts~~
-4. **Reports** (remaining report routes)
-5. Notifications → Users → Warehouse/Ops → Exports → Utilities → Public
+3. ~~Stock~~ · ~~Purchase~~ · ~~Supplier / Contacts~~ · ~~Reports~~
+4. **Notifications** → Users → Warehouse/Ops → Exports → Utilities → Public
 
 
 ## Work rules

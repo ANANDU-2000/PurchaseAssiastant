@@ -101,6 +101,11 @@ def test_trade_items_suppliers_categories_endpoints():
     sup = next(s for s in sups if s.get("supplier_name") == "RTSup")
     assert sup["purchase_count"] >= 1
     assert float(sup["total_purchase"]) > 0
+    assert float(sup["avg_landing"]) > 0
+    assert abs(
+        float(sup["avg_landing"])
+        - (float(sup["total_purchase"]) / float(sup["total_qty"]))
+    ) < 0.01
 
     cr = client.get(f"/v1/businesses/{bid}/reports/trade-categories?{q}", headers=h)
     assert cr.status_code == 200, cr.text
@@ -311,3 +316,84 @@ def test_trade_daily_profit_series_shape_and_422():
         headers=h,
     )
     assert bad.status_code == 422, bad.text
+
+def test_trade_items_supplier_and_category_filters():
+    h, bid, iid, sid, cid = _register_and_item_with_supplier()
+    other = client.post(
+        f"/v1/businesses/{bid}/suppliers",
+        headers=h,
+        json={"name": "OtherSup", "phone": "9000000099", "gst_number": "32BBBBB0000B1Z1"},
+    )
+    assert other.status_code == 201, other.text
+    other_sid = other.json()["id"]
+    d0 = date.today()
+    body = {
+        "purchase_date": d0.isoformat(),
+        "supplier_id": sid,
+        "lines": [
+            {
+                "catalog_item_id": iid,
+                "item_name": "RTItem",
+                "qty": 5,
+                "unit": "bag",
+                "landing_cost": "2000",
+                "kg_per_unit": 50,
+                "landing_cost_per_kg": "40",
+                "tax_percent": 0,
+            },
+        ],
+    }
+    pr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
+    assert pr.status_code == 201, pr.text
+
+    q = f"from={d0.isoformat()}&to={d0.isoformat()}"
+    hit = client.get(
+        f"/v1/businesses/{bid}/reports/trade-items?{q}&supplier_id={sid}",
+        headers=h,
+    )
+    assert hit.status_code == 200, hit.text
+    assert any(r.get("item_name") == "RTItem" for r in hit.json())
+
+    miss = client.get(
+        f"/v1/businesses/{bid}/reports/trade-items?{q}&supplier_id={other_sid}",
+        headers=h,
+    )
+    assert miss.status_code == 200, miss.text
+    assert not any(r.get("item_name") == "RTItem" for r in miss.json())
+
+    by_cat = client.get(
+        f"/v1/businesses/{bid}/reports/trade-items?{q}&category_id={cid}",
+        headers=h,
+    )
+    assert by_cat.status_code == 200, by_cat.text
+    assert any(r.get("item_name") == "RTItem" for r in by_cat.json())
+
+
+def test_reports_item_bundle_rate_avg_from_line_money():
+    h, bid, iid, sid, _cid = _register_and_item_with_supplier()
+    d0 = date.today()
+    body = {
+        "purchase_date": d0.isoformat(),
+        "supplier_id": sid,
+        "lines": [
+            {
+                "catalog_item_id": iid,
+                "item_name": "RTItem",
+                "qty": 10,
+                "unit": "bag",
+                "landing_cost": "2000",
+                "kg_per_unit": 50,
+                "landing_cost_per_kg": "40",
+                "tax_percent": 0,
+            },
+        ],
+    }
+    pr = client.post(f"/v1/businesses/{bid}/trade-purchases", headers=h, json=body)
+    assert pr.status_code == 201, pr.text
+    q = f"from={d0.isoformat()}&to={d0.isoformat()}"
+    r = client.get(f"/v1/businesses/{bid}/reports/item/{iid}?{q}", headers=h)
+    assert r.status_code == 200, r.text
+    sm = r.json()["summary"]
+    assert float(sm["total_purchase"]) > 0
+    assert float(sm["total_qty"]) == 10.0
+    assert abs(float(sm["rate_avg"]) - (float(sm["total_purchase"]) / float(sm["total_qty"]))) < 0.01

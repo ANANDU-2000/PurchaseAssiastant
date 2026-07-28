@@ -297,24 +297,29 @@ async def _trade_suppliers_rows(
         .order_by(func.coalesce(func.sum(amt), 0.0).desc())
     )
     rows = (await execute_with_retry(lambda: db.execute(q))).mappings().all()
-    return [
-        {
-            "supplier_id": str(r["id"]) if r["id"] is not None else "",
-            "supplier_name": str(r["supplier_name"] or "Unknown"),
-            "purchase_count": int(r["deals"] or 0),
-            "deals": int(r["deals"] or 0),
-            "total_purchase": float(r["total_purchase"] or 0),
-            "total_qty": float(r["total_qty"] or 0),
-            "total_bags": float(r["total_bags"] or 0),
-            "total_boxes": float(r["total_boxes"] or 0),
-            "total_tins": float(r["total_tins"] or 0),
-            "total_kg": float(r["total_kg"] or 0),
-            "total_profit": 0.0,
-            "avg_landing": 0.0,
-            "margin_pct": 0.0,
-        }
-        for r in rows
-    ]
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        tp = float(r["total_purchase"] or 0)
+        tqty = float(r["total_qty"] or 0)
+        out.append(
+            {
+                "supplier_id": str(r["id"]) if r["id"] is not None else "",
+                "supplier_name": str(r["supplier_name"] or "Unknown"),
+                "purchase_count": int(r["deals"] or 0),
+                "deals": int(r["deals"] or 0),
+                "total_purchase": tp,
+                "total_qty": tqty,
+                "total_bags": float(r["total_bags"] or 0),
+                "total_boxes": float(r["total_boxes"] or 0),
+                "total_tins": float(r["total_tins"] or 0),
+                "total_kg": float(r["total_kg"] or 0),
+                "total_profit": 0.0,
+                # Volume-weighted unit rate from line money ÷ qty (not zero stub).
+                "avg_landing": (tp / tqty) if tqty > 1e-12 else 0.0,
+                "margin_pct": 0.0,
+            }
+        )
+    return out
 
 
 def _snapshot_cache_key(
@@ -427,6 +432,10 @@ async def _fetch_trade_items_breakdown_rows(
     business_id: uuid.UUID,
     date_from: date,
     date_to: date,
+    *,
+    category_ids: list[uuid.UUID] | None = None,
+    subcategory_ids: list[uuid.UUID] | None = None,
+    supplier_ids: list[uuid.UUID] | None = None,
 ) -> list[dict[str, Any]]:
     amt = _trade_line_amount_expr()
     bf = _trade_purchase_date_filter(business_id, date_from, date_to)
@@ -442,6 +451,10 @@ async def _fetch_trade_items_breakdown_rows(
     sell_gross = tq.trade_line_selling_expr()
     land_sum = func.coalesce(func.sum(land_gross), 0.0)
     sell_sum = func.coalesce(func.sum(sell_gross), 0.0)
+    filters: list[Any] = list(bf)
+    if supplier_ids:
+        filters.append(TradePurchase.supplier_id.in_(supplier_ids))
+    need_catalog = bool(category_ids or subcategory_ids)
     q = (
         select(
             TradePurchaseLine.item_name,
@@ -460,7 +473,21 @@ async def _fetch_trade_items_breakdown_rows(
         )
         .select_from(TradePurchaseLine)
         .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
-        .where(bf)
+    )
+    if need_catalog:
+        q = q.outerjoin(
+            CatalogItem,
+            and_(
+                CatalogItem.id == TradePurchaseLine.catalog_item_id,
+                CatalogItem.deleted_at.is_(None),
+            ),
+        )
+        if category_ids:
+            filters.append(CatalogItem.category_id.in_(category_ids))
+        if subcategory_ids:
+            filters.append(CatalogItem.type_id.in_(subcategory_ids))
+    q = (
+        q.where(*filters)
         .group_by(TradePurchaseLine.item_name)
         .order_by(func.coalesce(func.sum(amt), 0).desc())
     )
@@ -1099,10 +1126,15 @@ async def trade_items_breakdown(
     offset: int = Query(0, ge=0),
 ) -> list[dict[str, Any]]:
     del _m
-    rows = await _fetch_trade_items_breakdown_rows(db, business_id, date_from, date_to)
-    if supplier_id:
-        allowed = {str(s) for s in supplier_id}
-        rows = [r for r in rows if str(r.get("supplier_id") or "") in allowed]
+    rows = await _fetch_trade_items_breakdown_rows(
+        db,
+        business_id,
+        date_from,
+        date_to,
+        category_ids=category_id,
+        subcategory_ids=subcategory_id,
+        supplier_ids=supplier_id,
+    )
     reverse = order.lower() != "asc"
     key_fn = {
         "highestValue": lambda r: float(r.get("total_purchase") or r.get("total_amount") or 0),
@@ -1394,7 +1426,7 @@ async def _latest_physical_qty(
 ) -> tuple[float | None, str | None]:
     row = (
         await db.execute(
-            select(StockPhysicalCount.qty, StockPhysicalCount.counted_at)
+            select(StockPhysicalCount.counted_qty, StockPhysicalCount.counted_at)
             .where(
                 StockPhysicalCount.business_id == business_id,
                 StockPhysicalCount.item_id == item_id,
@@ -1530,13 +1562,16 @@ async def _reports_item_bundle_body(
             func.count(func.distinct(TradePurchase.supplier_id)).label("supplier_count"),
             func.coalesce(func.min(TradePurchaseLine.landing_cost), 0).label("rate_min"),
             func.coalesce(func.max(TradePurchaseLine.landing_cost), 0).label("rate_max"),
-            func.coalesce(func.avg(TradePurchaseLine.landing_cost), 0).label("rate_avg"),
         )
         .select_from(TradePurchaseLine)
         .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
         .where(line_filter)
     )
     sm = (await db.execute(summary_q)).mappings().one()
+    total_purchase = float(sm["total_purchase"] or 0)
+    total_qty = float(sm["total_qty"] or 0)
+    # Volume-weighted avg rate from line money ÷ qty (not AVG of raw landing_cost).
+    rate_avg = (total_purchase / total_qty) if total_qty > 1e-12 else 0.0
     lines_q = (
         select(
             TradePurchase.id,
@@ -1580,14 +1615,14 @@ async def _reports_item_bundle_body(
         "current_stock": float(item.current_stock or 0),
         "item": item_snapshot,
         "summary": {
-            "total_purchase": float(sm["total_purchase"] or 0),
-            "total_qty": float(sm["total_qty"] or 0),
+            "total_purchase": total_purchase,
+            "total_qty": total_qty,
             "total_weight_kg": float(sm["total_weight_kg"] or 0),
             "purchase_count": int(sm["purchase_count"] or 0),
             "supplier_count": int(sm["supplier_count"] or 0),
             "rate_min": float(sm["rate_min"] or 0),
             "rate_max": float(sm["rate_max"] or 0),
-            "rate_avg": float(sm["rate_avg"] or 0),
+            "rate_avg": rate_avg,
         },
         "lines": lines,
         "limit": limit,
