@@ -375,6 +375,13 @@ async def refresh_token(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    # Same gates as login / get_current_user — blocked accounts must not mint new tokens.
+    if getattr(user, "deleted_at", None) is not None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Account is inactive")
+    if getattr(user, "is_blocked", False):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Account is blocked")
+    if not user.is_active:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Account is inactive")
     access = create_access_token(
         user.id,
         settings,

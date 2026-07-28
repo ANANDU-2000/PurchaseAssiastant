@@ -100,3 +100,64 @@ def test_login_blocked_user():
     )
     assert r.status_code == 403
     assert "blocked" in r.json()["detail"].lower()
+
+
+def test_refresh_blocked_user_forbidden():
+    """AUTH-C1: blocked users must not mint new tokens via refresh."""
+    pwd, staff_email, _owner, bid, h = _owner_with_staff()
+    login = client.post(
+        "/v1/auth/login",
+        json={"email": staff_email, "password": pwd},
+    )
+    assert login.status_code == 200, login.text
+    refresh = login.json()["refresh_token"]
+
+    users = client.get(f"/v1/businesses/{bid}/users", headers=h, params={"include_inactive": True})
+    staff = next(u for u in users.json() if u["email"] == staff_email)
+    client.patch(
+        f"/v1/businesses/{bid}/users/{staff['id']}",
+        headers=h,
+        json={"is_blocked": True},
+    )
+
+    r = client.post("/v1/auth/refresh", json={"refresh_token": refresh})
+    assert r.status_code == 403, r.text
+    assert "blocked" in r.json()["detail"].lower()
+
+
+def test_refresh_inactive_user_forbidden():
+    pwd, staff_email, _owner, bid, h = _owner_with_staff()
+    login = client.post(
+        "/v1/auth/login",
+        json={"email": staff_email, "password": pwd},
+    )
+    assert login.status_code == 200, login.text
+    refresh = login.json()["refresh_token"]
+
+    users = client.get(f"/v1/businesses/{bid}/users", headers=h, params={"include_inactive": True})
+    staff = next(u for u in users.json() if u["email"] == staff_email)
+    client.patch(
+        f"/v1/businesses/{bid}/users/{staff['id']}",
+        headers=h,
+        json={"is_active": False},
+    )
+
+    r = client.post("/v1/auth/refresh", json={"refresh_token": refresh})
+    assert r.status_code == 403, r.text
+    assert "inactive" in r.json()["detail"].lower()
+
+
+def test_refresh_active_user_ok():
+    pwd, staff_email, _owner, _bid, _h = _owner_with_staff()
+    login = client.post(
+        "/v1/auth/login",
+        json={"email": staff_email, "password": pwd},
+    )
+    assert login.status_code == 200, login.text
+    r = client.post(
+        "/v1/auth/refresh",
+        json={"refresh_token": login.json()["refresh_token"]},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json().get("access_token")
+    assert r.json().get("refresh_token")
