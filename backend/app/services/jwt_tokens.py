@@ -13,6 +13,12 @@ class AccessTokenClaims:
     token_version: int
 
 
+@dataclass(frozen=True)
+class RefreshTokenClaims:
+    user_id: UUID
+    token_version: int
+
+
 def create_access_token(
     user_id: UUID,
     settings: Settings,
@@ -29,9 +35,19 @@ def create_access_token(
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
 
-def create_refresh_token(user_id: UUID, settings: Settings) -> str:
+def create_refresh_token(
+    user_id: UUID,
+    settings: Settings,
+    *,
+    token_version: int = 0,
+) -> str:
     exp = datetime.now(timezone.utc) + timedelta(days=settings.jwt_refresh_ttl_days)
-    payload = {"sub": str(user_id), "typ": "refresh", "exp": exp}
+    payload = {
+        "sub": str(user_id),
+        "typ": "refresh",
+        "exp": exp,
+        "tv": int(token_version),
+    }
     return jwt.encode(payload, settings.jwt_refresh_secret, algorithm="HS256")
 
 
@@ -49,11 +65,15 @@ def decode_access_token(token: str, settings: Settings) -> AccessTokenClaims | N
         return None
 
 
-def decode_refresh_token(token: str, settings: Settings) -> UUID | None:
+def decode_refresh_token(token: str, settings: Settings) -> RefreshTokenClaims | None:
     try:
         payload = jwt.decode(token, settings.jwt_refresh_secret, algorithms=["HS256"])
         if payload.get("typ") != "refresh":
             return None
-        return UUID(payload["sub"])
-    except (JWTError, KeyError, ValueError):
+        tv = payload.get("tv", 0)
+        return RefreshTokenClaims(
+            user_id=UUID(payload["sub"]),
+            token_version=int(tv) if tv is not None else 0,
+        )
+    except (JWTError, KeyError, ValueError, TypeError):
         return None

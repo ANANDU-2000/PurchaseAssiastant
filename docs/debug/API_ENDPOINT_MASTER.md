@@ -12,7 +12,7 @@
 |--------|-------|
 | Total endpoints | 216 |
 | Completed | 17 / 216 |
-| Current focus | Users domain (Notifications Critical/High done) |
+| Current focus | Warehouse/Ops (Users Critical/High done) |
 
 ## Status legend
 
@@ -39,13 +39,17 @@
 | NOTIF-H1 | High | COMPLETED | Role filter before LIMIT (stable pages) | (this pass) |
 | NOTIF-H2 | High | COMPLETED | Unread/summary honor target_roles | (this pass) |
 | NOTIF-H3 | High | COMPLETED | Idle delivery skips cancelled/deleted | (this pass) |
+| USERS-C1 | Critical | COMPLETED | Reset password + refresh JWT tv revoke | (this pass) |
+| USERS-H1 | High | COMPLETED | Deactivate revokes tokens | (this pass) |
+| USERS-H2 | High | COMPLETED | Permissions patch actor guard | (this pass) |
+| USERS-H3 | High | COMPLETED | Activity log IDOR for staff | (this pass) |
 
 ## Ordered work queue (one-by-one)
 
 1. ~~AUTH-C1~~ · ~~AUTH-H1~~ · ~~AUTH-H4~~ · ~~HOME-C1 isce~~
 2. **AUTH-H2 / AUTH-H3** — wait for your approval (email / object storage)
-3. ~~Stock~~ · ~~Purchase~~ · ~~Supplier / Contacts~~ · ~~Reports~~ · ~~Notifications~~
-4. **Users** → Warehouse/Ops → Exports → Utilities → Public
+3. ~~Stock~~ · ~~Purchase~~ · ~~Supplier~~ · ~~Reports~~ · ~~Notifications~~ · ~~Users~~
+4. **Warehouse/Ops** → Exports → Utilities → Public
 
 
 ## Work rules

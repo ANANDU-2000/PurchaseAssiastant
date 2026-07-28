@@ -105,7 +105,11 @@ async def register(
         settings,
         token_version=int(getattr(user, "token_version", 0) or 0),
     )
-    refresh = create_refresh_token(user.id, settings)
+    refresh = create_refresh_token(
+        user.id,
+        settings,
+        token_version=int(getattr(user, "token_version", 0) or 0),
+    )
     return TokenPair(
         access_token=access,
         refresh_token=refresh,
@@ -245,7 +249,11 @@ async def login(
                 settings,
                 token_version=int(getattr(user, "token_version", 0) or 0),
             )
-            refresh = create_refresh_token(user.id, settings)
+            refresh = create_refresh_token(
+                user.id,
+                settings,
+                token_version=int(getattr(user, "token_version", 0) or 0),
+            )
         except Exception:
             logger.exception("auth.login token issue")
             raise HTTPException(
@@ -365,7 +373,11 @@ async def auth_google(
         settings,
         token_version=int(getattr(user, "token_version", 0) or 0),
     )
-    refresh = create_refresh_token(user.id, settings)
+    refresh = create_refresh_token(
+        user.id,
+        settings,
+        token_version=int(getattr(user, "token_version", 0) or 0),
+    )
     return TokenPair(
         access_token=access,
         refresh_token=refresh,
@@ -379,13 +391,16 @@ async def refresh_token(
     settings: Annotated[Settings, Depends(get_settings)],
     body: RefreshRequest,
 ):
-    uid = decode_refresh_token(body.refresh_token, settings)
-    if not uid:
+    claims = decode_refresh_token(body.refresh_token, settings)
+    if not claims:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
-    result = await db.execute(select(User).where(User.id == uid))
+    result = await db.execute(select(User).where(User.id == claims.user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    expected_tv = int(getattr(user, "token_version", 0) or 0)
+    if claims.token_version != expected_tv:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Token revoked")
     # Same gates as login / get_current_user — blocked accounts must not mint new tokens.
     if getattr(user, "deleted_at", None) is not None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Account is inactive")
@@ -396,9 +411,13 @@ async def refresh_token(
     access = create_access_token(
         user.id,
         settings,
-        token_version=int(getattr(user, "token_version", 0) or 0),
+        token_version=expected_tv,
     )
-    refresh = create_refresh_token(user.id, settings)
+    refresh = create_refresh_token(
+        user.id,
+        settings,
+        token_version=expected_tv,
+    )
     return TokenPair(
         access_token=access,
         refresh_token=refresh,

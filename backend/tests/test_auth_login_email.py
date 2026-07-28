@@ -121,8 +121,10 @@ def test_refresh_blocked_user_forbidden():
     )
 
     r = client.post("/v1/auth/refresh", json={"refresh_token": refresh})
-    assert r.status_code == 403, r.text
-    assert "blocked" in r.json()["detail"].lower()
+    # Block bumps token_version (401) and/or is_blocked gate (403).
+    assert r.status_code in (401, 403), r.text
+    detail = r.json()["detail"].lower()
+    assert "revoked" in detail or "blocked" in detail
 
 
 def test_refresh_inactive_user_forbidden():
@@ -143,8 +145,10 @@ def test_refresh_inactive_user_forbidden():
     )
 
     r = client.post("/v1/auth/refresh", json={"refresh_token": refresh})
-    assert r.status_code == 403, r.text
-    assert "inactive" in r.json()["detail"].lower()
+    # Deactivate bumps token_version (401) and/or is_active gate (403).
+    assert r.status_code in (401, 403), r.text
+    detail = r.json()["detail"].lower()
+    assert "revoked" in detail or "inactive" in detail
 
 
 def test_refresh_active_user_ok():

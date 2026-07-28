@@ -388,6 +388,7 @@ async def bulk_users(
             user.is_blocked = False
         elif body.action == "deactivate":
             user.is_active = False
+            _revoke_user_tokens(user)
         elif body.action == "block":
             user.is_blocked = True
             _revoke_user_tokens(user)
@@ -482,6 +483,8 @@ async def patch_user(
         if body.is_active:
             user.deleted_at = None
             user.is_blocked = False
+        else:
+            _revoke_user_tokens(user)
     if body.is_blocked is not None:
         user.is_blocked = body.is_blocked
         if body.is_blocked:
@@ -543,6 +546,7 @@ async def reset_password(
     _guard_actor_target(actor, mem, current_user=current_user)
     plain = generate_readable_password(user.name)
     user.password_hash = hash_password(plain)
+    _revoke_user_tokens(user)
     await log_password_reset(
         db, business_id=business_id, actor=current_user, target=user
     )
@@ -779,12 +783,14 @@ async def patch_permissions(
     user_id: uuid.UUID,
     body: PermissionsPatchIn,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_role("owner", "admin", "super_admin"))],
+    actor: Annotated[Membership, Depends(require_role("owner", "admin", "super_admin"))],
+    current_user: Annotated[User, Depends(get_current_user)],
 ):
     row = await _load_user_membership(db, business_id, user_id)
     if not row:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="User not found")
     _user, mem = row
+    _guard_actor_target(actor, mem, current_user=current_user)
     current = mem.permissions_json if isinstance(mem.permissions_json, dict) else {}
     merged = dict(current)
     for k in PERMISSION_KEYS:
@@ -837,6 +843,13 @@ async def list_activity(
     per_page: int = Query(50, ge=1, le=200),
 ):
     uid = user_id or user.id
+    if uid != user.id and not user.is_super_admin:
+        role = (_m.role or "").strip().lower()
+        if role not in ("owner", "admin", "manager"):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                detail="Cannot view another user's activity",
+            )
     now = datetime.now(timezone.utc)
     if days is not None:
         start = now - timedelta(days=days)
