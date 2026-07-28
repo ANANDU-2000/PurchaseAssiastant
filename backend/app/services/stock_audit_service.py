@@ -85,6 +85,7 @@ async def apply_audit_line_to_stock(
     adjustment_type: str,
     reason: str,
     audit_id: uuid.UUID | None = None,
+    idempotency_key: str | None = None,
 ) -> None:
     old_qty = catalog_stock_qty(item)
     if counted_qty < 0:
@@ -101,6 +102,7 @@ async def apply_audit_line_to_stock(
         reason=f"{prefix}{reason}".strip(),
         source_type="stock_audit",
         source_id=audit_id,
+        idempotency_key=idempotency_key,
         metadata={
             "audit_id": str(audit_id) if audit_id else None,
             "adjustment_type": adjustment_type,

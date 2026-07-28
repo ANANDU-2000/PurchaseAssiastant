@@ -1004,6 +1004,7 @@ async def verify_stock_count(
         adjustment_type=body.adjustment_type,
         reason=body.reason + (f" — {body.notes}" if body.notes else ""),
         audit_id=None,
+        idempotency_key=idem or None,
     )
     await log_staff_activity_best_effort(
         db,

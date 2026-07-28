@@ -4,7 +4,7 @@
 **Discovered HTTP routes (excl. HEAD/OPTIONS):** 216
 **Note:** ~380 was an estimate; FastAPI currently exposes **216** method+path pairs. Tracker uses discovered count as 100%.
 **Hosts:** API https://my-purchases-api.onrender.com · Web https://purchase-assiastant.vercel.app
-**Detail audit (Auth):** `docs/debug/API_AUDIT_AUTH.md`
+**Detail audit (Auth):** `docs/debug/API_AUDIT_AUTH.md` · Ops: `docs/debug/API_AUDIT_OPS.md`
 
 ## Progress
 
@@ -12,7 +12,7 @@
 |--------|-------|
 | Total endpoints | 216 |
 | Completed | 17 / 216 |
-| Current focus | Warehouse/Ops (Users Critical/High done) |
+| Current focus | Exports (Warehouse/Ops Critical/High done) |
 
 ## Status legend
 
@@ -43,13 +43,21 @@
 | USERS-H1 | High | COMPLETED | Deactivate revokes tokens | (this pass) |
 | USERS-H2 | High | COMPLETED | Permissions patch actor guard | (this pass) |
 | USERS-H3 | High | COMPLETED | Activity log IDOR for staff | (this pass) |
+| OPS-H1 | High | COMPLETED | Checklist distinct slot+task_key | (this pass) |
+| OPS-H2 | High | COMPLETED | usage_submit source_id on new log | (this pass) |
+| OPS-H3 | High | COMPLETED | materialize requires stock_edit | (this pass) |
+| OPS-C1 | Critical | COMPLETED | verify-count stores idempotency_key | (this pass) |
+| OPS-C2 | Critical | COMPLETED | PUT audit blocks applied line replace | (this pass) |
+| OPS-H4 | High | COMPLETED | inventory-summary redact value for staff | (this pass) |
+| OPS-H5 | High | COMPLETED | warehouse checklist template denom | (this pass) |
+| OPS-H6 | High | COMPLETED | reorder last_purchase_rate redact | (this pass) |
 
 ## Ordered work queue (one-by-one)
 
 1. ~~AUTH-C1~~ · ~~AUTH-H1~~ · ~~AUTH-H4~~ · ~~HOME-C1 isce~~
 2. **AUTH-H2 / AUTH-H3** — wait for your approval (email / object storage)
-3. ~~Stock~~ · ~~Purchase~~ · ~~Supplier~~ · ~~Reports~~ · ~~Notifications~~ · ~~Users~~
-4. **Warehouse/Ops** → Exports → Utilities → Public
+3. ~~Stock~~ · ~~Purchase~~ · ~~Supplier~~ · ~~Reports~~ · ~~Notifications~~ · ~~Users~~ · ~~Warehouse/Ops~~
+4. **Exports** → Utilities → Public
 
 
 ## Work rules

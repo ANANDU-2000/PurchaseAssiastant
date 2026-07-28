@@ -769,25 +769,38 @@ async def warehouse_alerts_from_stock(
             func.date(StockAdjustmentLog.updated_at) == today,
         )
     )
-    templates_q = await db.execute(
+    # Mirror operations._templates_for_business: business rows if any, else globals.
+    templates_biz_q = await db.execute(
         select(func.count())
         .select_from(StaffChecklistTemplate)
-        .where(
-            or_(
-                StaffChecklistTemplate.business_id == business_id,
-                StaffChecklistTemplate.business_id.is_(None),
-            )
-        )
+        .where(StaffChecklistTemplate.business_id == business_id)
     )
+    checklist_total = int(templates_biz_q.scalar_one() or 0)
+    if checklist_total == 0:
+        templates_global_q = await db.execute(
+            select(func.count())
+            .select_from(StaffChecklistTemplate)
+            .where(StaffChecklistTemplate.business_id.is_(None))
+        )
+        checklist_total = int(templates_global_q.scalar_one() or 0)
     completed_q = await db.execute(
-        select(func.count(func.distinct(StaffChecklistCompletion.task_key))).where(
+        select(
+            func.count(
+                func.distinct(
+                    func.concat(
+                        StaffChecklistCompletion.slot,
+                        ":",
+                        StaffChecklistCompletion.task_key,
+                    )
+                )
+            )
+        ).where(
             StaffChecklistCompletion.business_id == business_id,
             StaffChecklistCompletion.checklist_date == today,
         )
     )
     pending_deliveries = int(pending_deliveries_q.scalar_one() or 0)
     pending_verifications = int(variances_q.scalar_one() or 0)
-    checklist_total = int(templates_q.scalar_one() or 0)
     checklist_done = int(completed_q.scalar_one() or 0)
     checklist_completion_pct = (
         round((checklist_done / checklist_total) * 100, 1) if checklist_total > 0 else 100.0

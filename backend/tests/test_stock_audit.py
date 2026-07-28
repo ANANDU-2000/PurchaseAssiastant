@@ -88,7 +88,7 @@ def test_stock_audit_lifecycle_and_complete_applies_stock():
     line = r_line.json()["items"][0]
     assert float(line["system_qty"]) == 100.0
     assert float(line["counted_qty"]) == 99.0
-    assert float(line["difference_qty"]) == 1.0
+    assert float(line["difference_qty"]) == -1.0  # counted − system
 
     r_complete = client.post(f"{base}/{audit_id}/complete", headers=h)
     assert r_complete.status_code == 200, r_complete.text
@@ -120,3 +120,47 @@ def test_verify_count_endpoint():
     )
     assert r.status_code == 200, r.text
     assert float(r.json()["current_stock"]) == 88
+
+
+def test_verify_count_idempotency_key_prevents_double_apply():
+    h, bid, iid = _setup_auth_and_item()
+    idem = f"verify:{uuid.uuid4().hex}"
+
+    r1 = client.post(
+        f"/v1/businesses/{bid}/stock/{iid}/verify-count",
+        headers=h,
+        json={
+            "counted_qty": 50,
+            "adjustment_type": "verification",
+            "reason": "First scan",
+            "idempotency_key": idem,
+        },
+    )
+    assert r1.status_code == 200, r1.text
+    assert float(r1.json()["current_stock"]) == 50
+
+    # Drift stock without the verify key, then retry — must not re-apply 50.
+    r_patch = client.patch(
+        f"/v1/businesses/{bid}/stock/{iid}",
+        headers=h,
+        json={
+            "new_qty": 70,
+            "adjustment_type": "correction",
+            "reason": "Usage after count",
+            "idempotency_key": f"usage:{uuid.uuid4().hex}",
+        },
+    )
+    assert r_patch.status_code == 200, r_patch.text
+
+    r2 = client.post(
+        f"/v1/businesses/{bid}/stock/{iid}/verify-count",
+        headers=h,
+        json={
+            "counted_qty": 50,
+            "adjustment_type": "verification",
+            "reason": "Retry after timeout",
+            "idempotency_key": idem,
+        },
+    )
+    assert r2.status_code == 200, r2.text
+    assert float(r2.json()["current_stock"]) == 70

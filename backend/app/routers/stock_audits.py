@@ -242,6 +242,17 @@ async def update_stock_audit(
         db_audit.notes = audit_in.notes
 
     if audit_in.items is not None:
+        locked = any(
+            ln.line_status in ("applied", "pending_approval") for ln in db_audit.items
+        )
+        if locked:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Cannot replace audit lines after stock was applied "
+                    "or while approval is pending — use line upsert or complete"
+                ),
+            )
         db_audit.items.clear()
         await db.flush()
         for item_in in audit_in.items:

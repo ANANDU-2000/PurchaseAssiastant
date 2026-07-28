@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, literal
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -338,19 +338,19 @@ async def usage_submit(
             log.purchased_qty = p
             log.notes = line.notes
         else:
-            db.add(
-                DailyUsageLog(
-                    business_id=business_id,
-                    item_id=item.id,
-                    usage_date=today,
-                    opening_qty=opening,
-                    purchased_qty=p,
-                    used_qty=line.used_qty,
-                    closing_qty=closing,
-                    logged_by_user_id=user.id,
-                    notes=line.notes,
-                )
+            log = DailyUsageLog(
+                business_id=business_id,
+                item_id=item.id,
+                usage_date=today,
+                opening_qty=opening,
+                purchased_qty=p,
+                used_qty=line.used_qty,
+                closing_qty=closing,
+                logged_by_user_id=user.id,
+                notes=line.notes,
             )
+            db.add(log)
+            await db.flush()
         if closing != cur:
             await apply_stock_movement(
                 db,
@@ -363,7 +363,7 @@ async def usage_submit(
                 reason="Daily usage log",
                 notes=line.notes,
                 source_type="daily_usage",
-                source_id=log.id if log else None,
+                source_id=log.id,
             )
         total_used += line.used_qty
         logged += 1
@@ -477,8 +477,14 @@ async def checklist_summary(
     today = date.today()
     templates = await _templates_for_business(db, business_id)
     total = len(templates)
+    # Count distinct (slot, task_key) — same key in morning+evening are separate tasks.
+    slot_key = func.concat(
+        StaffChecklistCompletion.slot,
+        literal(":"),
+        StaffChecklistCompletion.task_key,
+    )
     cr = await db.execute(
-        select(func.count(func.distinct(StaffChecklistCompletion.task_key))).where(
+        select(func.count(func.distinct(slot_key))).where(
             StaffChecklistCompletion.business_id == business_id,
             StaffChecklistCompletion.checklist_date == today,
         )
@@ -498,10 +504,11 @@ async def materialize_daily_snapshots(
     business_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
-    _m: Annotated[Membership, Depends(require_membership)],
+    _m: Annotated[Membership, Depends(require_permission("stock_edit"))],
     snapshot_date: str | None = None,
 ):
     """Ensure daily_usage_logs rows exist for active items (opening from prior close)."""
+    del _m
     try:
         ud = date.fromisoformat((snapshot_date or date.today().isoformat())[:10])
     except ValueError:

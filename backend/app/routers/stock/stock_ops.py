@@ -316,11 +316,12 @@ async def list_opening_stock_setup(
 async def stock_inventory_summary(
     business_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_membership)],
+    membership: Annotated[Membership, Depends(require_membership)],
 ) -> InventorySummaryOut:
     """On-hand stock valuation (landing cost × qty) and unit buckets for owner home."""
-    del _m
     payload = await compute_inventory_summary(db, business_id)
+    if should_redact_financials(membership.role):
+        payload["total_value_inr"] = 0.0
     return InventorySummaryOut(**payload)
 async def _stock_totals_purchased_in_period(
     db: AsyncSession,
@@ -441,12 +442,13 @@ async def stock_totals(
 async def list_reorder_entries(
     business_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _m: Annotated[Membership, Depends(require_membership)],
+    membership: Annotated[Membership, Depends(require_membership)],
     status: str = "pending",
 ):
     st = (status or "pending").strip().lower()
     if st not in ("pending", "ordered", "done", "all"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid status filter")
+    redact = should_redact_financials(membership.role)
 
     q = (
         select(ReorderListEntry, CatalogItem)
@@ -469,6 +471,7 @@ async def list_reorder_entries(
         sup = sup_map.get(item.id)
         purchases = await sh._recent_purchases(db, item, limit=1)
         lp = purchases[0] if purchases else None
+        rate = None if redact else (lp.rate if lp else None)
         items.append(
             ReorderListEntryOut(
                 id=entry.id,
@@ -481,7 +484,7 @@ async def list_reorder_entries(
                 status=entry.status,
                 added_by_name=entry.added_by_name,
                 supplier_name=sup,
-                last_purchase_rate=lp.rate if lp else None,
+                last_purchase_rate=rate,
                 created_at=entry.created_at,
                 updated_at=entry.updated_at,
             )
