@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../debug/agent_debug_log.dart';
@@ -24,8 +25,24 @@ class HexaWebPageFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (fullWidth || !context.isDesktopLayout) {
-      return child;
+    // On Flutter web, framing with a tight height SizedBox has blanked desktop
+    // shells when parent maxHeight was 0/odd. Prefer unconstrained child +
+    // horizontal centering only.
+    if (fullWidth || !context.isDesktopLayout || kIsWeb) {
+      if (fullWidth || !context.isDesktopLayout) {
+        return child;
+      }
+      final framed = Padding(
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+        child: child,
+      );
+      return Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          child: framed,
+        ),
+      );
     }
 
     return LayoutBuilder(
@@ -59,17 +76,7 @@ class HexaWebPageFrame extends StatelessWidget {
           child: child,
         );
 
-        if (constraints.hasBoundedHeight) {
-          // #region agent log
-          if (constraints.maxHeight < 1) {
-            agentDebugLog(
-              hypothesisId: 'H2',
-              location: 'hexa_web_page_frame.dart:zeroHeight',
-              message: 'bounded maxHeight < 1 — blank risk',
-              data: {'maxH': constraints.maxHeight, 'width': width},
-            );
-          }
-          // #endregion
+        if (constraints.hasBoundedHeight && constraints.maxHeight >= 1) {
           return Align(
             alignment: Alignment.topCenter,
             child: SizedBox(
@@ -85,7 +92,7 @@ class HexaWebPageFrame extends StatelessWidget {
           alignment: Alignment.topCenter,
           child: SizedBox(
             width: width,
-            height: viewportHeight,
+            height: viewportHeight > 0 ? viewportHeight : null,
             child: framed,
           ),
         );

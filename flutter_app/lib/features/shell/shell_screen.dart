@@ -1,6 +1,5 @@
 import 'dart:ui' show ImageFilter;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,12 +10,10 @@ import '../../core/providers/notification_center_provider.dart'
 import '../../core/providers/notifications_provider.dart'
     show notificationsUnreadCountProvider;
 import '../../core/design_system/hexa_ds_tokens.dart';
-import '../../core/auth/session_notifier.dart';
 import '../../core/auth/provider_api_guard.dart';
 import '../../core/debug/agent_debug_log.dart';
 import '../../core/router/navigation_ext.dart';
 import '../../core/router/shell_navigation.dart';
-import '../../core/design_system/hexa_desktop_layout.dart';
 import '../../core/design_system/hexa_responsive.dart';
 import '../../core/theme/hexa_colors.dart';
 import 'app_shell.dart';
@@ -109,9 +106,8 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final height = MediaQuery.sizeOf(context).height;
     final showRail = width > 0 && width >= kShellRailMin;
-    // Flutter web: never use extended [NavigationRail] (blanks body ≥900px).
-    final railExtended =
-        !kIsWeb && width > 0 && width >= kShellRailExtendedMin;
+    // Never use NavigationRail.extended — it blanks Flutter web ≥900px even when
+    // wrapped in a width cap. Always use the hard-fixed [WebCompactSideNav].
     final showBottomBar = width > 0 && width < kShellBottomNavMax;
     // #region agent log
     agentDebugLog(
@@ -169,28 +165,17 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
             ),
     );
 
-    final railWidget = kIsWeb
-        ? _WebOwnerSideNav(
-            selectedIndex: navSelectedIndex,
-            onDestinationSelected: go,
-            onNotificationsTap: () => context.push('/notifications'),
-            onSettingsTap: () => context.push('/settings'),
-          )
-        : _StableNavRail(
-            selectedIndex: navSelectedIndex,
-            extended: railExtended,
-            onDestinationSelected: go,
-            onNotificationsTap: () => context.push('/notifications'),
-            onSettingsTap: () => context.push('/settings'),
-          );
+    final railWidget = _WebOwnerSideNav(
+      selectedIndex: navSelectedIndex,
+      onDestinationSelected: go,
+      onNotificationsTap: () => context.push('/notifications'),
+      onSettingsTap: () => context.push('/settings'),
+    );
 
-    // Side nav must be width-capped. [NavigationRail] without a tight width can
-    // expand and leave [Expanded] body at 0× on Flutter web → blank desktop.
+    // Hard-capped width — never let side nav expand into [Expanded] body.
     final rail = showRail
         ? SizedBox(
-            width: railExtended
-                ? kDesktopSidebarWidth
-                : kShellCompactRailWidth,
+            width: kShellCompactRailWidth,
             child: railWidget,
           )
         : const SizedBox.shrink();
@@ -305,77 +290,6 @@ class _WebOwnerSideNav extends ConsumerWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _StableNavRail extends ConsumerWidget {
-  const _StableNavRail({
-    required this.selectedIndex,
-    required this.extended,
-    required this.onDestinationSelected,
-    required this.onNotificationsTap,
-    required this.onSettingsTap,
-  });
-
-  final int selectedIndex;
-  final bool extended;
-  final ValueChanged<int> onDestinationSelected;
-  final VoidCallback onNotificationsTap;
-  final VoidCallback onSettingsTap;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final stockAlertN = providerSkipApi(ref)
-        ? 0
-        : ref.watch(notificationsUnreadCountProvider);
-    final biz = ref.watch(sessionProvider)?.primaryBusiness;
-
-    return NavigationRail(
-      selectedIndex: selectedIndex,
-      extended: extended,
-      minWidth: kShellCompactRailWidth,
-      minExtendedWidth: kDesktopSidebarWidth,
-      labelType: extended
-          ? null
-          : NavigationRailLabelType.none,
-      onDestinationSelected: onDestinationSelected,
-      trailing: extended && biz != null
-          ? DesktopSideNavFooter(
-              businessName: biz.effectiveDisplayTitle,
-              roleLabel: biz.role.toUpperCase(),
-              notificationCount: stockAlertN,
-              onNotificationsTap: onNotificationsTap,
-              onSettingsTap: onSettingsTap,
-            )
-          : null,
-      destinations: const [
-        NavigationRailDestination(
-          icon: Icon(Icons.grid_view_outlined),
-          selectedIcon: Icon(Icons.grid_view_rounded),
-          label: Text('Home'),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.inventory_2_outlined),
-          selectedIcon: Icon(Icons.inventory_2_rounded),
-          label: Text('Stock'),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.bar_chart_outlined),
-          selectedIcon: Icon(Icons.bar_chart_rounded),
-          label: Text('Reports'),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.receipt_long_outlined),
-          selectedIcon: Icon(Icons.receipt_long_rounded),
-          label: Text('History'),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.search_rounded),
-          selectedIcon: Icon(Icons.manage_search_rounded),
-          label: Text('Search'),
-        ),
-      ],
     );
   }
 }

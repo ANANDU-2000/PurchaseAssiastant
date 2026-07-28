@@ -1,15 +1,12 @@
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/design_system/hexa_ds_tokens.dart';
-import '../../../core/auth/session_notifier.dart';
-import '../../../core/design_system/hexa_desktop_layout.dart';
 import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/providers/notification_center_provider.dart'
     show notificationCenterCoordinatorProvider;
@@ -90,12 +87,8 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
     final sessionHint = ref.watch(apiDegradedProvider);
     final width = MediaQuery.sizeOf(context).width;
     final showRail = width > 0 && width >= kShellRailMin;
-    // Match owner shell: compact rail only on Flutter web (avoids blank desktop).
-    final railExtended =
-        !kIsWeb && width > 0 && width >= kShellRailExtendedMin;
+    // Never use NavigationRail.extended (blanks Flutter web ≥900px).
     final showBottomBar = width > 0 && width < kShellBottomNavMax;
-    final session = ref.watch(sessionProvider);
-    final biz = session?.primaryBusiness;
     final notifN = ref.watch(notificationsUnreadCountProvider);
     final pendingDel = ref.watch(staffPendingDeliveryCountProvider);
 
@@ -109,116 +102,55 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
     final navSelectedIndex =
         idx.clamp(StaffShellBranch.home, StaffShellBranch.tasks);
 
-    final staffRail = kIsWeb
-        ? WebCompactSideNav(
-            selectedIndex: navSelectedIndex,
-            onDestinationSelected: go,
-            destinations: [
-              const WebCompactSideNavItem(
-                icon: Icons.home_outlined,
-                selectedIcon: Icons.home_rounded,
-                label: 'Home',
-              ),
-              const WebCompactSideNavItem(
-                icon: Icons.inventory_2_outlined,
-                selectedIcon: Icons.inventory_2_rounded,
-                label: 'Stock',
-              ),
-              const WebCompactSideNavItem(
-                icon: Icons.qr_code_scanner_outlined,
-                selectedIcon: Icons.qr_code_scanner_rounded,
-                label: 'Scan',
-              ),
-              const WebCompactSideNavItem(
-                icon: Icons.search_rounded,
-                selectedIcon: Icons.manage_search_rounded,
-                label: 'Search',
-              ),
-              WebCompactSideNavItem(
-                icon: Icons.local_shipping_outlined,
-                selectedIcon: Icons.local_shipping_rounded,
-                label: 'Deliveries',
-                badgeCount: pendingDel,
-              ),
-              const WebCompactSideNavItem(
-                icon: Icons.checklist_outlined,
-                selectedIcon: Icons.checklist_rounded,
-                label: 'Tasks',
-              ),
-            ],
-            footer: Tooltip(
-              message: 'Notifications',
-              child: IconButton(
-                onPressed: () => context.push('/notifications'),
-                icon: notifN > 0
-                    ? Badge(
-                        label: Text(notifN > 99 ? '99+' : '$notifN'),
-                        child: const Icon(Icons.notifications_outlined),
-                      )
-                    : const Icon(Icons.notifications_outlined),
-              ),
-            ),
-          )
-        : NavigationRail(
-            selectedIndex: navSelectedIndex,
-            extended: railExtended,
-            minWidth: kShellCompactRailWidth,
-            minExtendedWidth: kDesktopSidebarWidth,
-            labelType: railExtended
-                ? null
-                : NavigationRailLabelType.none,
-            onDestinationSelected: go,
-            trailing: railExtended && biz != null
-                ? DesktopSideNavFooter(
-                    businessName: biz.effectiveDisplayTitle,
-                    roleLabel: biz.role.toUpperCase(),
-                    notificationCount: notifN,
-                    onNotificationsTap: () => context.push('/notifications'),
-                  )
-                : null,
-            destinations: [
-              const NavigationRailDestination(
-                icon: Icon(Icons.home_outlined),
-                selectedIcon: Icon(Icons.home_rounded),
-                label: Text('Home'),
-              ),
-              const NavigationRailDestination(
-                icon: Icon(Icons.inventory_2_outlined),
-                selectedIcon: Icon(Icons.inventory_2_rounded),
-                label: Text('Stock'),
-              ),
-              const NavigationRailDestination(
-                icon: Icon(Icons.qr_code_scanner_outlined),
-                selectedIcon: Icon(Icons.qr_code_scanner_rounded),
-                label: Text('Scan'),
-              ),
-              const NavigationRailDestination(
-                icon: Icon(Icons.search_rounded),
-                selectedIcon: Icon(Icons.manage_search_rounded),
-                label: Text('Search'),
-              ),
-              NavigationRailDestination(
-                icon: Badge(
-                  isLabelVisible: pendingDel > 0,
-                  label: Text(pendingDel > 99 ? '99+' : '$pendingDel'),
-                  backgroundColor: const Color(0xFFEA580C),
-                  child: const Icon(Icons.local_shipping_outlined),
-                ),
-                selectedIcon: Badge(
-                  isLabelVisible: pendingDel > 0,
-                  label: Text(pendingDel > 99 ? '99+' : '$pendingDel'),
-                  backgroundColor: const Color(0xFFEA580C),
-                  child: const Icon(Icons.local_shipping_rounded),
-                ),
-                label: const Text('Deliveries'),
-              ),
-              const NavigationRailDestination(
-                icon: Icon(Icons.checklist_outlined),
-                selectedIcon: Icon(Icons.checklist_rounded),
-                label: Text('Tasks'),
-              ),
-            ],
-          );
+    final staffRail = WebCompactSideNav(
+      selectedIndex: navSelectedIndex,
+      onDestinationSelected: go,
+      destinations: [
+        const WebCompactSideNavItem(
+          icon: Icons.home_outlined,
+          selectedIcon: Icons.home_rounded,
+          label: 'Home',
+        ),
+        const WebCompactSideNavItem(
+          icon: Icons.inventory_2_outlined,
+          selectedIcon: Icons.inventory_2_rounded,
+          label: 'Stock',
+        ),
+        const WebCompactSideNavItem(
+          icon: Icons.qr_code_scanner_outlined,
+          selectedIcon: Icons.qr_code_scanner_rounded,
+          label: 'Scan',
+        ),
+        const WebCompactSideNavItem(
+          icon: Icons.search_rounded,
+          selectedIcon: Icons.manage_search_rounded,
+          label: 'Search',
+        ),
+        WebCompactSideNavItem(
+          icon: Icons.local_shipping_outlined,
+          selectedIcon: Icons.local_shipping_rounded,
+          label: 'Deliveries',
+          badgeCount: pendingDel,
+        ),
+        const WebCompactSideNavItem(
+          icon: Icons.checklist_outlined,
+          selectedIcon: Icons.checklist_rounded,
+          label: 'Tasks',
+        ),
+      ],
+      footer: Tooltip(
+        message: 'Notifications',
+        child: IconButton(
+          onPressed: () => context.push('/notifications'),
+          icon: notifN > 0
+              ? Badge(
+                  label: Text(notifN > 99 ? '99+' : '$notifN'),
+                  child: const Icon(Icons.notifications_outlined),
+                )
+              : const Icon(Icons.notifications_outlined),
+        ),
+      ),
+    );
 
     return BusinessWriteStockListener(
       child: ShellRealtimeListener(
@@ -235,9 +167,7 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
               children: [
                 if (showRail)
                   SizedBox(
-                    width: railExtended
-                        ? kDesktopSidebarWidth
-                        : kShellCompactRailWidth,
+                    width: kShellCompactRailWidth,
                     child: staffRail,
                   ),
                 Expanded(

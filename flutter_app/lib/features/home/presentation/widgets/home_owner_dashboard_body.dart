@@ -141,13 +141,17 @@ class HomeOwnerDashboardBody extends ConsumerWidget {
         SizedBox(height: gap),
         LayoutBuilder(
           builder: (context, constraints) {
-            final double gutter = HexaResponsive.pageGutter(context, operational: true);
             final double spacing = 12.0;
-            final double width = MediaQuery.sizeOf(context).width;
+            // Use the grid's own max width — MediaQuery includes the side rail and
+            // produced bad/zero aspect ratios on wide desktops.
+            final double width = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+                ? constraints.maxWidth
+                : MediaQuery.sizeOf(context).width;
             final int cols = context.isDesktopLayout ? 4 : 2;
             
-            // Deduct gutter on both sides and space between columns
-            final double cardWidth = (width - (gutter * 2) - ((cols - 1) * spacing)) / cols;
+            // Deduct space between columns only (gutter already applied by parents).
+            final double cardWidth =
+                ((width - ((cols - 1) * spacing)) / cols).clamp(48.0, 600.0);
             final double childAspectRatio = cardWidth / 110.0;
 
             return GridView.count(
