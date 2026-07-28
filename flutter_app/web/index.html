@@ -280,12 +280,20 @@
         boot.classList.add('boot-error');
         boot.textContent = msg;
       }
+      var wrongHosts = {
+        'purchase-assistant.vercel.app': 1,
+        'purchase-assastant.vercel.app': 1,
+        'purchase-assiantant.vercel.app': 1
+      };
       fetch('main.dart.js', { method: 'HEAD', cache: 'no-store' })
         .then(function (r) {
           var ct = (r.headers.get('content-type') || '').toLowerCase();
           if (!r.ok || ct.indexOf('javascript') === -1) {
-            var wh = document.getElementById('wrong-host');
-            if (wh) wh.classList.add('show');
+            // Never paint the typo-host overlay on the canonical host.
+            if (wrongHosts[host]) {
+              var wh = document.getElementById('wrong-host');
+              if (wh) wh.classList.add('show');
+            }
             showBootError(
               'Wrong site — use https://purchase-assiastant.vercel.app (not purchase-assistant).'
             );

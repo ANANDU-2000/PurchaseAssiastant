@@ -22,8 +22,9 @@ const double kShellRailMin = 600;
 /// Shell: extended rail with labels (desktop).
 const double kShellRailExtendedMin = 900;
 
-/// Compact NavigationRail width (icons only).
-const double kShellCompactRailWidth = 56;
+/// Compact side-nav width (icons only). Keep ≥72 — Material [NavigationRail]
+/// defaults to minWidth 72; narrower caps caused Flutter web shell blanks.
+const double kShellCompactRailWidth = 72;
 
 /// Extended rail / branded sidebar width target on desktop.
 const double kDesktopSidebarWidth = 240;

@@ -25,6 +25,7 @@ import 'shell_branch_provider.dart';
 import 'business_write_stock_listener.dart';
 import 'shell_realtime_listener.dart';
 import 'shell_tab_auto_refresh_listener.dart';
+import 'web_compact_side_nav.dart';
 
 /// Shell: Home | Stock | Reports | History | Search in one row, then [+] (no overlap).
 class ShellScreen extends ConsumerStatefulWidget {
@@ -108,8 +109,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final height = MediaQuery.sizeOf(context).height;
     final showRail = width > 0 && width >= kShellRailMin;
-    // Flutter web: extended NavigationRail has blanked the shell (≥900px) even
-    // with a width cap in some browsers — keep compact icons-only rail on web.
+    // Flutter web: never use extended [NavigationRail] (blanks body ≥900px).
     final railExtended =
         !kIsWeb && width > 0 && width >= kShellRailExtendedMin;
     final showBottomBar = width > 0 && width < kShellBottomNavMax;
@@ -169,16 +169,23 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
             ),
     );
 
-    final railWidget = _StableNavRail(
-      selectedIndex: navSelectedIndex,
-      extended: railExtended,
-      onDestinationSelected: go,
-      onNotificationsTap: () => context.push('/notifications'),
-      onSettingsTap: () => context.push('/settings'),
-    );
+    final railWidget = kIsWeb
+        ? _WebOwnerSideNav(
+            selectedIndex: navSelectedIndex,
+            onDestinationSelected: go,
+            onNotificationsTap: () => context.push('/notifications'),
+            onSettingsTap: () => context.push('/settings'),
+          )
+        : _StableNavRail(
+            selectedIndex: navSelectedIndex,
+            extended: railExtended,
+            onDestinationSelected: go,
+            onNotificationsTap: () => context.push('/notifications'),
+            onSettingsTap: () => context.push('/settings'),
+          );
 
-    // Extended NavigationRail must be width-capped. Without a tight width it can
-    // expand and leave [Expanded] body at 0×height on Flutter web → blank desktop.
+    // Side nav must be width-capped. [NavigationRail] without a tight width can
+    // expand and leave [Expanded] body at 0× on Flutter web → blank desktop.
     final rail = showRail
         ? SizedBox(
             width: railExtended
@@ -219,6 +226,89 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
   }
 }
 
+class _WebOwnerSideNav extends ConsumerWidget {
+  const _WebOwnerSideNav({
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+    required this.onNotificationsTap,
+    required this.onSettingsTap,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+  final VoidCallback onNotificationsTap;
+  final VoidCallback onSettingsTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final stockAlertN = providerSkipApi(ref)
+        ? 0
+        : ref.watch(notificationsUnreadCountProvider);
+    final cs = Theme.of(context).colorScheme;
+    return WebCompactSideNav(
+      selectedIndex: selectedIndex,
+      onDestinationSelected: onDestinationSelected,
+      destinations: const [
+        WebCompactSideNavItem(
+          icon: Icons.grid_view_outlined,
+          selectedIcon: Icons.grid_view_rounded,
+          label: 'Home',
+        ),
+        WebCompactSideNavItem(
+          icon: Icons.inventory_2_outlined,
+          selectedIcon: Icons.inventory_2_rounded,
+          label: 'Stock',
+        ),
+        WebCompactSideNavItem(
+          icon: Icons.bar_chart_outlined,
+          selectedIcon: Icons.bar_chart_rounded,
+          label: 'Reports',
+        ),
+        WebCompactSideNavItem(
+          icon: Icons.receipt_long_outlined,
+          selectedIcon: Icons.receipt_long_rounded,
+          label: 'History',
+        ),
+        WebCompactSideNavItem(
+          icon: Icons.search_rounded,
+          selectedIcon: Icons.manage_search_rounded,
+          label: 'Search',
+        ),
+      ],
+      footer: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Tooltip(
+            message: 'Notifications',
+            child: IconButton(
+              onPressed: onNotificationsTap,
+              icon: stockAlertN > 0
+                  ? Badge(
+                      label: Text(stockAlertN > 99 ? '99+' : '$stockAlertN'),
+                      child: Icon(
+                        Icons.notifications_outlined,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    )
+                  : Icon(
+                      Icons.notifications_outlined,
+                      color: cs.onSurfaceVariant,
+                    ),
+            ),
+          ),
+          Tooltip(
+            message: 'Settings',
+            child: IconButton(
+              onPressed: onSettingsTap,
+              icon: Icon(Icons.settings_outlined, color: cs.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _StableNavRail extends ConsumerWidget {
   const _StableNavRail({
     required this.selectedIndex,
@@ -244,6 +334,7 @@ class _StableNavRail extends ConsumerWidget {
     return NavigationRail(
       selectedIndex: selectedIndex,
       extended: extended,
+      minWidth: kShellCompactRailWidth,
       minExtendedWidth: kDesktopSidebarWidth,
       labelType: extended
           ? null
