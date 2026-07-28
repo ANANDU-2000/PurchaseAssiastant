@@ -316,7 +316,12 @@ async def list_suppliers(
     t0 = time.perf_counter()
 
     async def _read_full() -> list[SupplierOut]:
-        r = await db.execute(select(Supplier).where(Supplier.business_id == business_id))
+        r = await db.execute(
+            select(Supplier)
+            .where(Supplier.business_id == business_id)
+            .order_by(Supplier.name.asc())
+            .limit(2000)
+        )
         rows = r.scalars().all()
         if not rows:
             return []

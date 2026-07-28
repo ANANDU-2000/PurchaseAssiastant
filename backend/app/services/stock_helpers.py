@@ -789,7 +789,10 @@ async def _recent_purchases(
         select(TradePurchaseLine, TradePurchase, Supplier.name)
         .join(TradePurchase, TradePurchaseLine.trade_purchase_id == TradePurchase.id)
         .outerjoin(Supplier, TradePurchase.supplier_id == Supplier.id)
-        .where(TradePurchaseLine.catalog_item_id == item.id)
+        .where(
+            TradePurchaseLine.catalog_item_id == item.id,
+            TradePurchase.status.notin_(("deleted", "cancelled", "draft")),
+        )
         .order_by(desc(TradePurchase.purchase_date))
         .limit(limit)
     )

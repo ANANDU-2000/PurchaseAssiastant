@@ -16,7 +16,7 @@
 | SUPPLIER-C1 | Critical | `DELETE /suppliers/{id}` / `DELETE /brokers/{id}` did not clear `broker_supplier_m2m` (no ON DELETE CASCADE) → IntegrityError / 500 when links exist | **Fixed** |
 | SUPPLIER-H1 | High | `GET …/suppliers/{id}/metrics` used `AVG(landing_cost)` instead of line money ÷ qty | **Fixed** |
 | SUPPLIER-H2 | High | `GET …/contacts/search` brokers skipped `_broker_out` (missing `supplier_ids` / `last_purchase_date`) | **Fixed** |
-| SUPPLIER-M1 | Medium | Slow suppliers list (~1–1.8s compact) | Track (perf) |
+| SUPPLIER-M1 | Medium | Slow suppliers list (~1–1.8s compact) | **Improved** (full list ordered + cap 2000) |
 | SUPPLIER-L1 | Low | Dead Flutter `hexa_api.analyticsSuppliers` / `analyticsBrokers` paths (unused; live UI uses trade snapshot) | Track |
 
 Also clears `supplier_item_defaults` on supplier delete (same missing CASCADE class).

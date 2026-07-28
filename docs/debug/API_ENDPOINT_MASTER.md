@@ -62,6 +62,10 @@
 | REPORTS-M2 | Medium | COMPLETED | Tests use trade-summary not dead /dashboard | (this pass) |
 | USERS-M1 | Medium | COMPLETED | list_users / active-sessions batched stats | (this pass) |
 | NOTIF-L1 | Low | COMPLETED | due_soon scheduler emits payment notifications | (this pass) |
+| STOCK-H1 | High | COMPLETED | Drop duplicate delivered scan on stock detail | (this pass) |
+| STOCK-M3 | Medium | COMPLETED | Recent purchases skip deleted/cancelled/draft | (this pass) |
+| REPORTS-L1 | Low | COMPLETED | Category/type/supplier profit from line expr | (this pass) |
+| SUPPLIER-M1 | Medium | COMPLETED | Full suppliers list ordered + row cap | (this pass) |
 
 ## Ordered work queue (one-by-one)
 

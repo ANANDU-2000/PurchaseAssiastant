@@ -267,6 +267,7 @@ async def _trade_suppliers_rows(
 ) -> list[dict[str, Any]]:
     """Same rows as GET /trade-suppliers (line-based amounts, report status filter)."""
     amt = _trade_line_amount_expr()
+    profit_e = tq.trade_line_profit_expr()
     kg_line = tq.trade_line_weight_expr()
     bag_expr = tq.trade_line_qty_bags_expr()
     box_expr = tq.trade_line_qty_boxes_expr()
@@ -282,6 +283,7 @@ async def _trade_suppliers_rows(
             func.coalesce(Supplier.name, "Unknown").label("supplier_name"),
             func.count(func.distinct(TradePurchase.id)).label("deals"),
             func.coalesce(func.sum(amt), 0.0).label("total_purchase"),
+            func.coalesce(func.sum(profit_e), 0.0).label("total_profit"),
             func.coalesce(func.sum(TradePurchaseLine.qty), 0.0).label("total_qty"),
             bag_sum.label("total_bags"),
             box_sum.label("total_boxes"),
@@ -301,6 +303,7 @@ async def _trade_suppliers_rows(
     for r in rows:
         tp = float(r["total_purchase"] or 0)
         tqty = float(r["total_qty"] or 0)
+        tprofit = float(r["total_profit"] or 0)
         out.append(
             {
                 "supplier_id": str(r["id"]) if r["id"] is not None else "",
@@ -313,10 +316,10 @@ async def _trade_suppliers_rows(
                 "total_boxes": float(r["total_boxes"] or 0),
                 "total_tins": float(r["total_tins"] or 0),
                 "total_kg": float(r["total_kg"] or 0),
-                "total_profit": 0.0,
+                "total_profit": tprofit,
                 # Volume-weighted unit rate from line money ÷ qty (not zero stub).
                 "avg_landing": (tp / tqty) if tqty > 1e-12 else 0.0,
-                "margin_pct": 0.0,
+                "margin_pct": (tprofit / tp * 100.0) if tp > 1e-12 else 0.0,
             }
         )
     return out
@@ -533,6 +536,7 @@ async def _fetch_trade_types_breakdown_rows(
     date_to: date,
 ) -> list[dict[str, Any]]:
     amt = _trade_line_amount_expr()
+    profit_e = tq.trade_line_profit_expr()
     bf = _trade_purchase_date_filter(business_id, date_from, date_to)
     parent_cat = func.coalesce(ItemCategory.name, "Uncategorized").label("category_name")
     type_label = case(
@@ -553,6 +557,7 @@ async def _fetch_trade_types_breakdown_rows(
             parent_cat,
             type_label,
             func.coalesce(func.sum(amt), 0).label("total_purchase"),
+            func.coalesce(func.sum(profit_e), 0).label("total_profit"),
             qty_sum.label("total_qty"),
             bag_sum.label("total_bags"),
             box_sum.label("total_boxes"),
@@ -585,7 +590,7 @@ async def _fetch_trade_types_breakdown_rows(
             "total_boxes": float(r["total_boxes"] or 0),
             "total_tins": float(r["total_tins"] or 0),
             "total_kg": float(r["total_kg"] or 0),
-            "total_profit": 0.0,
+            "total_profit": float(r["total_profit"] or 0),
         }
         for r in rows
     ]
@@ -1172,6 +1177,7 @@ async def trade_categories_breakdown(
     """Spend grouped by ItemCategory name."""
     del _m
     amt = _trade_line_amount_expr()
+    profit_e = tq.trade_line_profit_expr()
     bf = _trade_purchase_date_filter(business_id, date_from, date_to)
     cat_key = func.coalesce(ItemCategory.name, "Uncategorized")
     qty_sum = func.coalesce(func.sum(TradePurchaseLine.qty), 0)
@@ -1181,6 +1187,7 @@ async def trade_categories_breakdown(
             func.count(TradePurchaseLine.id).label("line_count"),
             func.count(func.distinct(TradePurchaseLine.catalog_item_id)).label("item_count"),
             func.coalesce(func.sum(amt), 0).label("total_purchase"),
+            func.coalesce(func.sum(profit_e), 0).label("total_profit"),
             qty_sum.label("total_qty"),
         )
         .select_from(TradePurchaseLine)
@@ -1202,7 +1209,7 @@ async def trade_categories_breakdown(
             "line_count": int(r["line_count"] or 0),
             "item_count": int(r["item_count"] or 0),
             "total_purchase": float(r["total_purchase"] or 0),
-            "total_profit": 0.0,
+            "total_profit": float(r["total_profit"] or 0),
             "total_qty": float(r["total_qty"] or 0),
             "type_name": "—",
         }

@@ -19,7 +19,7 @@
 | REPORTS-H3 | High | Item bundle `rate_avg` used `AVG(landing_cost)` | **Fixed** → money÷qty |
 | REPORTS-M1 | Medium | `home-overview` ~3s cold | Track (perf) |
 | REPORTS-M2 | Medium | Legacy tests hit `GET …/dashboard` → 404 (route removed) | **Fixed** |
-| REPORTS-L1 | Low | Categories/types hardcode `total_profit: 0` | Track |
+| REPORTS-L1 | Low | Categories/types hardcode `total_profit: 0` | **Fixed** (line profit expr) |
 
 ## Tests
 

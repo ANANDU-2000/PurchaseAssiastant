@@ -23,7 +23,6 @@ from app.services.stock_inventory import (
     catalog_stock_qty,
     compute_inventory_summary,
     compute_stock_alerts_summary,
-    movement_delivered_qty_map,
     stock_status,
 )
 from app.models import (
@@ -593,11 +592,11 @@ async def get_stock_item(
     last_delivered = meta[1] if valid_last_trade else False
     last_lq = getattr(item, "last_line_qty", None) if valid_last_trade else None
     last_pur_at = getattr(item, "last_purchase_at", None) if valid_last_trade else None
-    movement_delivered = await movement_delivered_qty_map(db, business_id, [item_id])
-    total_delivered = movement_delivered.get(item_id, Decimal(0))
-    _, pending_lifetime_map = await sh._lifetime_purchase_qty_maps(
+    # One pass: delivered map + undelivered lifetime pending (avoid double movement scan).
+    delivered_map, pending_lifetime_map = await sh._lifetime_purchase_qty_maps(
         db, business_id, [item_id]
     )
+    total_delivered = delivered_map.get(item_id, Decimal(0))
     total_pending_lifetime = pending_lifetime_map.get(item_id)
     pend = (await sh._pending_order_meta_map(db, business_id, [item_id])).get(
         item_id, (False, None, None)
