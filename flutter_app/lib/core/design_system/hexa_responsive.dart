@@ -195,16 +195,25 @@ class HexaResponsiveCenter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Align + maxWidth ConstrainedBox without a height bound is unsafe around
-    // scrollables on Flutter web. Prefer a centered max-width box that still
-    // participates in the parent's height constraints.
-    return Center(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth),
-        child: Padding(
-          padding: padding ?? HexaResponsive.pagePadding(context),
-          child: child,
-        ),
+    // Never use Align/Center around scroll sliver children on Flutter web —
+    // unbounded height + expand-to-fit blanks the page. Pad horizontally when
+    // the parent is wider than [maxWidth] instead.
+    final pad = padding ?? HexaResponsive.pagePadding(context);
+    return Padding(
+      padding: pad,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth;
+          Widget content = child;
+          if (w.isFinite && w > maxWidth) {
+            final side = (w - maxWidth) / 2;
+            content = Padding(
+              padding: EdgeInsets.symmetric(horizontal: side),
+              child: child,
+            );
+          }
+          return content;
+        },
       ),
     );
   }
