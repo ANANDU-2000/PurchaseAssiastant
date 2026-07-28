@@ -60,7 +60,8 @@
 | EXP-M1 | Medium | COMPLETED | Cap catalog/supplier rows in exports | (this pass) |
 | OPS-M1 | Medium | COMPLETED | Persist checklist default template seed | (this pass) |
 | REPORTS-M2 | Medium | COMPLETED | Tests use trade-summary not dead /dashboard | (this pass) |
-| AUTH-M3 | Medium | COMPLETED | me/businesses sync perms (no DB N+1) | (this pass) |
+| USERS-M1 | Medium | COMPLETED | list_users / active-sessions batched stats | (this pass) |
+| NOTIF-L1 | Low | COMPLETED | due_soon scheduler emits payment notifications | (this pass) |
 
 ## Ordered work queue (one-by-one)
 

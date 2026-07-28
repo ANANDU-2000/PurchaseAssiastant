@@ -11,6 +11,7 @@ from app.database import async_session_factory
 from app.main import app
 from app.models import TradePurchase
 from app.services.scheduled_notification_jobs import (
+    run_due_soon_payment_scan,
     run_evening_physical_count_reminder,
     run_idle_delivery_notification_scan,
 )
@@ -82,3 +83,60 @@ def test_idle_delivery_scan_skips_cancelled_purchases():
             return await run_idle_delivery_notification_scan(db)
 
     assert asyncio.run(_scan()) == 0
+
+
+def test_due_soon_payment_scan_notifies_and_skips_cancelled():
+    h, bid, u = _register_and_business()
+    prof = client.get("/v1/me/profile", headers=h)
+    uid = uuid.UUID(prof.json()["id"])
+    business_uuid = uuid.UUID(bid)
+    s = client.post(
+        f"/v1/businesses/{bid}/suppliers",
+        headers=h,
+        json={"name": "Due Sup", "phone": "9000000077"},
+    )
+    assert s.status_code == 201, s.text
+    sid = uuid.UUID(s.json()["id"])
+    today = datetime.now(timezone.utc).date()
+
+    async def _seed() -> None:
+        async with async_session_factory() as session:
+            session.add(
+                TradePurchase(
+                    business_id=business_uuid,
+                    user_id=uid,
+                    human_id=f"PUR-DUE-{u}",
+                    purchase_date=today,
+                    supplier_id=sid,
+                    total_amount=Decimal("250.00"),
+                    status="confirmed",
+                    due_date=today + timedelta(days=1),
+                    paid_at=None,
+                )
+            )
+            session.add(
+                TradePurchase(
+                    business_id=business_uuid,
+                    user_id=uid,
+                    human_id=f"PUR-CXL-{u}",
+                    purchase_date=today,
+                    supplier_id=sid,
+                    total_amount=Decimal("99.00"),
+                    status="cancelled",
+                    due_date=today + timedelta(days=1),
+                    paid_at=None,
+                )
+            )
+            await session.commit()
+
+    asyncio.run(_seed())
+
+    async def _scan() -> tuple[int, int]:
+        async with async_session_factory() as db:
+            n1 = await run_due_soon_payment_scan(db)
+            n2 = await run_due_soon_payment_scan(db)
+            return n1, n2
+
+    n1, n2 = asyncio.run(_scan())
+    assert n1 >= 1
+    assert n2 == 0

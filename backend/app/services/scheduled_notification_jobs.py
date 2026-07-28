@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,6 +57,55 @@ async def run_idle_delivery_notification_scan(db: AsyncSession) -> int:
             related_purchase_id=tp.id,
             owner_only=True,
             payload={"purchase_id": str(tp.id), "delivery_status": tp.delivery_status},
+        )
+        inserted += n
+
+    if inserted:
+        await db.commit()
+    return inserted
+
+
+async def run_due_soon_payment_scan(db: AsyncSession, *, within_days: int = 3) -> int:
+    """Notify owners for unpaid trade purchases due within ``within_days``."""
+    today = date.today()
+    win = today + timedelta(days=within_days)
+    day = today.isoformat()
+
+    rows = (
+        await db.execute(
+            select(TradePurchase).where(
+                TradePurchase.paid_at.is_(None),
+                TradePurchase.due_date.isnot(None),
+                TradePurchase.due_date >= today,
+                TradePurchase.due_date <= win,
+                TradePurchase.status.notin_(("deleted", "cancelled", "draft")),
+            )
+        )
+    ).scalars().all()
+    if not rows:
+        return 0
+
+    inserted = 0
+    for tp in rows:
+        hid = tp.human_id or str(tp.id)[:8]
+        due = tp.due_date.isoformat() if tp.due_date else ""
+        n = await emit_notification(
+            db,
+            business_id=tp.business_id,
+            kind="payment_due_soon",
+            title=f"Payment due soon · {hid}",
+            body=f"Due {due} — review balance or mark paid",
+            priority=PRIORITY_HIGH,
+            category=CATEGORY_PURCHASE,
+            dedupe_key=f"payment_due_soon:{tp.id}:{day}",
+            action_route=f"/purchase/detail/{tp.id}",
+            related_purchase_id=tp.id,
+            owner_only=True,
+            payload={
+                "purchase_id": str(tp.id),
+                "due_date": due,
+                "amount": float(tp.total_amount or 0),
+            },
         )
         inserted += n
 

@@ -160,6 +160,79 @@ async def _warehouse_name(db: AsyncSession, business_id: uuid.UUID) -> str | Non
     return r.scalar_one_or_none()
 
 
+async def _list_user_rows(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    pairs: list[tuple[User, Membership]],
+) -> list[UserListOut]:
+    """Build list rows with batched activity stats (avoids per-user N+1)."""
+    if not pairs:
+        return []
+    wh = await _warehouse_name(db, business_id)
+    user_ids = [u.id for u, _ in pairs]
+    start_today = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    start_7d = datetime.now(timezone.utc) - timedelta(days=7)
+
+    today_r = await db.execute(
+        select(
+            StaffActivityLog.user_id,
+            StaffActivityLog.action_type,
+            func.count(),
+        )
+        .where(
+            StaffActivityLog.business_id == business_id,
+            StaffActivityLog.user_id.in_(user_ids),
+            StaffActivityLog.created_at >= start_today,
+            StaffActivityLog.action_type.in_(("SCAN", "STOCK_UPDATE", "ITEM_CREATE")),
+        )
+        .group_by(StaffActivityLog.user_id, StaffActivityLog.action_type)
+    )
+    today_map: dict[uuid.UUID, dict[str, int]] = {}
+    for uid, action, cnt in today_r.all():
+        today_map.setdefault(uid, {})[str(action)] = int(cnt)
+
+    act7_r = await db.execute(
+        select(StaffActivityLog.user_id, func.count())
+        .where(
+            StaffActivityLog.business_id == business_id,
+            StaffActivityLog.user_id.in_(user_ids),
+            StaffActivityLog.created_at >= start_7d,
+        )
+        .group_by(StaffActivityLog.user_id)
+    )
+    act7_map = {uid: int(c) for uid, c in act7_r.all()}
+
+    out: list[UserListOut] = []
+    for user, membership in pairs:
+        t = today_map.get(user.id, {})
+        out.append(
+            UserListOut(
+                id=user.id,
+                name=user.name,
+                phone=user.phone,
+                email=user.email,
+                username=user.username,
+                role=membership.role,
+                is_active=user.is_active,
+                is_blocked=getattr(user, "is_blocked", False),
+                last_login_at=user.last_login_at,
+                last_active_at=user.last_active_at,
+                today_stats=TodayStatsOut(
+                    scans=t.get("SCAN", 0),
+                    stock_updates=t.get("STOCK_UPDATE", 0),
+                    items_created=t.get("ITEM_CREATE", 0),
+                ),
+                warehouse_name=wh,
+                activity_count_7d=act7_map.get(user.id, 0),
+                notes=user.notes,
+                created_at=user.created_at,
+            )
+        )
+    return out
+
+
 async def _user_row(
     db: AsyncSession,
     business_id: uuid.UUID,
@@ -312,10 +385,7 @@ async def list_users(
         .where(*clauses)
         .order_by(User.name)
     )
-    out: list[UserListOut] = []
-    for user, mem in r.all():
-        out.append(await _user_row(db, business_id, user, mem))
-    return out
+    return await _list_user_rows(db, business_id, list(r.all()))
 
 
 @router.get("/active-sessions", response_model=list[UserListOut])
@@ -336,10 +406,7 @@ async def active_sessions(
             _active_user_filter(),
         )
     )
-    out: list[UserListOut] = []
-    for user, mem in r.all():
-        out.append(await _user_row(db, business_id, user, mem))
-    return out
+    return await _list_user_rows(db, business_id, list(r.all()))
 
 
 async def _load_user_membership(

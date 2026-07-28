@@ -18,7 +18,7 @@
 | NOTIF-H2 | High | `unread-count` / `summary` ignored `target_roles` → badge ≠ list | **Fixed** — same role SQL |
 | NOTIF-H3 | High | Idle delivery scan notified on `cancelled`/`deleted`/`draft` purchases | **Fixed** |
 | NOTIF-M1 | Medium | List ~500ms under load | Track |
-| NOTIF-L1 | Low | `due_soon_reminder` scheduler tick is a no-op stub | Track |
+| NOTIF-L1 | Low | `due_soon_reminder` scheduler tick is a no-op stub | **Fixed** |
 
 ## Tests
 

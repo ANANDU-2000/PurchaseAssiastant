@@ -16,7 +16,7 @@
 | USERS-H1 | High | Deactivate did not revoke tokens (access/refresh) | **Fixed** |
 | USERS-H2 | High | `PATCH …/permissions` skipped `_guard_actor_target` (admin could edit owner) | **Fixed** |
 | USERS-H3 | High | Staff could `GET activity-log?user_id=` for another user | **Fixed** |
-| USERS-M1 | Medium | `list_users` N+1 `_user_row` stats | Track |
+| USERS-M1 | Medium | `list_users` N+1 `_user_row` stats | **Fixed** (batched) |
 
 ## JWT change
 

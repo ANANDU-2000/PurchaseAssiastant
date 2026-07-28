@@ -220,9 +220,16 @@ async def lifespan(app: FastAPI):
 
         scheduler = AsyncIOScheduler(timezone=ZoneInfo("Asia/Kolkata"))
 
-        def _due_soon_tick() -> None:
-            """Hook: scan due-soon trade purchases; extend with DB + push/WhatsApp if needed."""
-            logger.info("due_soon_reminder: tick (use app.services.monthly_payment_reminder)")
+        async def _due_soon_tick() -> None:
+            from app.services.scheduled_notification_jobs import run_due_soon_payment_scan
+
+            try:
+                async with async_session_factory() as sess:
+                    n = await run_due_soon_payment_scan(sess)
+                    if n:
+                        logger.info("due_soon_reminder: %s notifications", n)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("due_soon_reminder failed: %s", e, exc_info=True)
 
         async def _evening_physical_tick() -> None:
             from app.services.scheduled_notification_jobs import (
