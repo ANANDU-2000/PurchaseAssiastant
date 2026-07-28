@@ -1,10 +1,11 @@
 import uuid
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import String, cast, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.database import get_db
 from app.deps import get_current_user, require_membership
@@ -35,9 +36,7 @@ def _user_filters(business_id: uuid.UUID, user_id: uuid.UUID):
     ]
 
 
-def _notification_visible_to_role(
-    payload: dict | None, user_role: str
-) -> bool:
+def _notification_visible_to_role(payload: dict | None, user_role: str) -> bool:
     if not payload:
         return True
     roles = payload.get("target_roles")
@@ -45,6 +44,25 @@ def _notification_visible_to_role(
         return True
     allowed = {str(r).strip().lower() for r in roles if r}
     return (user_role or "").strip().lower() in allowed
+
+
+def _role_visibility_sql(user_role: str) -> ColumnElement[bool]:
+    """Match [_notification_visible_to_role] in SQL (before LIMIT) for stable pages.
+
+    Payload JSON is cast to text for SQLite + Postgres portability:
+    visible when target_roles is absent/empty or includes the membership role.
+    """
+    role = (user_role or "").strip().lower()
+    ptxt = cast(AppNotification.payload, String)
+    clauses: list[Any] = [
+        AppNotification.payload.is_(None),
+        ~ptxt.like('%"target_roles"%'),
+        ptxt.like('%"target_roles": []%'),
+        ptxt.like('%"target_roles":[]%'),
+    ]
+    if role:
+        clauses.append(ptxt.like(f'%"{role}"%'))
+    return or_(*clauses)
 
 
 @router.get("", response_model=list[NotificationOut])
@@ -63,7 +81,8 @@ async def list_notifications(
 ):
     user_role = (_m.role or "").strip().lower()
     off = (page - 1) * per_page
-    filters = _user_filters(business_id, user.id)
+    filters: list[Any] = _user_filters(business_id, user.id)
+    filters.append(_role_visibility_sql(user_role))
     if kind:
         filters.append(AppNotification.kind == kind.strip())
     if category:
@@ -90,6 +109,7 @@ async def list_notifications(
     )
     out: list[NotificationOut] = []
     for row, actor_name in r.all():
+        # Defense in depth (SQL already applied role filter).
         if not _notification_visible_to_role(row.payload, user_role):
             continue
         base = NotificationOut.model_validate(row)
@@ -108,10 +128,13 @@ async def notifications_summary(
     business_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
-    _m: Annotated[object, Depends(require_membership)],
+    _m: Annotated[Membership, Depends(require_membership)],
 ):
-    del _m
-    base = _user_filters(business_id, user.id) + [AppNotification.read_at.is_(None)]
+    user_role = (_m.role or "").strip().lower()
+    base = (
+        _user_filters(business_id, user.id)
+        + [AppNotification.read_at.is_(None), _role_visibility_sql(user_role)]
+    )
     r = await db.execute(
         select(func.count()).select_from(AppNotification).where(*base)
     )
@@ -139,15 +162,16 @@ async def unread_count(
     business_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
-    _m: Annotated[object, Depends(require_membership)],
+    _m: Annotated[Membership, Depends(require_membership)],
 ):
-    del _m
+    user_role = (_m.role or "").strip().lower()
     r = await db.execute(
         select(func.count())
         .select_from(AppNotification)
         .where(
             *_user_filters(business_id, user.id),
             AppNotification.read_at.is_(None),
+            _role_visibility_sql(user_role),
         )
     )
     return UnreadCountOut(unread=int(r.scalar_one() or 0))
@@ -158,7 +182,7 @@ async def mark_all_read(
     business_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
-    _m: Annotated[object, Depends(require_membership)],
+    _m: Annotated[Membership, Depends(require_membership)],
     kind: str | None = Query(default=None, max_length=64),
 ):
     del _m
@@ -180,7 +204,7 @@ async def clear_all(
     business_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
-    _m: Annotated[object, Depends(require_membership)],
+    _m: Annotated[Membership, Depends(require_membership)],
     kind: str | None = Query(default=None, max_length=64),
 ):
     del _m
@@ -199,7 +223,7 @@ async def client_notification_event(
     body: ClientNotificationEventIn,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
-    _m: Annotated[object, Depends(require_membership)],
+    _m: Annotated[Membership, Depends(require_membership)],
 ):
     """Sanitized client-side failures (PDF export, sync) — one row for current user."""
     del _m
@@ -234,7 +258,7 @@ async def patch_notification(
     body: NotificationReadPatch,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
-    _m: Annotated[object, Depends(require_membership)],
+    _m: Annotated[Membership, Depends(require_membership)],
 ):
     del _m
     r = await db.execute(

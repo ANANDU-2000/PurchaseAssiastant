@@ -34,6 +34,7 @@ async def run_idle_delivery_notification_scan(db: AsyncSession) -> int:
                 TradePurchase.delivery_status.in_(tuple(_IDLE_STATUSES)),
                 TradePurchase.dispatched_at.isnot(None),
                 TradePurchase.dispatched_at <= cutoff,
+                TradePurchase.status.notin_(("deleted", "cancelled", "draft")),
             )
         )
     ).scalars().all()

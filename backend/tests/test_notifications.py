@@ -146,3 +146,37 @@ def test_client_export_event():
     )
     assert r.status_code == 200, r.text
     assert r.json()["updated"] >= 1
+
+def test_role_targeted_notification_hidden_from_unread_and_list():
+    import asyncio
+
+    h, bid, uid = _register_and_business()
+
+    async def _seed() -> None:
+        async with async_session_factory() as db:
+            await emit_notification(
+                db,
+                business_id=uuid.UUID(bid),
+                user_ids=[uuid.UUID(uid)],
+                kind="staff_only",
+                title="Staff only ping",
+                body="hidden from owner role filter",
+                dedupe_key=f"staff-only:{uuid.uuid4()}",
+                target_roles=["staff"],
+            )
+            await db.commit()
+
+    asyncio.run(_seed())
+
+    # Registered user is owner/admin of new business — staff-targeted row must not count.
+    lr = client.get(f"/v1/businesses/{bid}/notifications", headers=h)
+    assert lr.status_code == 200, lr.text
+    assert not any(r.get("title") == "Staff only ping" for r in lr.json())
+
+    uc = client.get(f"/v1/businesses/{bid}/notifications/unread-count", headers=h)
+    assert uc.status_code == 200
+    assert uc.json()["unread"] == 0
+
+    sm = client.get(f"/v1/businesses/{bid}/notifications/summary", headers=h)
+    assert sm.status_code == 200
+    assert sm.json()["unread"] == 0

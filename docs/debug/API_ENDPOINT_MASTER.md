@@ -12,7 +12,7 @@
 |--------|-------|
 | Total endpoints | 216 |
 | Completed | 17 / 216 |
-| Current focus | Notifications (Reports Critical/High done) |
+| Current focus | Users domain (Notifications Critical/High done) |
 
 ## Status legend
 
@@ -36,13 +36,16 @@
 | REPORTS-H1 | High | COMPLETED | trade-suppliers avg_landing money÷qty | (this pass) |
 | REPORTS-H2 | High | COMPLETED | trade-items category/supplier SQL filters | (this pass) |
 | REPORTS-H3 | High | COMPLETED | Item bundle rate_avg money÷qty | (this pass) |
+| NOTIF-H1 | High | COMPLETED | Role filter before LIMIT (stable pages) | (this pass) |
+| NOTIF-H2 | High | COMPLETED | Unread/summary honor target_roles | (this pass) |
+| NOTIF-H3 | High | COMPLETED | Idle delivery skips cancelled/deleted | (this pass) |
 
 ## Ordered work queue (one-by-one)
 
 1. ~~AUTH-C1~~ · ~~AUTH-H1~~ · ~~AUTH-H4~~ · ~~HOME-C1 isce~~
 2. **AUTH-H2 / AUTH-H3** — wait for your approval (email / object storage)
-3. ~~Stock~~ · ~~Purchase~~ · ~~Supplier / Contacts~~ · ~~Reports~~
-4. **Notifications** → Users → Warehouse/Ops → Exports → Utilities → Public
+3. ~~Stock~~ · ~~Purchase~~ · ~~Supplier / Contacts~~ · ~~Reports~~ · ~~Notifications~~
+4. **Users** → Warehouse/Ops → Exports → Utilities → Public
 
 
 ## Work rules
