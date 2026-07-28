@@ -12,6 +12,7 @@ import '../../core/providers/notifications_provider.dart'
 import '../../core/design_system/hexa_ds_tokens.dart';
 import '../../core/auth/session_notifier.dart';
 import '../../core/auth/provider_api_guard.dart';
+import '../../core/debug/agent_debug_log.dart';
 import '../../core/router/navigation_ext.dart';
 import '../../core/router/shell_navigation.dart';
 import '../../core/design_system/hexa_desktop_layout.dart';
@@ -104,9 +105,27 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
       });
     }
     final width = MediaQuery.sizeOf(context).width;
+    final height = MediaQuery.sizeOf(context).height;
     final showRail = width > 0 && width >= kShellRailMin;
     final railExtended = width > 0 && width >= kShellRailExtendedMin;
     final showBottomBar = width > 0 && width < kShellBottomNavMax;
+    // #region agent log
+    agentDebugLog(
+      hypothesisId: 'H3',
+      location: 'shell_screen.dart:build',
+      message: 'Shell layout metrics',
+      data: {
+        'w': width,
+        'h': height,
+        'showRail': showRail,
+        'showBottomBar': showBottomBar,
+        'idx': idx,
+        'routePath': routePath,
+        'navSelectedIndex': navSelectedIndex,
+        'host': Uri.base.host,
+      },
+    );
+    // #endregion
 
     void go(int branch) {
       HapticFeedback.selectionClick();

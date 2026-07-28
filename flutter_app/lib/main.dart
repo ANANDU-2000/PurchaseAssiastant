@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'app.dart';
 import 'core/config/app_config.dart';
+import 'core/debug/agent_debug_log.dart';
 import 'core/api/api_warmup.dart';
 import 'core/auth/provider_api_guard.dart'
     show ProviderFetchAborted, registerRootProviderContainer;
@@ -182,6 +183,19 @@ Future<void> main() async {
   ErrorWidget.builder = buildHexaLayoutErrorWidget;
   _installHexaPlatformAsyncErrorHook();
   FlutterError.onError = (FlutterErrorDetails details) {
+    // #region agent log
+    agentDebugLog(
+      hypothesisId: 'H4',
+      location: 'main.dart:FlutterError.onError',
+      message: 'FlutterError',
+      data: {
+        'exception': details.exceptionAsString().split('\n').first,
+        'library': details.library,
+        'nonFatal': hexaErrorLikelyNonFatal(details) ||
+            hexaAsyncErrorLikelyBenign(details.exception),
+      },
+    );
+    // #endregion
     if (hexaErrorLikelyNonFatal(details) ||
         hexaAsyncErrorLikelyBenign(details.exception)) {
       if (kDebugMode) {

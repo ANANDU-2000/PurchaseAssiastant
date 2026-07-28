@@ -190,6 +190,53 @@
   </script>
   <script>
     (function () {
+      // #region agent log
+      function dbg(hyp, msg, data) {
+        try {
+          fetch('http://127.0.0.1:7388/ingest/8ef5481a-9163-494f-9f26-ab47a81c6701', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Debug-Session-Id': '2a33ed'
+            },
+            body: JSON.stringify({
+              sessionId: '2a33ed',
+              runId: 'pre-fix',
+              hypothesisId: hyp,
+              location: 'index.html',
+              message: msg,
+              data: data || {},
+              timestamp: Date.now()
+            })
+          }).catch(function () {});
+        } catch (e) {}
+      }
+      dbg('H5', 'page_boot', {
+        host: location.hostname,
+        path: location.pathname,
+        w: window.innerWidth,
+        h: window.innerHeight
+      });
+      window.addEventListener('error', function (e) {
+        dbg('H4', 'window_error', { message: String(e.message || e) });
+      });
+      window.setTimeout(function () {
+        var fv = document.querySelector('flutter-view, flt-glass-pane');
+        var splash = document.getElementById('splash');
+        var boot = document.getElementById('boot');
+        var rect = fv ? fv.getBoundingClientRect() : null;
+        dbg('H5', 'blank_probe_3s', {
+          path: location.pathname,
+          hasFlutter: !!fv,
+          flutterH: rect ? rect.height : 0,
+          flutterW: rect ? rect.width : 0,
+          splashGone: !splash,
+          bootText: boot ? boot.textContent : null,
+          wrongHostShow: !!(document.getElementById('wrong-host') || {}).classList &&
+            document.getElementById('wrong-host').classList.contains('show')
+        });
+      }, 3000);
+      // #endregion
       var boot = document.getElementById('boot');
       function setBoot(msg) {
         if (boot && !boot.classList.contains('boot-error')) boot.textContent = msg;

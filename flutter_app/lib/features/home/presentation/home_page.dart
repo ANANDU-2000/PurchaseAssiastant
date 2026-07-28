@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/config/app_config.dart';
+import '../../../core/debug/agent_debug_log.dart';
 import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/design_system/hexa_web_page_frame.dart';
 import '../../../core/router/shell_navigation.dart';
@@ -477,6 +478,26 @@ class _HomePageState extends ConsumerState<HomePage>
     });
 
     if (!_homeShellTabVisible(ref, context)) {
+      // #region agent log
+      final branch = ref.read(shellCurrentBranchProvider);
+      final path = GoRouter.maybeOf(context)?.state.uri.path ?? '';
+      int? shellIdx;
+      try {
+        shellIdx = StatefulNavigationShell.maybeOf(context)?.currentIndex;
+      } catch (_) {}
+      agentDebugLog(
+        hypothesisId: 'H1',
+        location: 'home_page.dart:shrink',
+        message: 'Home returned SizedBox.shrink (tab not visible)',
+        data: {
+          'branch': branch,
+          'path': path,
+          'shellIdx': shellIdx,
+          'mqW': MediaQuery.sizeOf(context).width,
+          'mqH': MediaQuery.sizeOf(context).height,
+        },
+      );
+      // #endregion
       // IndexedStack keeps this widget mounted off-tab — avoid painting when another tab is active.
       return const SizedBox.shrink();
     }
@@ -591,6 +612,24 @@ class _HomePageState extends ConsumerState<HomePage>
       );
     }
 
+    // #region agent log
+    agentDebugLog(
+      hypothesisId: 'H1',
+      location: 'home_page.dart:scaffold',
+      message: 'Home painting scaffold',
+      data: {
+        'hasDashboard': hasDashboard,
+        'authBlocked': authBlocked,
+        'authRestoring': authRestoring,
+        'authRecovery': authRecovery,
+        'desktop': context.isDesktopLayout,
+        'mqW': MediaQuery.sizeOf(context).width,
+        'mqH': MediaQuery.sizeOf(context).height,
+        'branch': ref.read(shellCurrentBranchProvider),
+        'path': GoRouter.maybeOf(context)?.state.uri.path ?? '',
+      },
+    );
+    // #endregion
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
       body: ColoredBox(
