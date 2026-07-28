@@ -173,13 +173,15 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
       onSettingsTap: () => context.push('/settings'),
     );
 
+    // Extended NavigationRail must be width-capped. Without a tight width it can
+    // expand and leave [Expanded] body at 0×height on Flutter web → blank desktop.
     final rail = showRail
-        ? (railExtended
-            ? railWidget
-            : SizedBox(
-                width: kShellCompactRailWidth,
-                child: railWidget,
-              ))
+        ? SizedBox(
+            width: railExtended
+                ? kDesktopSidebarWidth
+                : kShellCompactRailWidth,
+            child: railWidget,
+          )
         : const SizedBox.shrink();
 
     return PopScope(

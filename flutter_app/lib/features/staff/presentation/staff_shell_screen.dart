@@ -179,12 +179,12 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (showRail)
-                  railExtended
-                      ? staffRail
-                      : SizedBox(
-                          width: kShellCompactRailWidth,
-                          child: staffRail,
-                        ),
+                  SizedBox(
+                    width: railExtended
+                        ? kDesktopSidebarWidth
+                        : kShellCompactRailWidth,
+                    child: staffRail,
+                  ),
                 Expanded(
                   child: AppShellBody(
                     navigationShell: navigationShell,
