@@ -4,12 +4,14 @@
 {{flutter_js}}
 {{flutter_build_config}}
 
-// Use 'chromium' variant for Chrome/Edge (smaller WASM, uses ImageDecoder API).
-// Fall back to 'full' for Firefox, Safari, and embedded browsers that lack ImageDecoder.
-// This reduces the initial WASM download by ~1.8 MB for Chrome/Edge users.
+// Prefer full CanvasKit — the chromium/ImageDecoder variant can fail to
+// attach a scene in some embedded Chromium hosts (blank glass pane, 0 canvas).
 var _ckVariant = 'full';
 try {
-  if (typeof ImageDecoder !== 'undefined' && /Chrome|Edg/.test(navigator.userAgent)) {
+  // Keep chromium only for real Chrome/Edge desktop when ImageDecoder exists.
+  var ua = navigator.userAgent || '';
+  var embedded = /Cursor|Electron|Edg\/.*Electron/i.test(ua);
+  if (!embedded && typeof ImageDecoder !== 'undefined' && /Chrome|Edg/.test(ua)) {
     _ckVariant = 'chromium';
   }
 } catch (e) {}
