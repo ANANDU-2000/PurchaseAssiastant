@@ -241,10 +241,10 @@ async def login(
 
         try:
             access = create_access_token(
-        user.id,
-        settings,
-        token_version=int(getattr(user, "token_version", 0) or 0),
-    )
+                user.id,
+                settings,
+                token_version=int(getattr(user, "token_version", 0) or 0),
+            )
             refresh = create_refresh_token(user.id, settings)
         except Exception:
             logger.exception("auth.login token issue")
@@ -252,6 +252,9 @@ async def login(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Sign-in is temporarily unavailable. Try again shortly.",
             ) from None
+
+        # Persist last_login / UserSession / push token (get_db does not auto-commit).
+        await db.commit()
 
         return TokenPair(
             access_token=access,
@@ -327,6 +330,14 @@ async def auth_google(
             await db.commit()
             await db.refresh(user)
         else:
+            if not settings.allow_public_registration:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=(
+                        "Self-registration is disabled. Ask your workspace owner to create "
+                        "your account from Settings → Users."
+                    ),
+                )
             uname = await _allocate_username(db, email, sub)
             raw_name = claims.get("name")
             disp = raw_name.strip()[:255] if isinstance(raw_name, str) and raw_name.strip() else None

@@ -183,6 +183,7 @@ Business profile settings
 - **Endpoints:** `POST /v1/auth/login`
 - **Root cause:** Updates `last_login_at`, `UserSession`, staff audit, then `flush` only. `get_db` yields session with **no auto-commit** on exit → changes roll back.
 - **Effect:** Login still returns tokens (auth works); session audit / last-login / push token persistence **do not stick**.
+- **Status:** **fixed** — `await db.commit()` after successful token mint.
 - **Estimated fix:** 15–30m — `await db.commit()` before return; test session row exists.
 - **Recommended fix:** Commit after successful login side effects (same pattern as register).
 
@@ -204,6 +205,7 @@ Business profile settings
 - **Endpoints:** `POST /v1/auth/google`
 - **Root cause:** New Google users create `Business` + owner `Membership` without checking `allow_public_registration`.
 - **Prod today:** Google **not configured** (503) → not exploitable live; becomes Critical if OAuth IDs are set.
+- **Status:** **fixed** — new Google user path returns 403 when public registration is disabled (existing email link still allowed).
 - **Estimated fix:** 30m — gate new-user path on same flag as register.
 - **Recommended fix:** Enforce gate before creating user/workspace.
 

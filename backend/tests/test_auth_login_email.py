@@ -161,3 +161,22 @@ def test_refresh_active_user_ok():
     assert r.status_code == 200, r.text
     assert r.json().get("access_token")
     assert r.json().get("refresh_token")
+
+
+def test_login_persists_user_session():
+    """AUTH-H1: login must commit last_active_at / session side effects."""
+    pwd, staff_email, _owner, bid, h = _owner_with_staff()
+    login = client.post(
+        "/v1/auth/login",
+        json={"email": staff_email, "password": pwd},
+    )
+    assert login.status_code == 200, login.text
+    sessions = client.get(
+        f"/v1/businesses/{bid}/users/active-sessions",
+        headers=h,
+    )
+    assert sessions.status_code == 200, sessions.text
+    rows = sessions.json()
+    assert isinstance(rows, list)
+    emails = {(r.get("email") or "").lower() for r in rows}
+    assert staff_email.lower() in emails
