@@ -11,8 +11,8 @@
 | Metric | Value |
 |--------|-------|
 | Total endpoints | 216 |
-| Completed | 14 / 216 |
-| Current focus | Next: Home/Dashboard domain deep audit |
+| Completed | 17 / 216 |
+| Current focus | Stock domain deep audit (post-isce) |
 
 ## Status legend
 
@@ -24,8 +24,22 @@
 |----|----------|--------|---------|--------|
 | AUTH-C1 | Critical | COMPLETED | Refresh gates blocked/inactive | 9d50148 |
 | AUTH-H1 | High | COMPLETED | Login missing db.commit | (see latest) |
-| AUTH-H4 | High | COMPLETED | Google bypasses ALLOW_PUBLIC_REGISTRATION | (see latest) |
+| AUTH-H4 | High | COMPLETED | Google bypasses ALLOW_PUBLIC_REGISTRATION | 8187417 |
+| AUTH-H2 | High | BLOCKED | Forgot-password email | needs approval |
+| AUTH-H3 | High | BLOCKED | Logo object storage | needs approval |
 | STOCK/HOME isce | Critical | COMPLETED | Shared-session gather sequentialized | a52dd46, 772bdc0 |
+| HOME-C1 | Critical | COMPLETED | home-overview isce (same as above) | 772bdc0 |
+
+## Ordered work queue (one-by-one)
+
+1. ~~AUTH-C1~~ · ~~AUTH-H1~~ · ~~AUTH-H4~~ · ~~HOME-C1 isce~~
+2. **AUTH-H2 / AUTH-H3** — wait for your approval (email / object storage)
+3. **Stock** — deep audit remaining stock routes (in progress)
+4. Purchase (trade-purchases)
+5. Supplier / Contacts
+6. Reports (remaining)
+7. Notifications → Users → Warehouse/Ops → Exports → Utilities → Public
+
 
 ## Work rules
 
