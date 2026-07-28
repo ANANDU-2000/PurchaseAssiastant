@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import json
 import logging
@@ -185,10 +184,9 @@ async def barcode_lookup(
         item = r2.scalar_one_or_none()
     if not item:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
-    label, phys_map = await asyncio.gather(
-        _barcode_label(db, business_id, item),
-        sh._latest_physical_count_map(db, business_id, [item.id]),
-    )
+    # Sequential on shared AsyncSession — gather would raise isce under concurrency.
+    label = await _barcode_label(db, business_id, item)
+    phys_map = await sh._latest_physical_count_map(db, business_id, [item.id])
     phys = phys_map.get(item.id)
     out = BarcodeLookupOut(
         id=item.id,

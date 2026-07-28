@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import json
 import logging
@@ -459,49 +458,48 @@ async def stock_shell_bundle(
     if cached is not None:
         return StockShellBundleOut(**cached)
 
-    list_out, status_counts, delivery_counts, audit_recent = await asyncio.gather(
-        _list_stock_page(
-            business_id=business_id,
-            db=db,
-            page=page,
-            per_page=per_page,
-            q=q,
-            category=category,
-            subcategory=subcategory,
-            status=status,
-            sort=sort,
-            include_period=include_period,
-            period_start=period_start,
-            period_end=period_end,
-            date_from=date_from,
-            date_to=date_to,
-            include_today=include_today,
-            purchased_in_period=purchased_in_period,
-            missing_barcode=missing_barcode,
-            missing_item_code=missing_item_code,
-            reorder_only=reorder_only,
-            unit=unit,
-        ),
-        compute_stock_alerts_summary(db, business_id),
-        _compute_delivery_indicator_counts(
-            db=db,
-            business_id=business_id,
-            q=q,
-            category=category,
-            subcategory=subcategory,
-            status=status,
-            sort=sort,
-            period_start=period_start,
-            period_end=period_end,
-            date_from=date_from,
-            date_to=date_to,
-            missing_barcode=missing_barcode,
-            missing_item_code=missing_item_code,
-            reorder_only=reorder_only,
-            unit=unit,
-        ),
-        fetch_recent_adjustments(db, business_id, limit=audit_limit),
+    # Sequential on shared AsyncSession — gather would raise isce under concurrency.
+    list_out = await _list_stock_page(
+        business_id=business_id,
+        db=db,
+        page=page,
+        per_page=per_page,
+        q=q,
+        category=category,
+        subcategory=subcategory,
+        status=status,
+        sort=sort,
+        include_period=include_period,
+        period_start=period_start,
+        period_end=period_end,
+        date_from=date_from,
+        date_to=date_to,
+        include_today=include_today,
+        purchased_in_period=purchased_in_period,
+        missing_barcode=missing_barcode,
+        missing_item_code=missing_item_code,
+        reorder_only=reorder_only,
+        unit=unit,
     )
+    status_counts = await compute_stock_alerts_summary(db, business_id)
+    delivery_counts = await _compute_delivery_indicator_counts(
+        db=db,
+        business_id=business_id,
+        q=q,
+        category=category,
+        subcategory=subcategory,
+        status=status,
+        sort=sort,
+        period_start=period_start,
+        period_end=period_end,
+        date_from=date_from,
+        date_to=date_to,
+        missing_barcode=missing_barcode,
+        missing_item_code=missing_item_code,
+        reorder_only=reorder_only,
+        unit=unit,
+    )
+    audit_recent = await fetch_recent_adjustments(db, business_id, limit=audit_limit)
     payload = StockShellBundleOut(
         list=list_out,
         status_counts=status_counts,
@@ -756,42 +754,36 @@ async def warehouse_alerts_from_stock(
 ) -> WarehouseAlertsSummaryOut:
     """Warehouse KPIs from an existing stock alert scan (avoids duplicate catalog pass)."""
     today = date.today()
-    (
-        pending_deliveries_q,
-        variances_q,
-        templates_q,
-        completed_q,
-    ) = await asyncio.gather(
-        db.execute(
-            select(func.count(TradePurchase.id)).where(
-                TradePurchase.business_id == business_id,
-                TradePurchase.status.notin_(("cancelled", "deleted")),
-                TradePurchase.is_delivered.is_(False),
+    # Sequential on shared AsyncSession — gather would raise isce under concurrency.
+    pending_deliveries_q = await db.execute(
+        select(func.count(TradePurchase.id)).where(
+            TradePurchase.business_id == business_id,
+            TradePurchase.status.notin_(("cancelled", "deleted")),
+            TradePurchase.is_delivered.is_(False),
+        )
+    )
+    variances_q = await db.execute(
+        select(func.count(StockAdjustmentLog.id)).where(
+            StockAdjustmentLog.business_id == business_id,
+            StockAdjustmentLog.adjustment_type.in_(("verification", "correction", "manual")),
+            func.date(StockAdjustmentLog.updated_at) == today,
+        )
+    )
+    templates_q = await db.execute(
+        select(func.count())
+        .select_from(StaffChecklistTemplate)
+        .where(
+            or_(
+                StaffChecklistTemplate.business_id == business_id,
+                StaffChecklistTemplate.business_id.is_(None),
             )
-        ),
-        db.execute(
-            select(func.count(StockAdjustmentLog.id)).where(
-                StockAdjustmentLog.business_id == business_id,
-                StockAdjustmentLog.adjustment_type.in_(("verification", "correction", "manual")),
-                func.date(StockAdjustmentLog.updated_at) == today,
-            )
-        ),
-        db.execute(
-            select(func.count())
-            .select_from(StaffChecklistTemplate)
-            .where(
-                or_(
-                    StaffChecklistTemplate.business_id == business_id,
-                    StaffChecklistTemplate.business_id.is_(None),
-                )
-            )
-        ),
-        db.execute(
-            select(func.count(func.distinct(StaffChecklistCompletion.task_key))).where(
-                StaffChecklistCompletion.business_id == business_id,
-                StaffChecklistCompletion.checklist_date == today,
-            )
-        ),
+        )
+    )
+    completed_q = await db.execute(
+        select(func.count(func.distinct(StaffChecklistCompletion.task_key))).where(
+            StaffChecklistCompletion.business_id == business_id,
+            StaffChecklistCompletion.checklist_date == today,
+        )
     )
     pending_deliveries = int(pending_deliveries_q.scalar_one() or 0)
     pending_verifications = int(variances_q.scalar_one() or 0)

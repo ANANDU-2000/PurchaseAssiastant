@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import json
 import logging
@@ -523,34 +522,40 @@ async def stock_item_bundle(
     period_start: str | None = Query(None),
     period_end: str | None = Query(None),
 ):
-    """Single round-trip for item detail warm-up (detail + activity + intelligence + catalog)."""
+    """Single round-trip for item detail warm-up (detail + activity + intelligence + catalog).
+
+    Sequential awaits on the shared AsyncSession — concurrent asyncio.gather on one
+    session raises InvalidRequestError (isce) and 500s the whole bundle.
+    """
     from app.routers.catalog import get_catalog_item
 
-    detail, activity, intelligence, catalog = await asyncio.gather(
-        get_stock_item(
-            business_id,
-            item_id,
-            db,
-            membership,
-            period_start=period_start,
-            period_end=period_end,
-        ),
-        stock_item_activity(
-            business_id,
-            item_id,
-            db,
-            membership,
-        ),
-        get_stock_intelligence(
-            business_id,
-            item_id,
-            db,
-            membership,
-            period_start=period_start,
-            period_end=period_end,
-        ),
-        get_catalog_item(business_id, item_id, membership, db),
+    detail = await get_stock_item(
+        business_id,
+        item_id,
+        db,
+        membership,
+        period_start=period_start,
+        period_end=period_end,
     )
+    # Pass Query defaults explicitly — direct calls do not resolve FastAPI Query().
+    activity = await stock_item_activity(
+        business_id,
+        item_id,
+        db,
+        membership,
+        limit=50,
+        offset=0,
+        kind=None,
+    )
+    intelligence = await get_stock_intelligence(
+        business_id,
+        item_id,
+        db,
+        membership,
+        period_start=period_start,
+        period_end=period_end,
+    )
+    catalog = await get_catalog_item(business_id, item_id, membership, db)
     return {
         "detail": detail,
         "activity": activity,
