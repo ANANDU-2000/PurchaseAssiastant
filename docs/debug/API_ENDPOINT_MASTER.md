@@ -12,7 +12,7 @@
 |--------|-------|
 | Total endpoints | 216 |
 | Completed | 17 / 216 |
-| Current focus | Stock domain deep audit (post-isce) |
+| Current focus | Reports domain (Supplier/Contacts Critical/High done) |
 
 ## Status legend
 
@@ -29,16 +29,17 @@
 | AUTH-H3 | High | BLOCKED | Logo object storage | needs approval |
 | STOCK/HOME isce | Critical | COMPLETED | Shared-session gather sequentialized | a52dd46, 772bdc0 |
 | HOME-C1 | Critical | COMPLETED | home-overview isce (same as above) | 772bdc0 |
+| SUPPLIER-C1 | Critical | COMPLETED | Delete supplier/broker clears M2M (+ defaults) | (this pass) |
+| SUPPLIER-H1 | High | COMPLETED | Supplier metrics avg_landing = money÷qty | (this pass) |
+| SUPPLIER-H2 | High | COMPLETED | contacts/search brokers use `_broker_out` | (this pass) |
 
 ## Ordered work queue (one-by-one)
 
 1. ~~AUTH-C1~~ · ~~AUTH-H1~~ · ~~AUTH-H4~~ · ~~HOME-C1 isce~~
 2. **AUTH-H2 / AUTH-H3** — wait for your approval (email / object storage)
-3. **Stock** — deep audit remaining stock routes (in progress)
-4. Purchase (trade-purchases)
-5. Supplier / Contacts
-6. Reports (remaining)
-7. Notifications → Users → Warehouse/Ops → Exports → Utilities → Public
+3. ~~Stock~~ · ~~Purchase~~ · ~~Supplier / Contacts~~
+4. **Reports** (remaining report routes)
+5. Notifications → Users → Warehouse/Ops → Exports → Utilities → Public
 
 
 ## Work rules

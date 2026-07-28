@@ -25,6 +25,7 @@ from app.models import (
     ItemCategory,
     Membership,
     Supplier,
+    SupplierItemDefault,
     TradePurchase,
     TradePurchaseLine,
 )
@@ -603,6 +604,16 @@ async def delete_supplier(
             status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete a supplier that has purchase entries",
         )
+    # M2M + memory rows have no ON DELETE CASCADE — clear before supplier row.
+    await db.execute(
+        delete(BrokerSupplierLink).where(BrokerSupplierLink.supplier_id == supplier_id)
+    )
+    await db.execute(
+        delete(SupplierItemDefault).where(
+            SupplierItemDefault.business_id == business_id,
+            SupplierItemDefault.supplier_id == supplier_id,
+        )
+    )
     await db.delete(s)
     await db.commit()
 
@@ -899,6 +910,10 @@ async def delete_broker(
             status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete a broker assigned to suppliers — reassign suppliers first",
         )
+    # M2M has no ON DELETE CASCADE (links may remain after supplier.broker_id cleared).
+    await db.execute(
+        delete(BrokerSupplierLink).where(BrokerSupplierLink.broker_id == broker_id)
+    )
     await db.delete(b)
     await db.commit()
 
@@ -1015,10 +1030,9 @@ async def supplier_metrics(
     q = (
         select(
             func.count(func.distinct(TradePurchase.id)).label("deals"),
-            func.coalesce(func.sum(TradePurchaseLine.qty), 0).label("tq"),
-            func.coalesce(func.avg(TradePurchaseLine.landing_cost), 0).label("al"),
-            func.coalesce(func.sum(profit), 0).label("tp"),
-            func.coalesce(func.sum(amt), 0).label("pam"),
+            func.coalesce(func.sum(TradePurchaseLine.qty), 0).label("total_qty"),
+            func.coalesce(func.sum(profit), 0).label("total_profit"),
+            func.coalesce(func.sum(amt), 0).label("purchase_amount"),
         )
         .select_from(TradePurchaseLine)
         .join(TradePurchase, TradePurchase.id == TradePurchaseLine.trade_purchase_id)
@@ -1026,17 +1040,18 @@ async def supplier_metrics(
     )
     row = (await db.execute(q)).one()
     deals = int(row[0] or 0)
-    tq = float(row[1] or 0)
-    al = float(row[2] or 0)
-    tp = float(row[3] or 0)
-    pam = float(row[4] or 0)
-    margin = (tp / pam * 100.0) if pam > 0 else 0.0
+    total_qty = float(row[1] or 0)
+    total_profit = float(row[2] or 0)
+    purchase_amount = float(row[3] or 0)
+    # Volume-weighted rate from line money ÷ qty (not AVG of raw landing_cost).
+    avg_landing = (purchase_amount / total_qty) if total_qty > 1e-12 else 0.0
+    margin = (total_profit / purchase_amount * 100.0) if purchase_amount > 0 else 0.0
     return SupplierMetricsOut(
         deals=deals,
-        total_qty=tq,
-        avg_landing=al,
-        total_profit=tp,
-        purchase_amount=pam,
+        total_qty=total_qty,
+        avg_landing=avg_landing,
+        total_profit=total_profit,
+        purchase_amount=purchase_amount,
         profit_margin_pct=margin,
     )
 
@@ -1201,7 +1216,8 @@ async def contacts_search(
                 str(b.name).strip().lower(),
             )
         )
-        brokers = [BrokerOut.model_validate(b) for b in brows]
+        for b in brows:
+            brokers.append(await _broker_out(db, b))
 
     item_names: list[str] = []
     item_hits: list[ItemSearchHitOut] = []

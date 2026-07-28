@@ -291,6 +291,10 @@ text = text.replace(
     f"| Completed | {completed2} / {len(rows)} |",
 )
 
-dest = Path(__file__).resolve().parents[2] / "PROJECT_API_AUDIT.md"
-dest.write_text(text + "\n", encoding="utf-8")
-print(f"Wrote {dest} completed={completed2} total={len(rows)}")
+dest = Path(__file__).resolve().parents[2] / "docs" / "debug" / "API_ENDPOINT_MASTER.md"
+root_alias = Path(__file__).resolve().parents[2] / "PROJECT_API_AUDIT.md"
+dest.parent.mkdir(parents=True, exist_ok=True)
+payload = text + "\n"
+dest.write_text(payload, encoding="utf-8")
+root_alias.write_text(payload, encoding="utf-8")
+print(f"Wrote {dest} and {root_alias} completed={completed2} total={len(rows)}")
