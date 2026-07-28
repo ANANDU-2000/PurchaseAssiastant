@@ -140,9 +140,9 @@ class _WrongWebHostGate extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'You opened ${Uri.base.host}. Suppliers, stock saves, and '
-                    'purchases fail here because the server only accepts '
-                    '${Uri.parse(AppConfig.productionWebUrl).host}.',
+                    'You opened ${Uri.base.host}. That is not Harisree Warehouse '
+                    '(spelling is assiastant, not assistant). Bookmark only:\n'
+                    '${Uri.parse(AppConfig.productionWebUrl).host}',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: const Color(0xFF64748B),

@@ -197,7 +197,7 @@ class _StockPageState extends ConsumerState<StockPage>
       return;
     }
     ref.read(stockListQueryProvider.notifier).state = normalized;
-    ref.read(stockSelectedItemIdProvider.notifier).state = null;
+    // Keep selection across soft list query normalize / invalidate.
     clearStockListEtagCache(ref);
     _resetMerged();
   }
@@ -434,6 +434,10 @@ class _StockPageState extends ConsumerState<StockPage>
 
   Future<void> _openRowActions(Map<String, dynamic> item) async {
     _persistScrollOffset();
+    final id = item['id']?.toString() ?? '';
+    if (id.isNotEmpty) {
+      ref.read(stockSelectedItemIdProvider.notifier).state = id;
+    }
     await showStockRowActions(
       context: context,
       ref: ref,

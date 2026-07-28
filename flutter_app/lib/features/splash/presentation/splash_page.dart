@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/auth_failure_policy.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/providers/prefs_provider.dart';
 import '../../../core/router/post_auth_route.dart';
 import '../../../core/theme/hexa_colors.dart';
 
@@ -68,7 +69,8 @@ class _SplashPageState extends ConsumerState<SplashPage>
         ref.read(auth401CircuitOpenProvider);
     final s = ref.read(sessionProvider);
     if (s != null) {
-      context.go(authenticatedHomePath(s));
+      final prefs = ref.read(sharedPreferencesProvider);
+      context.go(resolvePostAuthPath(s, prefs));
       return;
     }
     if (expired) {

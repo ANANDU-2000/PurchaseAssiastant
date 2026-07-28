@@ -6,7 +6,13 @@ import 'package:go_router/go_router.dart';
 import '../auth/auth_failure_policy.dart';
 import '../auth/session_notifier.dart';
 import 'post_auth_route.dart'
-    show authenticatedHomePath, sessionCanManageUsers, sessionIsStaff;
+    show
+        authenticatedHomePath,
+        resolvePostAuthPath,
+        sessionCanManageUsers,
+        sessionIsStaff;
+import 'intended_route.dart';
+import '../providers/prefs_provider.dart';
 import '../models/trade_purchase_models.dart';
 import 'purchase_overlay_active_provider.dart';
 import 'page_transitions.dart';
@@ -199,11 +205,35 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final authCircuit = container.read(auth401CircuitOpenProvider);
       // No session → only public auth/onboarding routes. (JWT may still be restoring in main(); splash handles that.)
       if (session == null || authExpired || authCircuit) {
+        if (!public) {
+          try {
+            final prefs = container.read(sharedPreferencesProvider);
+            final full = state.uri.toString();
+            // go_router location is path+query; prefer that over full absolute.
+            final locWithQuery = state.uri.hasQuery
+                ? '${state.uri.path}?${state.uri.query}'
+                : state.uri.path;
+            saveIntendedProtectedRoute(
+              prefs,
+              locWithQuery.isNotEmpty ? locWithQuery : full,
+            );
+          } catch (_) {}
+        }
         if (loc == '/signup') {
           return '/login?tab=signin&notice=owner_only';
         }
         if (public) return null;
         return '/login';
+      }
+      // Authenticated — remember deep link for idle auth bounce recovery.
+      if (!public) {
+        try {
+          final prefs = container.read(sharedPreferencesProvider);
+          final locWithQuery = state.uri.hasQuery
+              ? '${state.uri.path}?${state.uri.query}'
+              : state.uri.path;
+          saveIntendedProtectedRoute(prefs, locWithQuery);
+        } catch (_) {}
       }
       // Password reset from email should work even with a stale / other-tab session.
       final resetTok = state.uri.queryParameters['token']?.trim() ?? '';
@@ -240,7 +270,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         if (loc.startsWith('/staff')) return '/home';
       }
       // Signed in → skip other auth / onboarding screens.
-      if (public) return authenticatedHomePath(session);
+      if (public) {
+        if (loc == '/splash' || loc == '/login') {
+          try {
+            final prefs = container.read(sharedPreferencesProvider);
+            return resolvePostAuthPath(session, prefs);
+          } catch (_) {
+            return authenticatedHomePath(session);
+          }
+        }
+        return authenticatedHomePath(session);
+      }
       return null;
     },
     routes: [

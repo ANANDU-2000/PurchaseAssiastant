@@ -66,6 +66,7 @@ Future<void> showStockRowActions({
           label: 'Update physical stock',
           onTap: () async {
             Navigator.pop(context);
+            if (!context.mounted) return;
             await showQuickStockActionSheet(
               context: context,
               ref: ref,
@@ -81,6 +82,7 @@ Future<void> showStockRowActions({
             label: 'Update system stock',
             onTap: () async {
               Navigator.pop(context);
+              if (!context.mounted) return;
               await showQuickStockActionSheet(
                 context: context,
                 ref: ref,
@@ -96,6 +98,7 @@ Future<void> showStockRowActions({
             label: 'Delivery details',
             onTap: () async {
               Navigator.pop(context);
+              if (!context.mounted) return;
               await showStaffDeliveredDetailSheet(
                 context: context,
                 ref: ref,
@@ -108,6 +111,7 @@ Future<void> showStockRowActions({
           label: 'Add purchase quantity',
           onTap: () async {
             Navigator.pop(context);
+            if (!context.mounted) return;
             await showStockQuickPurchaseSheet(
               context: context,
               ref: ref,
@@ -120,6 +124,7 @@ Future<void> showStockRowActions({
           label: 'View item activity',
           onTap: () async {
             Navigator.pop(context);
+            if (!context.mounted) return;
             onBeforeNavigate?.call();
             await context.push('/catalog/item/$id');
             onAfterNavigateReturn?.call();

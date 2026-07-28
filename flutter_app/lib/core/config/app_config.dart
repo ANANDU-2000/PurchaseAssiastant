@@ -12,7 +12,8 @@ class AppConfig {
   /// Default product name (store listing / package name are separate).
   static const String appName = HexaColors.appName;
 
-  /// Production Flutter web host (note spelling: assiastant, not assistant).
+  /// Production Flutter web host (note spelling: **assiastant**, not assistant).
+  /// Bookmark only this URL. `purchase-assistant.vercel.app` is a different app.
   static const String productionWebUrl = 'https://purchase-assiastant.vercel.app';
 
   static const List<String> wrongProductionWebHosts = [
@@ -21,7 +22,9 @@ class AppConfig {
     'purchase-assiantant.vercel.app',
   ];
 
-  /// True on web when opened on a typo/wrong Vercel host — API CORS blocks all data loads.
+  /// True on web when opened on a typo/wrong Vercel host.
+  /// Note: the typo domain is often a *different* Vercel project (blank React app),
+  /// so this Flutter gate only runs if our build is somehow served there.
   static bool get isWrongProductionWebHost {
     if (!kIsWeb) return false;
     final host = Uri.base.host.toLowerCase();
@@ -31,7 +34,14 @@ class AppConfig {
     }
     final canonical = Uri.parse(productionWebUrl).host.toLowerCase();
     if (host == canonical) return false;
-    return wrongProductionWebHosts.contains(host);
+    // Any *.vercel.app preview of a typo slug, or known wrong hosts.
+    if (wrongProductionWebHosts.contains(host)) return true;
+    if (host.contains('purchase-assistant') &&
+        host.endsWith('.vercel.app') &&
+        host != canonical) {
+      return true;
+    }
+    return false;
   }
 
   static String wrongHostRedirectUrl({String path = '/home'}) {

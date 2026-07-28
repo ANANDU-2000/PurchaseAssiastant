@@ -22,7 +22,8 @@ void applyStockPagePeriod(WidgetRef ref, HomePeriod p) {
     periodEnd: stockApiDate(endInclusive),
     page: 1,
   );
-  ref.read(stockSelectedItemIdProvider.notifier).state = null;
+  // Keep desktop detail selection across period refresh; pane falls back if
+  // the id is no longer in the filtered list.
 }
 
 /// Client-side filters for operational stock list (unit, missing code, reorder).

@@ -142,6 +142,8 @@ abstract final class HexaResponsive {
   static const double minTouchTarget = 48;
   static const double minReadableFont = 11;
   static const double maxContentWidth = 1180;
+  /// Owner home operational body — wider than generic content to cut side gutters.
+  static const double maxHomeContentWidth = 1440;
   static const double maxFormWidth = 720;
   static const double maxSheetWidth = 640;
 
@@ -317,27 +319,42 @@ Future<T?> showHexaBottomSheet<T>({
   ShapeBorder? shape,
 }) {
   if (HexaBreakpoints.isDesktop(context)) {
+    // Tight inset — large horizontal inset (240) left empty/mis-sized dialogs
+    // on wide Flutter web and looked like a blank overlay after stock Update.
     return showDialog<T>(
       context: context,
-      builder: (ctx) => Dialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 240, vertical: 80),
-        shape: shape ??
-            RoundedRectangleBorder(
+      barrierDismissible: true,
+      builder: (ctx) {
+        final mq = MediaQuery.sizeOf(ctx);
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+          shape: shape ??
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: maxWidth.clamp(320, 560),
+              maxHeight: mq.height * 0.88,
+            ),
+            child: Material(
+              color: Theme.of(ctx).dialogTheme.backgroundColor ??
+                  Theme.of(ctx).colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
+              clipBehavior: Clip.antiAlias,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.viewInsetsOf(ctx).bottom,
+                ),
+                child: SingleChildScrollView(
+                  padding: padding ?? const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                  child: child,
+                ),
+              ),
             ),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: maxWidth,
-            maxHeight: MediaQuery.sizeOf(ctx).height * 0.85,
           ),
-          child: Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.viewInsetsOf(ctx).bottom,
-            ),
-            child: SingleChildScrollView(child: child),
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
   return showModalBottomSheet<T>(

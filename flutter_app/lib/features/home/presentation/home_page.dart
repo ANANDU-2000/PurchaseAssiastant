@@ -647,7 +647,7 @@ class _HomePageState extends ConsumerState<HomePage>
                 padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 0),
                 sliver: SliverToBoxAdapter(
                   child: HexaResponsiveCenter(
-                    maxWidth: HexaResponsive.maxContentWidth,
+                    maxWidth: HexaResponsive.maxHomeContentWidth,
                     padding: EdgeInsets.zero,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -686,7 +686,7 @@ class _HomePageState extends ConsumerState<HomePage>
                 ),
                 sliver: SliverToBoxAdapter(
                   child: HexaResponsiveCenter(
-                    maxWidth: HexaResponsive.maxContentWidth,
+                    maxWidth: HexaResponsive.maxHomeContentWidth,
                     padding: EdgeInsets.zero,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,

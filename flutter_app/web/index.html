@@ -160,9 +160,9 @@
     <img src="icons/Icon-192.png" alt="" width="96" height="96" />
     <span>Harisree Warehouse</span>
   </div>
-  <div id="wrong-host" role="alert">
-    <p>Wrong link — this hostname causes blank screens and failed saves.</p>
-    <p>Bookmark only:</p>
+  <div id="wrong-host" role="alert" aria-hidden="true" hidden>
+    <p>Wrong link — use <strong>assiastant</strong> (not assistant).</p>
+    <p>Bookmark only https://purchase-assiastant.vercel.app</p>
     <p><a href="https://purchase-assiastant.vercel.app/home">Open Harisree Warehouse</a></p>
   </div>
   <div id="boot" aria-live="polite">Starting…</div>
@@ -180,6 +180,8 @@
         'https://' + correct + location.pathname + location.search + location.hash;
       var wh = document.getElementById('wrong-host');
       if (wh) {
+        wh.hidden = false;
+        wh.setAttribute('aria-hidden', 'false');
         wh.classList.add('show');
         var link = wh.querySelector('a');
         if (link) link.href = target;

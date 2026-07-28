@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/design_system/hexa_responsive.dart';
 import '../../../../core/providers/app_period_provider.dart'
     show syncReportsRangeFromHomePeriod;
 import '../../../../core/providers/home_dashboard_provider.dart';
@@ -60,26 +61,37 @@ class _HomePeriodFilterRowState extends ConsumerState<HomePeriodFilterRow> {
     _setPeriod(HomePeriod.custom);
   }
 
+  void _onSelected(String label) {
+    final match = HomePeriod.values.where((p) => p.label == label);
+    if (match.isEmpty) return;
+    final p = match.first;
+    if (p == HomePeriod.custom) {
+      _pickCustom();
+    } else {
+      _setPeriod(p);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final period = ref.watch(homePeriodProvider);
     final labels = HomePeriod.values.map((p) => p.label).toList();
     final selected = period.label;
+    final wrapChips =
+        MediaQuery.sizeOf(context).width >= HexaBreakpoints.tablet;
 
+    if (wrapChips) {
+      return OperationalPillWrap(
+        labels: labels,
+        selected: selected,
+        onSelected: _onSelected,
+      );
+    }
     return OperationalPillRow(
       labels: labels,
       selected: selected,
       height: 32,
-      onSelected: (label) {
-        final match = HomePeriod.values.where((p) => p.label == label);
-        if (match.isEmpty) return;
-        final p = match.first;
-        if (p == HomePeriod.custom) {
-          _pickCustom();
-        } else {
-          _setPeriod(p);
-        }
-      },
+      onSelected: _onSelected,
     );
   }
 }

@@ -70,7 +70,10 @@ class StockWarehouseRow extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: () {
+            onSelect?.call();
+            onTap();
+          },
           child: Container(
             constraints: BoxConstraints(
               minHeight: StockTableLayout.rowHeightFor(context),

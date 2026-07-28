@@ -90,6 +90,15 @@ REPORT_ENGINE.md
 # Local agent / Codex runner logs (never commit)
 backend/.codex-backend.err.log
 backend/.codex-backend.out.log
+backend/uvicorn.err
+backend/uvicorn.log
+backend/uvicorn_*.txt
+backend/uvicorn_*.log
+
+# One-off agent specs / pytest scratch dirs at repo root
+specs/
+pytest-cache-files-*/
+PROJECT_API_AUDIT.md
 
 # Accidental local archives (add intentionally if you need them in git)
 purhcaseappss.zip

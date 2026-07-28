@@ -331,6 +331,7 @@ class SessionNotifier extends Notifier<Session?> {
   DateTime? _lastResumeCheck;
 
   /// Refresh JWT quietly on resume without forcing a full app reload.
+  /// Prefer keeping the session on transient failures; only logout on hard 401/403.
   Future<void> silentRefreshIfNeeded() async {
     if (_disposed || state == null) return;
     final now = DateTime.now();
@@ -360,8 +361,10 @@ class SessionNotifier extends Notifier<Session?> {
     } on DioException catch (e) {
       final sc = e.response?.statusCode;
       if (sc == 401 || sc == 403) {
+        // Hard auth failure — intended route already saved by router on bounce.
         await logout();
       }
+      // Network / 5xx — keep session; next API call retries refresh.
     } catch (_) {
       // Transient — keep session; next API call will retry refresh.
     } finally {

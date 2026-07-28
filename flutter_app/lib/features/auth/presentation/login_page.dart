@@ -12,6 +12,7 @@ import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/biometric_login.dart';
 import '../../../core/auth/auth_failure_policy.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/providers/prefs_provider.dart';
 import '../../../core/router/post_auth_route.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
@@ -183,7 +184,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
   void _goPostAuth() {
     final s = ref.read(sessionProvider);
     if (s == null) return;
-    context.go(authenticatedHomePath(s));
+    final prefs = ref.read(sharedPreferencesProvider);
+    context.go(resolvePostAuthPath(s, prefs));
   }
 
   Future<void> _tryResumeSession() async {
