@@ -52,6 +52,21 @@ import 'widgets/stock_row_metrics.dart';
 
 enum StockPageMode { auto, staff, owner }
 
+/// Desktop split-pane selection from the visible (filtered) [items] list.
+/// Falls back to the first visible row when [selectedId] is null/empty/missing.
+Map<String, dynamic>? selectStockDesktopDetailItem(
+  List<Map<String, dynamic>> items,
+  String? selectedId,
+) {
+  if (selectedId == null || selectedId.isEmpty) {
+    return items.isNotEmpty ? items.first : null;
+  }
+  for (final row in items) {
+    if (row['id']?.toString() == selectedId) return row;
+  }
+  return items.isNotEmpty ? items.first : null;
+}
+
 class StockPage extends ConsumerStatefulWidget {
   const StockPage({
     super.key,
@@ -561,15 +576,11 @@ class _StockPageState extends ConsumerState<StockPage>
     );
   }
 
-  Map<String, dynamic>? _selectedItem(List<Map<String, dynamic>> items) {
-    final id = ref.read(stockSelectedItemIdProvider);
-    if (id == null || id.isEmpty) {
-      return items.isNotEmpty ? items.first : null;
-    }
-    for (final row in items) {
-      if (row['id']?.toString() == id) return row;
-    }
-    return items.isNotEmpty ? items.first : null;
+  Map<String, dynamic>? _selectedItem(
+    List<Map<String, dynamic>> items,
+    String? selectedId,
+  ) {
+    return selectStockDesktopDetailItem(items, selectedId);
   }
 
   Widget _buildListBody({
@@ -577,6 +588,7 @@ class _StockPageState extends ConsumerState<StockPage>
     required bool isReloading,
     required StockDeliveryFilter deliveryFilter,
     required Map<String, int> chipCounts,
+    required String? selectedItemId,
   }) {
     final raw = [
       for (final e in (data['items'] as List? ?? []))
@@ -604,11 +616,11 @@ class _StockPageState extends ConsumerState<StockPage>
 
     final desktop =
         MediaQuery.sizeOf(context).width >= kDesktopMin;
-    final selected = desktop ? _selectedItem(items) : null;
+    final selected =
+        desktop ? _selectedItem(items, selectedItemId) : null;
     if (desktop && items.isNotEmpty) {
       final sid = selected?['id']?.toString();
-      if (sid != null &&
-          ref.read(stockSelectedItemIdProvider) != sid) {
+      if (sid != null && selectedItemId != sid) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             ref.read(stockSelectedItemIdProvider.notifier).state = sid;
@@ -805,6 +817,8 @@ class _StockPageState extends ConsumerState<StockPage>
   Widget build(BuildContext context) {
     // Register patch dependency on every build path (not only inside _prepareItems).
     ref.watch(stockListRowPatchProvider);
+    // Desktop detail pane must rebuild when row selection changes (not only on patch).
+    final selectedItemId = ref.watch(stockSelectedItemIdProvider);
 
     ref.listen(businessWriteEventProvider, (prev, next) {
       if (prev == null || prev.revision == next.revision) return;
@@ -1036,6 +1050,7 @@ class _StockPageState extends ConsumerState<StockPage>
         isReloading: isReloading,
         deliveryFilter: deliveryFilter,
         chipCounts: chipCounts,
+        selectedItemId: selectedItemId,
       );
     } else if (listAsync.hasError) {
       body = FriendlyLoadError(
