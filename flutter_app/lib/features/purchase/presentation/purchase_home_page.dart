@@ -1606,22 +1606,31 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                 const VerticalDivider(width: 1, thickness: 1),
                                 Expanded(
                                   flex: 6,
-                                  child: Align(
-                                    alignment: Alignment.topCenter,
-                                    child: ConstrainedBox(
-                                      constraints: const BoxConstraints(
-                                        maxWidth: HexaResponsive.maxFormWidth,
-                                      ),
-                                      child: PurchaseDesktopDetailPane(
-                                        purchaseId: effectiveSelectedId,
-                                        seedPurchase: selectedSeed ??
-                                            (visible.isNotEmpty &&
-                                                    effectiveSelectedId ==
-                                                        visible.first.id
-                                                ? visible.first
-                                                : null),
-                                      ),
-                                    ),
+                                  child: LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      final w = constraints.maxWidth <
+                                              HexaResponsive.maxFormWidth
+                                          ? constraints.maxWidth
+                                          : HexaResponsive.maxFormWidth;
+                                      // Bind height — Align + maxWidth-only blanks
+                                      // detail panes with Expanded/ListView on web.
+                                      return Align(
+                                        alignment: Alignment.topCenter,
+                                        child: SizedBox(
+                                          width: w,
+                                          height: constraints.maxHeight,
+                                          child: PurchaseDesktopDetailPane(
+                                            purchaseId: effectiveSelectedId,
+                                            seedPurchase: selectedSeed ??
+                                                (visible.isNotEmpty &&
+                                                        effectiveSelectedId ==
+                                                            visible.first.id
+                                                    ? visible.first
+                                                    : null),
+                                          ),
+                                        ),
+                                      );
+                                    },
                                   ),
                                 ),
                               ],

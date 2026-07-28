@@ -36,6 +36,134 @@ void main() {
     expect(find.text('Compact sheet body'), findsOneWidget);
   });
 
+  testWidgets(
+      'desktop stock update dialog shows fields (not blank zero-height)',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(size: Size(1440, 900)),
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) {
+              return Scaffold(
+                body: Center(
+                  child: FilledButton(
+                    onPressed: () {
+                      showHexaBottomSheet<void>(
+                        context: context,
+                        compact: true,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text('Editing: 12 BAG'),
+                            const SizedBox(height: 8),
+                            const TextField(
+                              decoration: InputDecoration(
+                                labelText: 'Physical stock',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            FilledButton(
+                              onPressed: () {},
+                              child: const Text('SAVE PHYSICAL STOCK'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    child: const Text('Update'),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Update'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.text('Editing: 12 BAG'), findsOneWidget);
+    expect(find.text('SAVE PHYSICAL STOCK'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+
+    final list = tester.widget<ListView>(
+      find.descendant(
+        of: find.byType(Dialog),
+        matching: find.byType(ListView),
+      ),
+    );
+    expect(list.shrinkWrap, isTrue);
+
+    final dialogSize = tester.getSize(find.byType(Dialog));
+    expect(dialogSize.height, greaterThan(80));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'desktop compact:false sheet uses fixed height (Expanded lists work)',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(size: Size(1440, 900)),
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) {
+              return Scaffold(
+                body: Center(
+                  child: FilledButton(
+                    onPressed: () {
+                      showHexaBottomSheet<void>(
+                        context: context,
+                        compact: false,
+                        padding: EdgeInsets.zero,
+                        child: Column(
+                          children: [
+                            const Text('Bulk archive items'),
+                            Expanded(
+                              child: ListView(
+                                children: const [
+                                  ListTile(title: Text('Item A')),
+                                  ListTile(title: Text('Item B')),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    child: const Text('Archive'),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Archive'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.text('Bulk archive items'), findsOneWidget);
+    expect(find.text('Item A'), findsOneWidget);
+    expect(find.text('Item B'), findsOneWidget);
+    final dialogSize = tester.getSize(find.byType(Dialog));
+    expect(dialogSize.height, greaterThan(200));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('search picker uses bounded height column', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

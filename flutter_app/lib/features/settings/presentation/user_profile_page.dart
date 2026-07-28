@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/providers/business_users_provider.dart';
 import '../../../core/router/navigation_ext.dart';
@@ -174,109 +175,108 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
     final previousRole = role;
     var saving = false;
 
-    await showModalBottomSheet<void>(
+    await showHexaBottomSheet<void>(
       context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setModal) {
-            Future<void> save() async {
-              if (saving) return;
-              setModal(() => saving = true);
-              try {
-                await ref.read(hexaApiProvider).patchBusinessUser(
-                      businessId: session.primaryBusiness.id,
-                      userId: widget.userId,
-                      fullName: nameCtrl.text.trim(),
-                      email: emailCtrl.text.trim(),
-                      phone: phoneCtrl.text.trim(),
-                      role: role,
-                    );
-                ref.invalidate(businessUserProfileProvider(widget.userId));
-                if (role != previousRole) {
-                  ref.invalidate(userPermissionsProvider(widget.userId));
-                }
-                invalidateUserManagementCaches(ref);
-                if (ctx.mounted) Navigator.pop(ctx);
-              } catch (e) {
-                setModal(() => saving = false);
-                if (!ctx.mounted) return;
-                ScaffoldMessenger.of(ctx).showSnackBar(
-                  SnackBar(content: Text(userFacingError(e))),
-                );
+      compact: true,
+      padding: EdgeInsets.zero,
+      child: StatefulBuilder(
+        builder: (ctx, setModal) {
+          Future<void> save() async {
+            if (saving) return;
+            setModal(() => saving = true);
+            try {
+              await ref.read(hexaApiProvider).patchBusinessUser(
+                    businessId: session.primaryBusiness.id,
+                    userId: widget.userId,
+                    fullName: nameCtrl.text.trim(),
+                    email: emailCtrl.text.trim(),
+                    phone: phoneCtrl.text.trim(),
+                    role: role,
+                  );
+              ref.invalidate(businessUserProfileProvider(widget.userId));
+              if (role != previousRole) {
+                ref.invalidate(userPermissionsProvider(widget.userId));
               }
+              invalidateUserManagementCaches(ref);
+              if (ctx.mounted) Navigator.pop(ctx);
+            } catch (e) {
+              setModal(() => saving = false);
+              if (!ctx.mounted) return;
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                SnackBar(content: Text(userFacingError(e))),
+              );
             }
+          }
 
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                bottom: MediaQuery.viewInsetsOf(ctx).bottom + 16,
-                top: 8,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('Edit user', style: HexaDsType.h3(ctx)),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: nameCtrl,
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              bottom: MediaQuery.viewInsetsOf(ctx).bottom + 16,
+              top: 8,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Edit user', style: HexaDsType.h3(ctx)),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Full name',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: emailCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: phoneCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                if ((user['role']?.toString() ?? '') != 'owner')
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    initialValue: role,
                     decoration: const InputDecoration(
-                      labelText: 'Full name',
+                      labelText: 'Role',
                       border: OutlineInputBorder(),
                     ),
+                    items: const [
+                      DropdownMenuItem(value: 'staff', child: Text('Staff')),
+                      DropdownMenuItem(value: 'manager', child: Text('Manager')),
+                      DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                    ],
+                    onChanged:
+                        saving ? null : (v) => setModal(() => role = v ?? role),
                   ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: emailCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: phoneCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Phone',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  if ((user['role']?.toString() ?? '') != 'owner')
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      initialValue: role,
-                      decoration: const InputDecoration(
-                        labelText: 'Role',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: 'staff', child: Text('Staff')),
-                        DropdownMenuItem(value: 'manager', child: Text('Manager')),
-                        DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                      ],
-                      onChanged: saving ? null : (v) => setModal(() => role = v ?? role),
-                    ),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: saving ? null : save,
-                    child: saving
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Save changes'),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: saving ? null : save,
+                  child: saving
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save changes'),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
     nameCtrl.dispose();
     emailCtrl.dispose();

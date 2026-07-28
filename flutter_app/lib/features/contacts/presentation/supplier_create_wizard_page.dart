@@ -10,6 +10,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/design_system/widgets/app_button.dart';
+import '../../../core/design_system/widgets/app_form_layout.dart';
+import '../../../core/design_system/widgets/app_text_field.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/catalog_providers.dart';
@@ -728,12 +731,12 @@ class _SupplierCreateWizardPageState
           ),
           const SizedBox(height: 12),
         ],
-        TextField(
+        AppTextField(
           controller: _name,
           focusNode: _nameFocus,
-          scrollPadding: _fieldScrollPad(context),
+          label: 'Supplier name *',
+          errorText: _nameError,
           textCapitalization: TextCapitalization.words,
-          decoration: _dec('Supplier name *', error: _nameError),
           textInputAction: TextInputAction.next,
           onChanged: (_) {
             _markDirty();
@@ -742,29 +745,32 @@ class _SupplierCreateWizardPageState
           onSubmitted: (_) => _phoneFocus.requestFocus(),
         ),
         const SizedBox(height: 12),
-        TextField(
-          controller: _phone,
-          focusNode: _phoneFocus,
-          scrollPadding: _fieldScrollPad(context),
-          keyboardType: TextInputType.phone,
-          decoration: _dec('Phone *', error: _phoneError),
-          textInputAction: TextInputAction.next,
-          onChanged: (_) {
-            _markDirty();
-            if (_phoneError != null) setState(() => _phoneError = null);
-          },
-          onSubmitted: (_) => _locFocus.requestFocus(),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _loc,
-          focusNode: _locFocus,
-          scrollPadding: _fieldScrollPad(context),
-          textCapitalization: TextCapitalization.sentences,
-          decoration: _dec('Location', hint: 'Optional'),
-          textInputAction: TextInputAction.done,
-          onChanged: (_) => _markDirty(),
-          onSubmitted: (_) => _unfocusForm(),
+        AppFormRow(
+          children: [
+            AppTextField(
+              controller: _phone,
+              focusNode: _phoneFocus,
+              label: 'Phone *',
+              errorText: _phoneError,
+              keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.next,
+              onChanged: (_) {
+                _markDirty();
+                if (_phoneError != null) setState(() => _phoneError = null);
+              },
+              onSubmitted: (_) => _locFocus.requestFocus(),
+            ),
+            AppTextField(
+              controller: _loc,
+              focusNode: _locFocus,
+              label: 'Location',
+              helper: 'Optional',
+              textCapitalization: TextCapitalization.sentences,
+              textInputAction: TextInputAction.done,
+              onChanged: (_) => _markDirty(),
+              onSubmitted: (_) => _unfocusForm(),
+            ),
+          ],
         ),
       ],
     );
@@ -775,12 +781,13 @@ class _SupplierCreateWizardPageState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _stepHeader('GST & notes'),
-        TextField(
+        AppTextField(
           controller: _gst,
           focusNode: _gstFocus,
-          scrollPadding: _fieldScrollPad(context),
+          label: 'GST number',
+          helper: 'Important for invoices',
+          errorText: _gstError,
           textCapitalization: TextCapitalization.characters,
-          decoration: _dec('GST number', hint: 'Important for invoices', error: _gstError),
           textInputAction: TextInputAction.next,
           onChanged: (_) {
             _markDirty();
@@ -789,23 +796,23 @@ class _SupplierCreateWizardPageState
           onSubmitted: (_) => _addrFocus.requestFocus(),
         ),
         const SizedBox(height: 12),
-        TextField(
+        AppTextField(
           controller: _addr,
           focusNode: _addrFocus,
-          scrollPadding: _fieldScrollPad(context),
+          label: 'Address',
+          helper: 'Optional',
           maxLines: 2,
-          decoration: _dec('Address', hint: 'Optional'),
           textInputAction: TextInputAction.next,
           onChanged: (_) => _markDirty(),
           onSubmitted: (_) => _notesFocus.requestFocus(),
         ),
         const SizedBox(height: 12),
-        TextField(
+        AppTextField(
           controller: _notes,
           focusNode: _notesFocus,
-          scrollPadding: _fieldScrollPad(context),
+          label: 'Notes',
+          helper: 'Optional',
           maxLines: 3,
-          decoration: _dec('Notes', hint: 'Optional'),
           textInputAction: TextInputAction.done,
           onChanged: (_) => _markDirty(),
           onSubmitted: (_) => _unfocusForm(),
@@ -820,10 +827,10 @@ class _SupplierCreateWizardPageState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _stepHeader('Brokers on this supplier'),
-        OutlinedButton.icon(
+        AppSecondaryButton(
+          label: 'Create new broker',
+          icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
           onPressed: _addBrokerInline,
-          icon: const Icon(Icons.person_add_alt_1_outlined),
-          label: const Text('Create new broker'),
         ),
         const SizedBox(height: 12),
         brokers.whenForm(
@@ -1391,47 +1398,47 @@ class _SupplierCreateWizardPageState
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
       child: Row(
         children: [
-            if (isSummary) ...[
-              Expanded(
-                child: TextButton(
-                  onPressed: () => setState(() => _step = 0),
-                  child: const Text('Edit'),
-                ),
+          if (isSummary) ...[
+            Expanded(
+              child: TextButton(
+                onPressed: () => setState(() => _step = 0),
+                child: const Text('Edit'),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: _saveSupplier,
-                  child: const Text('Save'),
-                ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: AppPrimaryButton(
+                label: 'Save',
+                onPressed: _saveSupplier,
               ),
-            ] else ...[
-              Expanded(
-                child: TextButton(
-                  onPressed: _handleExitRequest,
-                  child: const Text('Cancel'),
-                ),
+            ),
+          ] else ...[
+            Expanded(
+              child: TextButton(
+                onPressed: _handleExitRequest,
+                child: const Text('Cancel'),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: () {
-                    if (_step == 0 && !_validateStep0()) return;
-                    final nextStep = (_step + 1).clamp(0, 4);
-                    setState(() {
-                      _step = nextStep;
-                      _dirty = true;
-                    });
-                    _unfocusForm();
-                    _focusFirstFieldForStep(nextStep);
-                  },
-                  child: const Text('Next'),
-                ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: AppPrimaryButton(
+                label: 'Next',
+                onPressed: () {
+                  if (_step == 0 && !_validateStep0()) return;
+                  final nextStep = (_step + 1).clamp(0, 4);
+                  setState(() {
+                    _step = nextStep;
+                    _dirty = true;
+                  });
+                  _unfocusForm();
+                  _focusFirstFieldForStep(nextStep);
+                },
               ),
-            ],
+            ),
           ],
-        ),
-      );
+        ],
+      ),
+    );
   }
 
   @override

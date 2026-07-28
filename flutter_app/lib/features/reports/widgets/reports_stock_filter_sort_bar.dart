@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../stock/reports_stock_providers.dart';
 import '../stock/reports_stock_status.dart';
@@ -84,33 +85,34 @@ class ReportsStockFilterSortBar extends ConsumerWidget {
 
   Future<void> _openSortSheet(BuildContext context, WidgetRef ref) async {
     final current = ref.read(reportsStockSortProvider);
-    final picked = await showModalBottomSheet<ReportsStockSort>(
+    final picked = await showHexaBottomSheet<ReportsStockSort>(
       context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        return SafeArea(
-          child: Column(
+      compact: true,
+      child: Builder(
+        builder: (sheetCtx) {
+          return Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                child: Text('Sort stock list', style: HexaDsType.h3(ctx)),
+                padding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
+                child: Text('Sort stock list', style: HexaDsType.h3(sheetCtx)),
               ),
               for (final option in ReportsStockSort.values)
                 ListTile(
                   dense: true,
+                  contentPadding: EdgeInsets.zero,
                   title: Text(option.label),
                   trailing: current == option
                       ? Icon(Icons.check_rounded,
                           color: HexaColors.brandPrimary)
                       : null,
-                  onTap: () => Navigator.pop(ctx, option),
+                  onTap: () => Navigator.pop(sheetCtx, option),
                 ),
             ],
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
     if (picked != null) {
       ref.read(reportsStockSortProvider.notifier).state = picked;

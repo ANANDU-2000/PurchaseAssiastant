@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/design_system/hexa_responsive.dart';
+import '../../../../core/design_system/widgets/app_button.dart';
 import '../../../../core/json_coerce.dart';
 import '../../../../core/utils/unit_utils.dart';
 import '../../../catalog/presentation/widgets/item_stock_metric_strip.dart';
@@ -67,7 +68,6 @@ class _LowStockItemDetailSheet extends StatelessWidget {
   static const _critical = Color(0xFFDC2626);
   static const _warn = Color(0xFFF59E0B);
   static const _ok = Color(0xFF16A34A);
-  static const _primaryBtn = Color(0xFF065F46);
 
   @override
   Widget build(BuildContext context) {
@@ -136,66 +136,42 @@ class _LowStockItemDetailSheet extends StatelessWidget {
         ],
         const SizedBox(height: 10),
           if (onStockUpdate != null)
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: _primaryBtn,
-                minimumSize: const Size.fromHeight(48),
-              ),
+            AppPrimaryButton(
+              label: 'Update physical stock',
               onPressed: () {
                 Navigator.pop(context);
                 onStockUpdate!(item);
               },
-              child: const Text(
-                'Update physical stock',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              ),
             ),
           if (onSystemStockUpdate != null) ...[
             const SizedBox(height: 8),
-            OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-                foregroundColor: _primaryBtn,
-                side: const BorderSide(color: _primaryBtn),
-              ),
+            AppSecondaryButton(
+              label: 'Update system stock',
               onPressed: () {
                 Navigator.pop(context);
                 onSystemStockUpdate!(item);
               },
-              child: const Text(
-                'Update system stock',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              ),
             ),
           ],
           if (!staffMode && onOrderNow != null) ...[
             const SizedBox(height: 8),
-            OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-                foregroundColor: _primaryBtn,
-                side: const BorderSide(color: _primaryBtn),
-              ),
+            AppSecondaryButton(
+              label: 'Create purchase',
               onPressed: () {
                 Navigator.pop(context);
                 onOrderNow!(item);
               },
-              child: const Text(
-                'Create purchase',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              ),
             ),
           ],
           if (staffMode && onNotifyOwner != null) ...[
             const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: ownerInformed
-                  ? null
-                  : () {
-                      Navigator.pop(context);
-                      onNotifyOwner!(item);
-                    },
-              child: Text(ownerInformed ? 'Owner informed' : 'Inform owner'),
+            AppSecondaryButton(
+              label: ownerInformed ? 'Owner informed' : 'Inform owner',
+              enabled: !ownerInformed,
+              onPressed: () {
+                Navigator.pop(context);
+                onNotifyOwner!(item);
+              },
             ),
           ],
           const SizedBox(height: 8),

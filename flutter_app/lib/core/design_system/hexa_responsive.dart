@@ -319,39 +319,75 @@ Future<T?> showHexaBottomSheet<T>({
   ShapeBorder? shape,
 }) {
   if (HexaBreakpoints.isDesktop(context)) {
-    // Tight inset — large horizontal inset (240) left empty/mis-sized dialogs
-    // on wide Flutter web and looked like a blank overlay after stock Update.
+    // Desktop uses a dialog (not a bottom sheet).
+    // - compact: shrink-wrap scroll so field sheets size to content (Stock Update).
+    // - !compact: fixed height so Column + Expanded list sheets do not collapse.
     return showDialog<T>(
       context: context,
       barrierDismissible: true,
       builder: (ctx) {
         final mq = MediaQuery.sizeOf(ctx);
+        final sheetW = maxWidth.clamp(320.0, 560.0);
+        final inset = EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(ctx).bottom,
+        );
+        final contentPadding =
+            padding ?? const EdgeInsets.fromLTRB(16, 12, 16, 16);
+
+        final Widget body;
+        if (compact) {
+          body = ListView(
+            shrinkWrap: true,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: contentPadding,
+            children: [child],
+          );
+        } else {
+          final padded = padding == null
+              ? Padding(padding: contentPadding, child: child)
+              : (padding == EdgeInsets.zero
+                  ? child
+                  : Padding(padding: padding, child: child));
+          body = padded;
+        }
+
         return Dialog(
           insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
           shape: shape ??
               RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: maxWidth.clamp(320, 560),
-              maxHeight: mq.height * 0.88,
-            ),
-            child: Material(
-              color: Theme.of(ctx).dialogTheme.backgroundColor ??
-                  Theme.of(ctx).colorScheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              clipBehavior: Clip.antiAlias,
-              child: Padding(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.viewInsetsOf(ctx).bottom,
-                ),
-                child: SingleChildScrollView(
-                  padding: padding ?? const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                  child: child,
-                ),
-              ),
-            ),
+          child: SizedBox(
+            width: sheetW,
+            height: compact ? null : mq.height * 0.88,
+            child: compact
+                ? ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: mq.height * 0.88),
+                    child: Material(
+                      color: Theme.of(ctx).dialogTheme.backgroundColor ??
+                          Theme.of(ctx).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      clipBehavior: Clip.antiAlias,
+                      child: AnimatedPadding(
+                        duration: HexaDsMotion.fast,
+                        curve: HexaDsMotion.enter,
+                        padding: inset,
+                        child: body,
+                      ),
+                    ),
+                  )
+                : Material(
+                    color: Theme.of(ctx).dialogTheme.backgroundColor ??
+                        Theme.of(ctx).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    clipBehavior: Clip.antiAlias,
+                    child: AnimatedPadding(
+                      duration: HexaDsMotion.fast,
+                      curve: HexaDsMotion.enter,
+                      padding: inset,
+                      child: body,
+                    ),
+                  ),
           ),
         );
       },

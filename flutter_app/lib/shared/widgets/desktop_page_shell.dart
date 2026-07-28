@@ -23,12 +23,25 @@ class DesktopPageShell extends StatelessWidget {
   final double minWidth;
   final EdgeInsetsGeometry? padding;
 
-  /// When true, never constrain — for stock/purchase/reports split layouts.
+  /// When true, never constrain width — for stock/purchase/reports split layouts.
+  /// Still applies a height bound when the parent gives unbounded height so
+  /// scrollables / Expanded do not paint a blank CanvasKit surface.
   final bool fullWidth;
 
   @override
   Widget build(BuildContext context) {
-    if (fullWidth) return child;
+    if (fullWidth) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.hasBoundedHeight) return child;
+          final h = MediaQuery.sizeOf(context).height;
+          return ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: h),
+            child: SizedBox(height: h, child: child),
+          );
+        },
+      );
+    }
 
     Widget content = child;
     if (padding != null) {
@@ -38,7 +51,12 @@ class DesktopPageShell extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < minWidth) {
-          return content;
+          if (constraints.hasBoundedHeight) return content;
+          final h = MediaQuery.sizeOf(context).height;
+          return ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: h),
+            child: SizedBox(height: h, child: content),
+          );
         }
 
         final width = math.min(constraints.maxWidth, maxContentWidth);
@@ -55,11 +73,16 @@ class DesktopPageShell extends StatelessWidget {
           );
         }
 
+        final h = MediaQuery.sizeOf(context).height;
         return Align(
           alignment: Alignment.topCenter,
-          child: SizedBox(
-            width: width,
-            child: content,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: h),
+            child: SizedBox(
+              width: width,
+              height: h,
+              child: content,
+            ),
           ),
         );
       },

@@ -336,7 +336,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ),
       body: isDesktop
           ? Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _SettingsSidebar(
                   isOwner: isOwner,

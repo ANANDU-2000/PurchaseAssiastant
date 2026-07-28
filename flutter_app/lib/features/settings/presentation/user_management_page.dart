@@ -9,6 +9,9 @@ import 'package:go_router/go_router.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../core/design_system/hexa_responsive.dart';
+import '../../../core/design_system/widgets/app_button.dart';
+import '../../../core/design_system/widgets/app_form_layout.dart';
+import '../../../core/design_system/widgets/app_text_field.dart';
 import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/providers/business_users_provider.dart';
 import '../../../core/router/navigation_ext.dart';
@@ -61,7 +64,7 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
 
     await showHexaBottomSheet<void>(
       context: context,
-      compact: false,
+      compact: true,
       padding: EdgeInsets.zero,
       child: StatefulBuilder(
         builder: (ctx, setModal) {
@@ -128,41 +131,36 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
               children: [
                 Text('Add user', style: HexaDsType.formSectionLabel),
                 const SizedBox(height: 12),
-                TextField(
+                AppTextField(
                   controller: nameCtrl,
+                  label: 'Full name',
                   textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(
-                    labelText: 'Full name',
-                    border: OutlineInputBorder(),
-                  ),
+                  enabled: !saving,
                 ),
                 const SizedBox(height: 10),
-                TextField(
-                  controller: emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    border: OutlineInputBorder(),
-                  ),
+                AppFormRow(
+                  children: [
+                    AppTextField(
+                      controller: emailCtrl,
+                      label: 'Email',
+                      keyboardType: TextInputType.emailAddress,
+                      autocorrect: false,
+                      enabled: !saving,
+                    ),
+                    AppTextField(
+                      controller: phoneCtrl,
+                      label: 'Phone number',
+                      keyboardType: TextInputType.phone,
+                      enabled: !saving,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 10),
-                TextField(
-                  controller: phoneCtrl,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'Phone number',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
+                AppTextField(
                   controller: notesCtrl,
+                  label: 'Notes (optional)',
                   maxLines: 2,
-                  decoration: const InputDecoration(
-                    labelText: 'Notes (optional)',
-                    border: OutlineInputBorder(),
-                  ),
+                  enabled: !saving,
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
@@ -180,14 +178,12 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
                   onChanged: saving ? null : (v) => setModal(() => role = v ?? 'staff'),
                 ),
                 const SizedBox(height: 8),
-                TextField(
+                AppTextField(
                   controller: passCtrl,
+                  label: 'Password (optional)',
+                  helper: 'Leave empty to generate a readable password',
                   obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Password (optional)',
-                    helperText: 'Leave empty to generate a readable password',
-                    border: OutlineInputBorder(),
-                  ),
+                  enabled: !saving,
                 ),
                 const SizedBox(height: 4),
                 SwitchListTile(
@@ -197,15 +193,10 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
                   onChanged: saving ? null : (v) => setModal(() => active = v),
                 ),
                 const SizedBox(height: 12),
-                FilledButton(
-                  onPressed: saving ? null : () => unawaited(submit()),
-                  child: saving
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Create user'),
+                AppPrimaryButton(
+                  label: 'Create user',
+                  loading: saving,
+                  onPressed: () => unawaited(submit()),
                 ),
               ],
             ),
@@ -486,10 +477,14 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
           if (canCreate && !_selectMode)
             Padding(
               padding: const EdgeInsets.only(right: 8),
-              child: FilledButton.tonalIcon(
-                onPressed: _openCreateSheet,
-                icon: const Icon(Icons.person_add_alt_1_rounded, size: 20),
-                label: const Text('Add'),
+              child: SizedBox(
+                width: 112,
+                child: AppSecondaryButton(
+                  dense: true,
+                  label: 'Add',
+                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                  onPressed: _openCreateSheet,
+                ),
               ),
             ),
         ],
@@ -503,10 +498,38 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
                   runSpacing: 8,
                   alignment: WrapAlignment.center,
                   children: [
-                    OutlinedButton(onPressed: () => _bulkAction('activate'), child: const Text('Activate')),
-                    OutlinedButton(onPressed: () => _bulkAction('deactivate'), child: const Text('Deactivate')),
-                    OutlinedButton(onPressed: () => _bulkAction('block'), child: const Text('Block')),
-                    OutlinedButton(onPressed: () => _bulkAction('delete'), child: const Text('Delete')),
+                    SizedBox(
+                      width: 120,
+                      child: AppSecondaryButton(
+                        dense: true,
+                        label: 'Activate',
+                        onPressed: () => _bulkAction('activate'),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 130,
+                      child: AppSecondaryButton(
+                        dense: true,
+                        label: 'Deactivate',
+                        onPressed: () => _bulkAction('deactivate'),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 100,
+                      child: AppSecondaryButton(
+                        dense: true,
+                        label: 'Block',
+                        onPressed: () => _bulkAction('block'),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 100,
+                      child: AppSecondaryButton(
+                        dense: true,
+                        label: 'Delete',
+                        onPressed: () => _bulkAction('delete'),
+                      ),
+                    ),
                   ],
                 ),
               ),

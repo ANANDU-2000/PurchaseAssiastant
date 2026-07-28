@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/auth/session_notifier.dart';
+import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/design_system/widgets/app_button.dart';
+import '../../../../core/design_system/widgets/app_form_layout.dart';
+import '../../../../core/design_system/widgets/app_text_field.dart';
 import '../../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../../core/providers/catalog_providers.dart';
 import '../../../../core/providers/trade_purchases_provider.dart';
@@ -119,12 +123,12 @@ class CatalogItemDefaultsEditFormState
 
   @override
   Widget build(BuildContext context) {
-    final sp =
-        formFieldScrollPaddingForContext(context, reserveBelowField: 220);
     final cs = Theme.of(context).colorScheme;
+    // Outer ListView owns scroll — do not nest AppFormLayout scrollable here.
     return ListView(
       controller: widget.scrollController,
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
         if (widget.showHeader) ...[
           Text(
@@ -134,108 +138,102 @@ class CatalogItemDefaultsEditFormState
                   fontWeight: FontWeight.w600,
                 ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: HexaDsSpace.s2),
         ],
         _sectionTitle(context, 'Item identity'),
-        TextField(
+        AppTextField(
           controller: widget.nameCtrl,
           focusNode: _nameFocus,
-          scrollPadding: sp,
-          decoration: InputDecoration(
-            labelText: 'Name *',
-            errorText: widget.nameError,
-          ),
+          label: 'Name *',
+          errorText: widget.nameError,
           textCapitalization: TextCapitalization.words,
           autofocus: true,
         ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: widget.codeCtrl,
-          focusNode: _codeFocus,
-          scrollPadding: sp,
-          inputFormatters: [ItemCodeInputFormatter()],
-          decoration: const InputDecoration(
-            labelText: 'Item code',
-            hintText: 'RICE-PONNI-50KG',
-            helperText: 'Shelf label & reports — A-Z, 0-9, hyphen',
-          ),
+        const SizedBox(height: HexaDsSpace.s1),
+        AppFormRow(
+          children: [
+            AppTextField(
+              controller: widget.codeCtrl,
+              focusNode: _codeFocus,
+              label: 'Item code',
+              helper: 'A-Z, 0-9, hyphen',
+              inputFormatters: [ItemCodeInputFormatter()],
+            ),
+            AppTextField(
+              controller: widget.hsnCtrl,
+              focusNode: _hsnFocus,
+              label: 'HSN code',
+            ),
+          ],
         ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: widget.hsnCtrl,
-          focusNode: _hsnFocus,
-          scrollPadding: sp,
-          decoration: const InputDecoration(labelText: 'HSN code'),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: widget.taxCtrl,
-          focusNode: _taxFocus,
-          scrollPadding: sp,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'Tax %',
-            hintText: 'e.g. 5',
-          ),
-        ),
-        const SizedBox(height: 16),
+        const SizedBox(height: HexaDsSpace.s2),
         _sectionTitle(context, 'Unit & packaging'),
-        Text(
-          'Default stock unit',
-          style: Theme.of(context)
-              .textTheme
-              .labelLarge
-              ?.copyWith(fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 6),
-        OutlinedButton(
-          onPressed: () async {
-            const none = '__unit_none__';
-            final id = await showSearchPickerSheet<String>(
-              context: widget.pickerContext,
-              title: 'Default unit',
-              rows: const [
-                SearchPickerRow(value: none, title: '— (unspecified)'),
-                SearchPickerRow(value: 'kg', title: 'kg'),
-                SearchPickerRow(value: 'bag', title: 'bag'),
-                SearchPickerRow(value: 'box', title: 'box'),
-                SearchPickerRow(value: 'tin', title: 'tin'),
-                SearchPickerRow(value: 'piece', title: 'piece'),
+        AppFormRow(
+          children: [
+            AppTextField(
+              controller: widget.taxCtrl,
+              focusNode: _taxFocus,
+              label: 'Tax %',
+              helper: 'e.g. 5',
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Default stock unit',
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelLarge
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 6),
+                AppSecondaryButton(
+                  dense: true,
+                  label: _unit == null ? '— (unspecified)' : '$_unit',
+                  onPressed: () async {
+                    const none = '__unit_none__';
+                    final id = await showSearchPickerSheet<String>(
+                      context: widget.pickerContext,
+                      title: 'Default unit',
+                      rows: const [
+                        SearchPickerRow(
+                            value: none, title: '— (unspecified)'),
+                        SearchPickerRow(value: 'kg', title: 'kg'),
+                        SearchPickerRow(value: 'bag', title: 'bag'),
+                        SearchPickerRow(value: 'box', title: 'box'),
+                        SearchPickerRow(value: 'tin', title: 'tin'),
+                        SearchPickerRow(value: 'piece', title: 'piece'),
+                      ],
+                      selectedValue: _unit ?? none,
+                    );
+                    if (!mounted) return;
+                    if (id != null) {
+                      setState(() => _unit = id == none ? null : id);
+                    }
+                  },
+                ),
               ],
-              selectedValue: _unit ?? none,
-            );
-            if (!mounted) return;
-            if (id != null) {
-              setState(() => _unit = id == none ? null : id);
-            }
-          },
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(_unit == null ? '— (unspecified)' : '$_unit'),
-          ),
+            ),
+          ],
         ),
         if (_showKgPerBag) ...[
-          const SizedBox(height: 12),
-          TextField(
+          const SizedBox(height: HexaDsSpace.s2),
+          AppTextField(
             controller: widget.kgCtrl,
             focusNode: _kgFocus,
-            scrollPadding: sp,
+            label: _unit == 'bag' ? 'Kg per bag *' : 'Kg per bag (optional)',
+            helper: _unit == 'bag'
+                ? 'Required when stock unit is bag'
+                : 'Set unit to bag if this item is stocked in bags',
+            errorText: widget.kgError,
             keyboardType:
                 const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: _unit == 'bag'
-                  ? 'Kg per bag *'
-                  : 'Kg per bag (optional)',
-              hintText: 'e.g. 50',
-              errorText: widget.kgError,
-              helperText: _unit == 'bag'
-                  ? 'Required when stock unit is bag'
-                  : 'Set unit to bag if this item is stocked in bags',
-            ),
             onChanged: (_) => setState(() {}),
           ),
           if (_unit == 'bag') ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: HexaDsSpace.s1),
             BagDefaultUnitHint(
               kgAlreadySet: () {
                 final v = parseOptionalKgPerBag(widget.kgCtrl.text);
@@ -245,48 +243,44 @@ class CatalogItemDefaultsEditFormState
           ],
         ],
         if (_unit == 'tin') ...[
-          const SizedBox(height: 12),
-          TextField(
+          const SizedBox(height: HexaDsSpace.s2),
+          AppTextField(
             controller: widget.wptCtrl,
             focusNode: _wptFocus,
-            scrollPadding: sp,
+            label: 'Liters / weight per tin',
             keyboardType:
                 const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Liters / weight per tin',
-            ),
           ),
         ],
-        const SizedBox(height: 16),
+        const SizedBox(height: HexaDsSpace.s2),
         _sectionTitle(context, 'Default pricing'),
-        TextField(
-          controller: widget.landCtrl,
-          focusNode: _landFocus,
-          scrollPadding: sp,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'Default landing (₹)',
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: widget.sellCtrl,
-          focusNode: _sellFocus,
-          scrollPadding: sp,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'Default selling (₹)',
-          ),
+        AppFormRow(
+          children: [
+            AppTextField(
+              controller: widget.landCtrl,
+              focusNode: _landFocus,
+              label: 'Default landing (₹)',
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+            ),
+            AppTextField(
+              controller: widget.sellCtrl,
+              focusNode: _sellFocus,
+              label: 'Default selling (₹)',
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+            ),
+          ],
         ),
         if (widget.openingStockLabel != null) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: HexaDsSpace.s2),
           _sectionTitle(context, 'Opening stock (system baseline)'),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(HexaDsSpace.s2),
             decoration: BoxDecoration(
               color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(HexaDsRadii.md),
               border: Border.all(color: const Color(0xFFE2E8F0)),
             ),
             child: Column(
@@ -299,7 +293,7 @@ class CatalogItemDefaultsEditFormState
                     fontSize: 15,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: HexaDsSpace.xs),
                 Text(
                   widget.canSetOpeningStock
                       ? 'Opening + committed purchases = system total on item page.'
@@ -312,7 +306,7 @@ class CatalogItemDefaultsEditFormState
                 ),
                 if (widget.canSetOpeningStock &&
                     widget.onSetOpeningStock != null) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: HexaDsSpace.s1),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TextButton(

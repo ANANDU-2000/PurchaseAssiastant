@@ -28,7 +28,7 @@ Future<void> showStaffDeliveredDetailSheet({
 
   await showHexaBottomSheet<void>(
     context: context,
-    compact: false,
+    compact: true,
     child: _StaffDeliveredDetailBody(
       purchaseId: purchaseId,
       catalogItemId: catalogItemId,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../hexa_ds_tokens.dart';
+import '../hexa_responsive.dart';
 
 /// Vertical form stack with consistent **8px grid** spacing between children.
 class AppFormLayout extends StatelessWidget {
@@ -44,6 +45,50 @@ class AppFormLayout extends StatelessWidget {
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: padding,
       child: column,
+    );
+  }
+}
+
+/// Responsive short-field pair: side-by-side from [kTabletMin], stacked on phone.
+///
+/// Use for Item code/HSN, Tax %/Unit, Payment days/Discount %, etc.
+/// Keep Name, Narration, and search fields full-width outside this widget.
+class AppFormRow extends StatelessWidget {
+  const AppFormRow({
+    super.key,
+    required this.children,
+    this.gap = HexaDsSpace.s2,
+  });
+
+  final List<Widget> children;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (children.isEmpty) return const SizedBox.shrink();
+    if (children.length == 1) return children.first;
+
+    final wide = MediaQuery.sizeOf(context).width >= kTabletMin;
+    if (!wide) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < children.length; i++) ...[
+            if (i > 0) SizedBox(height: gap),
+            children[i],
+          ],
+        ],
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < children.length; i++) ...[
+          if (i > 0) SizedBox(width: gap),
+          Expanded(child: children[i]),
+        ],
+      ],
     );
   }
 }

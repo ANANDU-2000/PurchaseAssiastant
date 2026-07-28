@@ -27,10 +27,10 @@ Future<void> showStockBulkArchiveSheet({
     context: context,
     compact: false,
     padding: EdgeInsets.zero,
-    child: ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: HexaResponsive.adaptiveSheetMaxHeight(context) * 0.85,
-      ),
+    // Explicit height so Column + Expanded list has a bounded viewport on
+    // both mobile sheets and desktop dialogs (maxHeight-only collapses).
+    child: SizedBox(
+      height: HexaResponsive.adaptiveSheetMaxHeight(context) * 0.85,
       child: StatefulBuilder(
         builder: (ctx, setLocal) {
           return Column(

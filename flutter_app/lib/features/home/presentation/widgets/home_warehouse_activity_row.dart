@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/design_system/hexa_responsive.dart';
 import '../../../../core/providers/home_owner_dashboard_providers.dart';
 import '../../../../core/utils/home_activity_units.dart';
 import '../../../../core/theme/hexa_colors.dart';
@@ -24,16 +25,16 @@ Future<void> showWarehouseActivityDetailSheet(
   BuildContext context,
   HomeActivityItem item,
 ) {
-  return showModalBottomSheet<void>(
+  final entered = item.createdBy ?? item.actor;
+  final verified = item.verifiedBy;
+  final supplier = item.supplierName?.trim();
+  return showHexaBottomSheet<void>(
     context: context,
-    showDragHandle: true,
-    builder: (ctx) {
-      final entered = item.createdBy ?? item.actor;
-      final verified = item.verifiedBy;
-      final supplier = item.supplierName?.trim();
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-        child: Column(
+    compact: true,
+    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+    child: Builder(
+      builder: (ctx) {
+        return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -92,9 +93,9 @@ Future<void> showWarehouseActivityDetailSheet(
               child: const Text('Open full record'),
             ),
           ],
-        ),
-      );
-    },
+        );
+      },
+    ),
   );
 }
 

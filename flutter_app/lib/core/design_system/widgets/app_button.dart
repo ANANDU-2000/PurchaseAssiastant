@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import '../hexa_ds_tokens.dart';
 import '../hexa_glass_theme.dart';
 
+// Do not use FilledButton / OutlinedButton / ElevatedButton / TextButton
+// directly in features/ — use AppPrimaryButton / AppSecondaryButton instead.
+
 /// Primary CTA — indigo / blue / violet gradient, soft shadow, hover / press micro-motion.
 class AppPrimaryButton extends StatefulWidget {
   const AppPrimaryButton({
@@ -10,11 +13,13 @@ class AppPrimaryButton extends StatefulWidget {
     required this.label,
     required this.onPressed,
     this.loading = false,
+    this.enabled = true,
   });
 
   final String label;
   final VoidCallback onPressed;
   final bool loading;
+  final bool enabled;
 
   @override
   State<AppPrimaryButton> createState() => _AppPrimaryButtonState();
@@ -26,7 +31,7 @@ class _AppPrimaryButtonState extends State<AppPrimaryButton> {
 
   @override
   Widget build(BuildContext context) {
-    final disabled = widget.loading;
+    final disabled = widget.loading || !widget.enabled;
     final elevated = _hover && !disabled;
     // Subtle hover lift — kept minimal for a premium SaaS feel.
     final scale = _pressed ? 0.992 : (elevated ? 1.006 : 1.0);

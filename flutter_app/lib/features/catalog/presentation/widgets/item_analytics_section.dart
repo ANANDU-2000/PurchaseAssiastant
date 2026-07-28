@@ -17,10 +17,12 @@ class ItemAnalyticsSection extends ConsumerStatefulWidget {
     super.key,
     required this.itemId,
     this.loadIntelligence = false,
+    this.suppressInlineError = false,
   });
 
   final String itemId;
   final bool loadIntelligence;
+  final bool suppressInlineError;
 
   @override
   ConsumerState<ItemAnalyticsSection> createState() =>
@@ -65,6 +67,7 @@ class _ItemAnalyticsSectionState extends ConsumerState<ItemAnalyticsSection> {
         );
       }
       _scheduleAutoRetryOnce();
+      if (widget.suppressInlineError) return const SizedBox.shrink();
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(HexaOp.cardPadding),
@@ -89,6 +92,7 @@ class _ItemAnalyticsSectionState extends ConsumerState<ItemAnalyticsSection> {
         );
       }
       _scheduleAutoRetryOnce();
+      if (widget.suppressInlineError) return const SizedBox.shrink();
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(HexaOp.cardPadding),

@@ -811,14 +811,21 @@ class _StockPageState extends ConsumerState<StockPage>
         const VerticalDivider(width: 1, thickness: 1),
         Expanded(
           flex: 4,
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: HexaResponsive.maxFormWidth,
-              ),
-              child: StockDesktopDetailPane(item: selected),
-            ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final w = constraints.maxWidth < HexaResponsive.maxFormWidth
+                  ? constraints.maxWidth
+                  : HexaResponsive.maxFormWidth;
+              // Bind height — Align + maxWidth-only blanks ListView on web.
+              return Align(
+                alignment: Alignment.topCenter,
+                child: SizedBox(
+                  width: w,
+                  height: constraints.maxHeight,
+                  child: StockDesktopDetailPane(item: selected),
+                ),
+              );
+            },
           ),
         ),
       ],

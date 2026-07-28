@@ -4,9 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/design_system/hexa_responsive.dart';
+import '../../../core/design_system/widgets/app_button.dart';
 import '../../../core/providers/business_write_event.dart';
 import '../../../core/providers/deferred_invalidation.dart';
 import '../../../core/providers/item_detail_providers.dart';
+import '../../../core/providers/stock_list_exceptions.dart';
+import '../../../core/providers/stock_providers.dart' show stockItemDetailProvider;
 import '../../../core/providers/trade_purchases_provider.dart'
     show tradePurchasesForItemProvider;
 import '../../../core/theme/hexa_colors.dart';
@@ -248,7 +251,8 @@ class _ItemStickyActions extends ConsumerWidget {
         child: Row(
           children: [
             Expanded(
-              child: FilledButton.icon(
+              child: AppPrimaryButton(
+                label: 'Physical',
                 onPressed: () async {
                   final row = ref.read(itemDetailStockProvider(itemId));
                   if (!context.mounted) return;
@@ -261,13 +265,13 @@ class _ItemStickyActions extends ConsumerWidget {
                     initialMode: StockUpdateMode.physical,
                   );
                 },
-                icon: const Icon(Icons.fact_check_outlined),
-                label: const Text('Physical count'),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: OutlinedButton.icon(
+              child: AppSecondaryButton(
+                dense: true,
+                label: 'System',
                 onPressed: () async {
                   final row = ref.read(itemDetailStockProvider(itemId));
                   if (!context.mounted) return;
@@ -280,14 +284,14 @@ class _ItemStickyActions extends ConsumerWidget {
                     initialMode: StockUpdateMode.system,
                   );
                 },
-                icon: const Icon(Icons.memory_outlined),
-                label: const Text('System stock'),
               ),
             ),
             if (!isStaff) ...[
               const SizedBox(width: 8),
               Expanded(
-                child: OutlinedButton.icon(
+                child: AppSecondaryButton(
+                  dense: true,
+                  label: 'Add qty',
                   onPressed: () async {
                     final item = ref.read(itemDetailStockProvider(itemId));
                     if (!context.mounted) return;
@@ -298,8 +302,6 @@ class _ItemStickyActions extends ConsumerWidget {
                       item: item,
                     );
                   },
-                  icon: const Icon(Icons.add_shopping_cart_rounded),
-                  label: const Text('Add qty'),
                 ),
               ),
             ],
@@ -349,7 +351,8 @@ class _DesktopItemLayout extends ConsumerWidget {
               onMore: onMore,
             ),
             const SizedBox(height: 8),
-            ItemStockSnapshotCard(itemId: itemId),
+            _ItemDetailGroupedLoadBanner(itemId: itemId),
+            ItemStockSnapshotCard(itemId: itemId, suppressInlineError: true),
             const SizedBox(height: 8),
             ItemPhysicalVerificationCard(itemId: itemId),
           ],
@@ -370,7 +373,12 @@ class _DesktopItemLayout extends ConsumerWidget {
             onMore: onMore,
           ),
           const SizedBox(height: 8),
-          ItemStockSnapshotCard(itemId: itemId),
+          _ItemDetailGroupedLoadBanner(
+            itemId: itemId,
+            includePurchases: true,
+            includeIntelligence: true,
+          ),
+          ItemStockSnapshotCard(itemId: itemId, suppressInlineError: true),
           const SizedBox(height: 8),
           ItemQuickActionsBar(
             itemId: itemId,
@@ -380,7 +388,11 @@ class _DesktopItemLayout extends ConsumerWidget {
           const SizedBox(height: 8),
           ItemPhysicalVerificationCard(itemId: itemId),
           const SizedBox(height: 8),
-          ItemSupplierIntelligenceSection(itemId: itemId, itemName: name),
+          ItemSupplierIntelligenceSection(
+            itemId: itemId,
+            itemName: name,
+            suppressInlineError: true,
+          ),
           const SizedBox(height: 8),
           const TabBar(
             isScrollable: true,
@@ -416,10 +428,10 @@ class _DesktopItemLayout extends ConsumerWidget {
                           child: ItemAnalyticsSection(
                             itemId: itemId,
                             loadIntelligence: true,
+                            suppressInlineError: true,
                           ),
                         ),
                       ),
-                      if (name.isNotEmpty) const SizedBox.shrink(),
                     ],
                   ),
                 ),
@@ -558,6 +570,7 @@ class _ItemDetailMobileScrollState extends ConsumerState<_ItemDetailMobileScroll
               ItemAnalyticsSection(
                 itemId: widget.itemId,
                 loadIntelligence: false,
+                suppressInlineError: true,
               ),
             ),
           ],
@@ -586,6 +599,7 @@ class _ItemDetailMobileScrollState extends ConsumerState<_ItemDetailMobileScroll
           ItemSupplierIntelligenceSection(
             itemId: widget.itemId,
             itemName: widget.name,
+            suppressInlineError: true,
           ),
         ),
       ],
@@ -664,7 +678,15 @@ class _ItemDetailMobileScrollState extends ConsumerState<_ItemDetailMobileScroll
                         onMore: widget.onMore,
                       ),
                       const SizedBox(height: 8),
-                      ItemStockSnapshotCard(itemId: widget.itemId),
+                      _ItemDetailGroupedLoadBanner(
+                        itemId: widget.itemId,
+                        includePurchases: !isStaff,
+                        includeIntelligence: false,
+                      ),
+                      ItemStockSnapshotCard(
+                        itemId: widget.itemId,
+                        suppressInlineError: true,
+                      ),
                       const SizedBox(height: 8),
                       ItemQuickActionsBar(
                         itemId: widget.itemId,
@@ -715,6 +737,61 @@ class _ItemDetailMobileScrollState extends ConsumerState<_ItemDetailMobileScroll
             ),
           ),
         ],
+    );
+  }
+}
+
+/// Collapses multi-section item-detail fetch failures into one Retry-all banner.
+class _ItemDetailGroupedLoadBanner extends ConsumerWidget {
+  const _ItemDetailGroupedLoadBanner({
+    required this.itemId,
+    this.includePurchases = false,
+    this.includeIntelligence = false,
+  });
+
+  final String itemId;
+  final bool includePurchases;
+  final bool includeIntelligence;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final stockFetch = ref.watch(stockItemDetailProvider(itemId));
+    final purchasesFetch = includePurchases
+        ? ref.watch(tradePurchasesForItemProvider(itemId))
+        : null;
+    final intelFetch = includeIntelligence
+        ? ref.watch(itemStockIntelligenceProvider(itemId))
+        : null;
+
+    final failed = <String>[];
+    void consider(AsyncValue<dynamic>? async, String label) {
+      if (async == null) return;
+      if (!async.hasError || async.hasValue) return;
+      if (isTransientStockFetchError(async.error)) return;
+      failed.add(label);
+    }
+
+    consider(stockFetch, 'Stock summary');
+    consider(purchasesFetch, 'Supplier / purchases');
+    consider(intelFetch, 'Analytics');
+
+    if (failed.length < 2) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+      child: GroupedSectionErrorCard(
+        message: 'Some item details couldn\'t load',
+        failedSections: failed,
+        onRetryAll: () {
+          ref.invalidate(stockItemDetailProvider(itemId));
+          if (includePurchases) {
+            ref.invalidate(tradePurchasesForItemProvider(itemId));
+          }
+          if (includeIntelligence) {
+            ref.invalidate(itemStockIntelligenceProvider(itemId));
+          }
+        },
+      ),
     );
   }
 }

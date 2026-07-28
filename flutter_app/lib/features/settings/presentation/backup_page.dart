@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/design_system/widgets/app_button.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/services/backup_auto_service.dart';
 import '../../../core/services/backup_deliver.dart';
@@ -352,48 +353,37 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           Text('Export & Backup',
               style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: _anyBusy ? null : _downloadStockExcel,
-            icon: _busyStock
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.table_chart_outlined),
-            label: Text(_busyStock ? 'Preparing…' : 'Download Stock Excel'),
+          AppPrimaryButton(
+            label: _busyStock ? 'Preparing…' : 'Download Stock Excel',
+            loading: _busyStock,
+            enabled: !_anyBusy || _busyStock,
+            onPressed: _downloadStockExcel,
           ),
           Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
+            padding: const EdgeInsets.only(top: 4, left: 4),
             child: Text(
               'Last: ${_fmt(_lastStockAt)}',
               style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
             ),
           ),
-          const SizedBox(height: 12),
-          FilledButton.tonalIcon(
-            onPressed: _anyBusy ? null : _downloadPurchasesPdf,
-            icon: _busyPdf
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.picture_as_pdf_outlined),
-            label: Text(
-              _busyPdf
-                  ? 'Preparing…'
-                  : 'Download Purchases PDF (this month)',
-            ),
+          const SizedBox(height: 8),
+          AppSecondaryButton(
+            label: _busyPdf
+                ? 'Preparing…'
+                : 'Download Purchases PDF (this month)',
+            loading: _busyPdf,
+            enabled: !_anyBusy || _busyPdf,
+            icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+            onPressed: _downloadPurchasesPdf,
           ),
           Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
+            padding: const EdgeInsets.only(top: 4, left: 4),
             child: Text(
               '$monthLabel · Last: ${_fmt(_lastPdfAt)}',
               style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 20),
           Text('JSON backup',
               style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
@@ -401,26 +391,22 @@ class _BackupPageState extends ConsumerState<BackupPage> {
             'Catalog, suppliers, 90-day purchases, and stock audit history as JSON.',
             style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
           ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: _anyBusy ? null : _downloadJson,
-            icon: _busyJson
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.data_object_outlined),
-            label: Text(_busyJson ? 'Preparing…' : 'Download JSON backup'),
+          const SizedBox(height: 8),
+          AppSecondaryButton(
+            label: _busyJson ? 'Preparing…' : 'Download JSON backup',
+            loading: _busyJson,
+            enabled: !_anyBusy || _busyJson,
+            icon: const Icon(Icons.data_object_outlined, size: 18),
+            onPressed: _downloadJson,
           ),
           Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
+            padding: const EdgeInsets.only(top: 4, left: 4),
             child: Text(
               'Last JSON: ${_fmt(_lastJsonAt)}',
               style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 20),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(kIsWeb ? 'Daily auto-backup (web)' : 'Daily auto-backup (desktop)'),
@@ -479,20 +465,16 @@ class _BackupPageState extends ConsumerState<BackupPage> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: _anyBusy ? null : _downloadZip,
-            icon: _busyZip
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.folder_zip_outlined),
-            label: Text(_busyZip ? 'Preparing…' : 'Download ZIP backup'),
+          const SizedBox(height: 8),
+          AppSecondaryButton(
+            label: _busyZip ? 'Preparing…' : 'Download ZIP backup',
+            loading: _busyZip,
+            enabled: !_anyBusy || _busyZip,
+            icon: const Icon(Icons.folder_zip_outlined, size: 18),
+            onPressed: _downloadZip,
           ),
           Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
+            padding: const EdgeInsets.only(top: 4, left: 4),
             child: Text(
               'Last ZIP: ${_fmt(_lastZipAt)}',
               style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),

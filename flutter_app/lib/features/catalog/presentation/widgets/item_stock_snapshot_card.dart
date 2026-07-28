@@ -20,9 +20,11 @@ class ItemStockSnapshotCard extends ConsumerWidget {
   const ItemStockSnapshotCard({
     super.key,
     required this.itemId,
+    this.suppressInlineError = false,
   });
 
   final String itemId;
+  final bool suppressInlineError;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -41,6 +43,7 @@ class ItemStockSnapshotCard extends ConsumerWidget {
           child: Center(child: LinearProgressIndicator()),
         );
       }
+      if (suppressInlineError) return const SizedBox.shrink();
       return _sectionRetryCard(
         context,
         ref,

@@ -21,7 +21,7 @@ Future<bool?> showPurchaseDamageReportSheet({
 }) {
   return showHexaBottomSheet<bool>(
     context: context,
-    compact: false,
+    compact: true,
     child: _PurchaseDamageReportSheet(
       purchaseId: purchaseId,
       initialItemName: initialItemName,

@@ -15,10 +15,12 @@ class ItemSupplierIntelligenceSection extends ConsumerWidget {
     super.key,
     required this.itemId,
     required this.itemName,
+    this.suppressInlineError = false,
   });
 
   final String itemId;
   final String itemName;
+  final bool suppressInlineError;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -41,10 +43,14 @@ class ItemSupplierIntelligenceSection extends ConsumerWidget {
                 padding: EdgeInsets.symmetric(vertical: 14),
                 child: Center(child: CircularProgressIndicator()),
               ),
-              error: (_, __) => FriendlyLoadError(
-                message: 'Could not load supplier intelligence',
-                onRetry: () => ref.invalidate(tradePurchasesForItemProvider(itemId)),
-              ),
+              error: (_, __) {
+                if (suppressInlineError) return const SizedBox.shrink();
+                return FriendlyLoadError(
+                  message: 'Could not load supplier intelligence',
+                  onRetry: () =>
+                      ref.invalidate(tradePurchasesForItemProvider(itemId)),
+                );
+              },
               data: (_) {
                 final rows = itemTradeHistoryRows(
                   purchases ?? const [],

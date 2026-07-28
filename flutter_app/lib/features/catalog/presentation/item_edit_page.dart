@@ -13,6 +13,8 @@ import '../../../core/providers/deferred_invalidation.dart';
 import '../../../core/providers/item_detail_providers.dart';
 import '../../../core/providers/stock_providers.dart' show stockItemDetailProvider;
 import '../../../core/design_system/hexa_responsive.dart';
+import '../../../core/design_system/widgets/app_button.dart';
+import '../../../core/design_system/widgets/app_text_field.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../../core/widgets/friendly_load_error.dart';
@@ -244,7 +246,7 @@ class _ItemEditPageState extends ConsumerState<ItemEditPage> {
         ],
       ),
       body: DesktopPageShell(
-        maxContentWidth: 900,
+        maxContentWidth: HexaResponsive.maxFormWidth,
         child: showFormSpinner
             ? const Center(child: CircularProgressIndicator())
             : itemAsync.when(
@@ -394,20 +396,19 @@ class _EditOpeningStockSheetState extends ConsumerState<_EditOpeningStockSheet> 
                 ),
           ),
           const SizedBox(height: 12),
-          TextField(
+          AppTextField(
             controller: _ctrl,
+            label: 'Opening quantity',
             autofocus: true,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Opening quantity',
-              border: OutlineInputBorder(),
-            ),
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
             onSubmitted: (_) => _save(),
           ),
           const SizedBox(height: 12),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            child: const Text('SET OPENING STOCK'),
+          AppPrimaryButton(
+            label: 'SET OPENING STOCK',
+            loading: _saving,
+            onPressed: _save,
           ),
         ],
       ),

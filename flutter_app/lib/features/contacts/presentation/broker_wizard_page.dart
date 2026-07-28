@@ -7,6 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/design_system/widgets/app_button.dart';
+import '../../../core/design_system/widgets/app_form_layout.dart';
+import '../../../core/design_system/widgets/app_text_field.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/providers/contacts_hub_provider.dart';
@@ -485,7 +488,6 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
       );
 
   Widget _step0(BuildContext context) {
-    final sp = formFieldScrollPaddingForContext(context, reserveBelowField: 200);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -495,38 +497,41 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
             child:
                 Text(_dupHint!, style: const TextStyle(color: Colors.orange)),
           ),
-        TextField(
+        AppTextField(
           controller: _name,
           focusNode: _brkNameFocus,
-          scrollPadding: sp,
-          decoration: _d('Broker Name *').copyWith(errorText: _nameError),
+          label: 'Broker Name *',
+          errorText: _nameError,
           onChanged: (_) => _markDirty(),
           textInputAction: TextInputAction.next,
         ),
         const SizedBox(height: 8),
-        TextField(
-          controller: _phone,
-          focusNode: _brkPhoneFocus,
-          scrollPadding: sp,
-          decoration: _d('Phone (optional)').copyWith(errorText: _phoneError),
-          keyboardType: const TextInputType.numberWithOptions(signed: false, decimal: false),
-          onChanged: (_) => _markDirty(),
-          textInputAction: TextInputAction.next,
+        AppFormRow(
+          children: [
+            AppTextField(
+              controller: _phone,
+              focusNode: _brkPhoneFocus,
+              label: 'Phone (optional)',
+              errorText: _phoneError,
+              keyboardType: const TextInputType.numberWithOptions(
+                signed: false,
+                decimal: false,
+              ),
+              onChanged: (_) => _markDirty(),
+              textInputAction: TextInputAction.next,
+            ),
+            AppTextField(
+              controller: _location,
+              label: 'Location',
+              onChanged: (_) => _markDirty(),
+              textInputAction: TextInputAction.next,
+            ),
+          ],
         ),
         const SizedBox(height: 8),
-        TextField(
-          controller: _location,
-          scrollPadding: sp,
-          decoration: _d('Location'),
-          onChanged: (_) => _markDirty(),
-          textInputAction: TextInputAction.next,
-        ),
-        const SizedBox(height: 8),
-        TextField(
+        AppTextField(
           controller: _notes,
-          scrollPadding: sp,
-          decoration: _d('Notes'),
-          minLines: 2,
+          label: 'Notes',
           maxLines: 3,
           onChanged: (_) => _markDirty(),
         ),
@@ -535,7 +540,6 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
   }
 
   Widget _step1(BuildContext context) {
-    final sp = formFieldScrollPaddingForContext(context, reserveBelowField: 200);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -553,15 +557,14 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
           },
         ),
         const SizedBox(height: 10),
-        TextField(
+        AppTextField(
           controller: _commission,
           focusNode: _brkCommissionFocus,
-          scrollPadding: sp,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: _d(_commissionType == 'percent'
-                  ? 'Commission Value (%)'
-                  : 'Commission Value (₹)')
-              .copyWith(errorText: _commissionError),
+          label: _commissionType == 'percent'
+              ? 'Commission Value (%)'
+              : 'Commission Value (₹)',
+          errorText: _commissionError,
           onChanged: (_) => _markDirty(),
         ),
         const SizedBox(height: 18),
@@ -572,37 +575,42 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
               ),
         ),
         const SizedBox(height: 8),
-        TextField(
-          controller: _paymentDays,
-          focusNode: _brkPaymentDaysFocus,
-          scrollPadding: sp,
-          keyboardType: TextInputType.number,
-          decoration: _d('Payment days (optional)'),
-          onChanged: (_) => _markDirty(),
+        AppFormRow(
+          children: [
+            AppTextField(
+              controller: _paymentDays,
+              focusNode: _brkPaymentDaysFocus,
+              keyboardType: TextInputType.number,
+              label: 'Payment days (optional)',
+              onChanged: (_) => _markDirty(),
+            ),
+            AppTextField(
+              controller: _discount,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              label: 'Header discount % (optional)',
+              onChanged: (_) => _markDirty(),
+            ),
+          ],
         ),
         const SizedBox(height: 8),
-        TextField(
-          controller: _discount,
-          scrollPadding: sp,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: _d('Header discount % (optional)'),
-          onChanged: (_) => _markDirty(),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _delivered,
-          scrollPadding: sp,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: _d('Default delivered rate ₹ (optional)'),
-          onChanged: (_) => _markDirty(),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _billty,
-          scrollPadding: sp,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: _d('Default billty rate ₹ (optional)'),
-          onChanged: (_) => _markDirty(),
+        AppFormRow(
+          children: [
+            AppTextField(
+              controller: _delivered,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              label: 'Default delivered rate ₹ (optional)',
+              onChanged: (_) => _markDirty(),
+            ),
+            AppTextField(
+              controller: _billty,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              label: 'Default billty rate ₹ (optional)',
+              onChanged: (_) => _markDirty(),
+            ),
+          ],
         ),
         const SizedBox(height: 10),
         Text('Freight handling', style: Theme.of(context).textTheme.labelLarge),
@@ -643,14 +651,18 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
               ),
             ),
             const SizedBox(width: 8),
-            OutlinedButton(
-              onPressed: () => Navigator.of(context, rootNavigator: true).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const SupplierCreateWizardPage(),
-                  fullscreenDialog: true,
+            SizedBox(
+              width: 148,
+              child: AppSecondaryButton(
+                dense: true,
+                label: 'Create Supplier',
+                onPressed: () => Navigator.of(context, rootNavigator: true).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const SupplierCreateWizardPage(),
+                    fullscreenDialog: true,
+                  ),
                 ),
               ),
-              child: const Text('Create Supplier'),
             ),
           ],
         ),
@@ -837,22 +849,21 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
             child: const Text('Cancel'),
           ),
           const Spacer(),
-          if (finalStep)
-            FilledButton(
-              onPressed: _save,
-              child: const Text('Save Broker'),
-            )
-          else
-            FilledButton(
-              onPressed: () {
-                if (!_validateStep0()) return;
-                setState(() {
-                  _step = 1;
-                  _dirty = true;
-                });
-              },
-              child: const Text('Next'),
+          SizedBox(
+            width: 160,
+            child: AppPrimaryButton(
+              label: finalStep ? 'Save Broker' : 'Next',
+              onPressed: finalStep
+                  ? _save
+                  : () {
+                      if (!_validateStep0()) return;
+                      setState(() {
+                        _step = 1;
+                        _dirty = true;
+                      });
+                    },
             ),
+          ),
         ],
       ),
     );

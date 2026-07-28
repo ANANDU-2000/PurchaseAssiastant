@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/design_system/widgets/app_button.dart';
+import '../../../core/design_system/widgets/app_form_layout.dart';
+import '../../../core/design_system/widgets/app_text_field.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/theme/theme_context_ext.dart';
+import '../../../shared/widgets/desktop_page_shell.dart';
 
 class BusinessProfilePage extends ConsumerStatefulWidget {
   const BusinessProfilePage({super.key});
@@ -23,6 +28,9 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
   late final TextEditingController _phoneCtrl;
   late final TextEditingController _emailCtrl;
   bool _saving = false;
+  String? _nameError;
+  String? _gstError;
+  String? _phoneError;
 
   @override
   void initState() {
@@ -83,21 +91,16 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
     if (session == null || session.primaryBusiness.role != 'owner') return;
 
     final name = _nameCtrl.text.trim();
-    if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Registered business name cannot be empty')),
-      );
-      return;
-    }
-
     final gstErr = _validateGst(_gstCtrl.text);
     final phErr = _validatePhone(_phoneCtrl.text);
-    if (gstErr != null || phErr != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(gstErr ?? phErr ?? 'Invalid')),
-      );
-      return;
-    }
+    final nameErr = name.isEmpty ? 'Registered business name cannot be empty' : null;
+
+    setState(() {
+      _nameError = nameErr;
+      _gstError = gstErr;
+      _phoneError = phErr;
+    });
+    if (nameErr != null || gstErr != null || phErr != null) return;
 
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
@@ -136,6 +139,7 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
     final tt = Theme.of(context).textTheme;
     final session = ref.watch(sessionProvider);
     final isOwner = session?.primaryBusiness.role == 'owner';
+    final fieldsEnabled = !readOnly && isOwner;
 
     return Scaffold(
       backgroundColor: context.adaptiveScaffold,
@@ -151,115 +155,110 @@ class _BusinessProfilePageState extends ConsumerState<BusinessProfilePage> {
           onPressed: () => context.popOrGo('/settings'),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-        children: [
-          Text(
-            'Shown on purchase order PDFs (GSTIN, address, phone, contact email).',
-            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            color: context.adaptiveCard,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  TextField(
-                    controller: _nameCtrl,
-                    readOnly: readOnly,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      labelText: 'Registered business name',
-                      border: OutlineInputBorder(),
+      body: DesktopPageShell(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          children: [
+            Text(
+              'Shown on purchase order PDFs (GSTIN, address, phone, contact email).',
+              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              color: context.adaptiveCard,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AppTextField(
+                      controller: _nameCtrl,
+                      label: 'Registered business name',
+                      enabled: fieldsEnabled,
+                      errorText: _nameError,
+                      textCapitalization: TextCapitalization.words,
+                      onChanged: (_) {
+                        if (_nameError != null) setState(() => _nameError = null);
+                      },
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _titleCtrl,
-                    readOnly: readOnly,
-                    textCapitalization: TextCapitalization.characters,
-                    decoration: const InputDecoration(
-                      labelText: 'Order PDF header title',
-                      hintText: 'e.g. HARISREE AGENCY',
-                      border: OutlineInputBorder(),
+                    const SizedBox(height: 12),
+                    AppTextField(
+                      controller: _titleCtrl,
+                      label: 'Order PDF header title',
+                      helper: 'e.g. HARISREE AGENCY',
+                      enabled: fieldsEnabled,
+                      textCapitalization: TextCapitalization.characters,
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _gstCtrl,
-                    readOnly: readOnly,
-                    textCapitalization: TextCapitalization.characters,
-                    maxLength: 15,
-                    decoration: const InputDecoration(
-                      labelText: 'GSTIN (optional)',
-                      border: OutlineInputBorder(),
-                      counterText: '',
+                    const SizedBox(height: 12),
+                    AppFormRow(
+                      children: [
+                        AppTextField(
+                          controller: _gstCtrl,
+                          label: 'GSTIN (optional)',
+                          enabled: fieldsEnabled,
+                          errorText: _gstError,
+                          textCapitalization: TextCapitalization.characters,
+                          inputFormatters: [
+                            LengthLimitingTextInputFormatter(15),
+                          ],
+                          onChanged: (_) {
+                            if (_gstError != null) setState(() => _gstError = null);
+                          },
+                        ),
+                        AppTextField(
+                          controller: _phoneCtrl,
+                          label: 'Phone (optional)',
+                          enabled: fieldsEnabled,
+                          errorText: _phoneError,
+                          keyboardType: TextInputType.phone,
+                          onChanged: (_) {
+                            if (_phoneError != null) {
+                              setState(() => _phoneError = null);
+                            }
+                          },
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _phoneCtrl,
-                    readOnly: readOnly,
-                    keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(
-                      labelText: 'Phone (optional)',
-                      border: OutlineInputBorder(),
+                    const SizedBox(height: 12),
+                    AppTextField(
+                      controller: _emailCtrl,
+                      label: 'Contact email (optional)',
+                      helper: 'For purchase order PDF header',
+                      enabled: fieldsEnabled,
+                      keyboardType: TextInputType.emailAddress,
+                      autocorrect: false,
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _emailCtrl,
-                    readOnly: readOnly,
-                    keyboardType: TextInputType.emailAddress,
-                    autocorrect: false,
-                    decoration: const InputDecoration(
-                      labelText: 'Contact email (optional)',
-                      hintText: 'For purchase order PDF header',
-                      border: OutlineInputBorder(),
+                    const SizedBox(height: 12),
+                    AppTextField(
+                      controller: _addressCtrl,
+                      label: 'Address (optional)',
+                      enabled: fieldsEnabled,
+                      maxLines: 4,
+                      textCapitalization: TextCapitalization.sentences,
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _addressCtrl,
-                    readOnly: readOnly,
-                    minLines: 3,
-                    maxLines: 6,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(
-                      labelText: 'Address (optional)',
-                      alignLabelWithHint: true,
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  if (readOnly)
-                    Text(
-                      'View only — contact an owner to change business details.',
-                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                    )
-                  else if (!isOwner)
-                    Text(
-                      'Only workspace owners can edit this profile.',
-                      style: tt.bodySmall?.copyWith(color: HexaColors.loss),
-                    )
-                  else
-                    FilledButton(
-                      onPressed: _saving ? null : _save,
-                      child: _saving
-                          ? const SizedBox(
-                              height: 22,
-                              width: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Save'),
-                    ),
-                ],
+                    const SizedBox(height: 20),
+                    if (readOnly)
+                      Text(
+                        'View only — contact an owner to change business details.',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                      )
+                    else if (!isOwner)
+                      Text(
+                        'Only workspace owners can edit this profile.',
+                        style: tt.bodySmall?.copyWith(color: HexaColors.loss),
+                      )
+                    else
+                      AppPrimaryButton(
+                        label: 'Save',
+                        loading: _saving,
+                        onPressed: _save,
+                      ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

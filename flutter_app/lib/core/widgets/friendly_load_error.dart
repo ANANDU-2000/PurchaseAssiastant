@@ -124,3 +124,97 @@ class FriendlyLoadError extends StatelessWidget {
     );
   }
 }
+
+/// One calm banner when 2+ independent section providers fail on the same screen.
+/// Prefer this over stacking N [FriendlyLoadError] cards.
+class GroupedSectionErrorCard extends StatelessWidget {
+  const GroupedSectionErrorCard({
+    super.key,
+    required this.onRetryAll,
+    this.message = 'Some data couldn\'t load',
+    this.subtitle = 'Tap Retry all to refresh every section.',
+    this.failedSections = const <String>[],
+  });
+
+  final VoidCallback onRetryAll;
+  final String message;
+  final String? subtitle;
+  final List<String> failedSections;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final detail = failedSections.isEmpty
+        ? null
+        : failedSections.take(4).join(' · ');
+
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.cloud_off_rounded, color: cs.onSurfaceVariant, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        message,
+                        style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle!,
+                          style: tt.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                      if (detail != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          detail,
+                          style: tt.labelSmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onRetryAll,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Retry all'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

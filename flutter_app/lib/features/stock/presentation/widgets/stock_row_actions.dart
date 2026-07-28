@@ -154,22 +154,26 @@ class _StockActionTile extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-          child: Row(
-            children: [
-              Icon(icon, size: 22, color: const Color(0xFF0F766E)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Row(
+              children: [
+                Icon(icon, size: 20, color: const Color(0xFF0F766E)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      height: 1.2,
+                    ),
                   ),
                 ),
-              ),
-              const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
-            ],
+                const Icon(Icons.chevron_right, color: Color(0xFF94A3B8), size: 18),
+              ],
+            ),
           ),
         ),
       ),

@@ -29,10 +29,8 @@ Future<bool> showStaffVerificationSheet({
     context: context,
     compact: false,
     padding: EdgeInsets.zero,
-    child: ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: HexaResponsive.adaptiveSheetMaxHeight(context),
-      ),
+    child: SizedBox(
+      height: HexaResponsive.adaptiveSheetMaxHeight(context),
       child: _StaffVerificationSheet(
         purchaseId: purchaseId,
         lines: lines,

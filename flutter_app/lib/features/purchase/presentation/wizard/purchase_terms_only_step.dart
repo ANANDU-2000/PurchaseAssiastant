@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/design_system/widgets/app_form_layout.dart';
 import '../../../../core/widgets/form_field_scroll.dart';
 import '../../../../shared/widgets/keyboard_safe_form_viewport.dart';
 import '../../domain/purchase_draft.dart';
 import '../../state/purchase_draft_provider.dart';
 import 'purchase_wizard_shared.dart';
 
-/// Step 2 — deal terms once (vertical, no side‑by‑side rows on narrow screens).
+/// Step 2 — deal terms once (Payment days + Discount % paired on tablet+).
 class PurchaseTermsOnlyStep extends ConsumerWidget {
   const PurchaseTermsOnlyStep({
     super.key,
@@ -191,34 +192,59 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
               ),
         ),
         const SizedBox(height: 6),
-        orderedField(
-          order: 10,
-          c: paymentDaysCtrl,
-          label: 'Payment days',
-          focusNode: paymentDaysFocus,
-          keyboard: TextInputType.number,
-          onChanged: (s) {
-            ref.read(purchaseDraftProvider.notifier).setPaymentDaysText(s);
-            onDraftChanged();
-          },
-        ),
-        ListenableBuilder(
-          listenable: paymentDaysCtrl,
-          builder: (_, __) {
-            final t = paymentDaysCtrl.text.trim();
-            if (t.isEmpty) return const SizedBox.shrink();
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text(
-                _duePreview(ref, paymentDaysCtrl),
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF0D9488),
-                  fontWeight: FontWeight.w600,
+        AppFormRow(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                orderedField(
+                  order: 10,
+                  c: paymentDaysCtrl,
+                  label: 'Payment days',
+                  focusNode: paymentDaysFocus,
+                  keyboard: TextInputType.number,
+                  onChanged: (s) {
+                    ref
+                        .read(purchaseDraftProvider.notifier)
+                        .setPaymentDaysText(s);
+                    onDraftChanged();
+                  },
                 ),
-              ),
-            );
-          },
+                ListenableBuilder(
+                  listenable: paymentDaysCtrl,
+                  builder: (_, __) {
+                    final t = paymentDaysCtrl.text.trim();
+                    if (t.isEmpty) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        _duePreview(ref, paymentDaysCtrl),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF0D9488),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            orderedField(
+              order: hasBroker ? 40 : 20,
+              c: headerDiscCtrl,
+              label: 'Discount %',
+              focusNode: headerDiscFocus,
+              keyboard:
+                  const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (s) {
+                ref
+                    .read(purchaseDraftProvider.notifier)
+                    .setHeaderDiscountFromText(s);
+                onDraftChanged();
+              },
+            ),
+          ],
         ),
         if (hasBroker) ...[
           Text(
@@ -392,17 +418,6 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
           ],
           const SizedBox(height: 8),
         ],
-        orderedField(
-          order: hasBroker ? 40 : 20,
-          c: headerDiscCtrl,
-          label: 'Discount %',
-          focusNode: headerDiscFocus,
-          keyboard: const TextInputType.numberWithOptions(decimal: true),
-          onChanged: (s) {
-            ref.read(purchaseDraftProvider.notifier).setHeaderDiscountFromText(s);
-            onDraftChanged();
-          },
-        ),
         orderedField(
           order: hasBroker ? 50 : 30,
           c: narrationCtrl,

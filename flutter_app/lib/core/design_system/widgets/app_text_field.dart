@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../theme/hexa_colors.dart';
 import '../../theme/hexa_outline_input_border.dart';
 import '../hexa_ds_tokens.dart';
 import '../hexa_glass_theme.dart';
+
+// Do not use raw TextField in features/ — use AppTextField instead.
+// (Search bars / dense pickers may keep Material TextField until migrated.)
 
 /// Design-system text field: Inter, 8px-aligned padding, focus ring from tokens.
 class AppTextField extends StatefulWidget {
@@ -23,10 +27,14 @@ class AppTextField extends StatefulWidget {
     this.autocorrect = true,
     this.textCapitalization = TextCapitalization.none,
     this.onSubmitted,
+    this.onChanged,
     this.enabled = true,
+    this.autofocus = false,
     this.autofillHints,
     this.onFocusChanged,
     this.focusNode,
+    this.inputFormatters,
+    this.maxLines = 1,
   });
 
   final TextEditingController controller;
@@ -47,12 +55,16 @@ class AppTextField extends StatefulWidget {
   final bool autocorrect;
   final TextCapitalization textCapitalization;
   final void Function(String)? onSubmitted;
+  final ValueChanged<String>? onChanged;
   final bool enabled;
+  final bool autofocus;
   final Iterable<String>? autofillHints;
   final ValueChanged<bool>? onFocusChanged;
 
   /// When omitted, an internal node is created and disposed by this widget.
   final FocusNode? focusNode;
+  final List<TextInputFormatter>? inputFormatters;
+  final int maxLines;
 
   @override
   State<AppTextField> createState() => _AppTextFieldState();
@@ -185,16 +197,20 @@ class _AppTextFieldState extends State<AppTextField> {
             controller: widget.controller,
             focusNode: _effectiveFocus,
             enabled: widget.enabled,
+            autofocus: widget.autofocus,
             obscureText: widget.obscureText,
             keyboardType: widget.keyboardType,
             textInputAction: widget.textInputAction,
             autocorrect: widget.autocorrect,
             textCapitalization: widget.textCapitalization,
+            inputFormatters: widget.inputFormatters,
+            maxLines: widget.obscureText ? 1 : widget.maxLines,
             style: HexaDsType.body(
               15,
               color: widget.enabled ? HexaColors.inputText : hx.textMuted,
             ),
             onSubmitted: widget.onSubmitted,
+            onChanged: widget.onChanged,
             autofillHints: widget.autofillHints,
             decoration: InputDecoration(
               labelText: widget.label,

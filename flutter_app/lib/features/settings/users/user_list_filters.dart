@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/theme/hexa_colors.dart';
 
 enum UserListPrimaryFilter { all, active, inactive, blocked }
@@ -86,85 +87,76 @@ Future<void> showUserListFilterDrawer(
   WidgetRef ref,
 ) async {
   var draft = ref.read(userListFilterProvider);
-  await showModalBottomSheet<void>(
+  await showHexaBottomSheet<void>(
     context: context,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (ctx) {
-      return StatefulBuilder(
-        builder: (ctx, setModal) {
-          void toggleRole(String role) {
-            setModal(() {
-              final next = Set<String>.from(draft.roles);
-              if (next.contains(role)) {
-                next.remove(role);
-              } else {
-                next.add(role);
-              }
-              draft = draft.copyWith(roles: next);
-            });
-          }
+    compact: true,
+    child: StatefulBuilder(
+      builder: (ctx, setModal) {
+        void toggleRole(String role) {
+          setModal(() {
+            final next = Set<String>.from(draft.roles);
+            if (next.contains(role)) {
+              next.remove(role);
+            } else {
+              next.add(role);
+            }
+            draft = draft.copyWith(roles: next);
+          });
+        }
 
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('Filter by role', style: HexaDsType.h3(ctx)),
-                  const SizedBox(height: 8),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Staff'),
-                    value: draft.roles.contains('staff'),
-                    onChanged: (_) => toggleRole('staff'),
-                  ),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Manager'),
-                    value: draft.roles.contains('manager'),
-                    onChanged: (_) => toggleRole('manager'),
-                  ),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Admin / Owner'),
-                    value: draft.roles.contains('admin'),
-                    onChanged: (_) => toggleRole('admin'),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () {
-                            setModal(() {
-                              draft = draft.copyWith(roles: {});
-                            });
-                          },
-                          child: const Text('Clear'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: () {
-                            ref.read(userListFilterProvider.notifier).state =
-                                draft;
-                            Navigator.pop(ctx);
-                          },
-                          child: const Text('Apply'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Filter by role', style: HexaDsType.h3(ctx)),
+            const SizedBox(height: 8),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Staff'),
+              value: draft.roles.contains('staff'),
+              onChanged: (_) => toggleRole('staff'),
             ),
-          );
-        },
-      );
-    },
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Manager'),
+              value: draft.roles.contains('manager'),
+              onChanged: (_) => toggleRole('manager'),
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Admin / Owner'),
+              value: draft.roles.contains('admin'),
+              onChanged: (_) => toggleRole('admin'),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      setModal(() {
+                        draft = draft.copyWith(roles: {});
+                      });
+                    },
+                    child: const Text('Clear'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () {
+                      ref.read(userListFilterProvider.notifier).state = draft;
+                      Navigator.pop(ctx);
+                    },
+                    child: const Text('Apply'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    ),
   );
 }
 
