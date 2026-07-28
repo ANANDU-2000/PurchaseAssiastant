@@ -8,7 +8,7 @@
 | ID | Severity | Issue | Status |
 |----|----------|-------|--------|
 | EXP-H1 | High | Backup ZIP built up to 5000 in-memory order PDFs (OOM/DoS) | **Fixed** — count gate + cap **400** → `413` |
-| EXP-M1 | Medium | Unbounded catalog rows in stock xlsx / JSON backup | Track |
+| EXP-M1 | Medium | Unbounded catalog rows in stock xlsx / JSON backup | **Fixed** (cap 5000 / 2000) |
 | EXP-M2 | Medium | Staff with `export_access` override see purchase totals | Track (perm intentional) |
 
 ## Cleared

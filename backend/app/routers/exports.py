@@ -313,15 +313,21 @@ async def get_backup_export_json(
 
     catalog_rows = (
         await db.execute(
-            select(CatalogItem).where(
+            select(CatalogItem)
+            .where(
                 CatalogItem.business_id == business_id,
                 CatalogItem.deleted_at.is_(None),
             )
+            .order_by(CatalogItem.name.asc())
+            .limit(5000)
         )
     ).scalars().all()
     supplier_rows = (
         await db.execute(
-            select(Supplier).where(Supplier.business_id == business_id)
+            select(Supplier)
+            .where(Supplier.business_id == business_id)
+            .order_by(Supplier.name.asc())
+            .limit(2000)
         )
     ).scalars().all()
 

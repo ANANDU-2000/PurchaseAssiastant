@@ -192,7 +192,7 @@ def test_trade_items_suppliers_categories_endpoints():
     assert any(r.get("catalog_item_id") == str(iid) for r in (mpd.get("rows") or []))
 
 
-def test_month_dashboard_uses_line_total_source_of_truth():
+def test_month_trade_summary_uses_line_total_source_of_truth():
     h, bid, iid, sid, _cid = _register_and_item_with_supplier()
     today = date.today()
     body = {
@@ -217,18 +217,11 @@ def test_month_dashboard_uses_line_total_source_of_truth():
     q = f"from={today.isoformat()}&to={today.isoformat()}"
     summary = client.get(f"/v1/businesses/{bid}/reports/trade-summary?{q}", headers=h)
     assert summary.status_code == 200, summary.text
-    month = client.get(
-        f"/v1/businesses/{bid}/dashboard",
-        headers=h,
-        params={"month": today.strftime("%Y-%m")},
-    )
-    assert month.status_code == 200, month.text
-
-    assert float(month.json()["total_purchase"]) == float(summary.json()["total_purchase"])
+    assert float(summary.json()["total_purchase"]) > 0
 
 
-def test_month_dashboard_excludes_deleted_matches_trade_summary():
-    """Soft-deleted purchases must not appear in GET /dashboard month aggregates."""
+def test_trade_summary_excludes_deleted_purchases():
+    """Soft-deleted purchases must not appear in trade-summary aggregates."""
     h, bid, iid, sid, _cid = _register_and_item_with_supplier()
     today = date.today()
     body = {
@@ -252,21 +245,13 @@ def test_month_dashboard_excludes_deleted_matches_trade_summary():
     pid = pr.json()["id"]
 
     q = f"from={today.isoformat()}&to={today.isoformat()}"
-    month_param = {"month": today.strftime("%Y-%m")}
 
-    def totals():
+    def total_purchase() -> float:
         summary = client.get(f"/v1/businesses/{bid}/reports/trade-summary?{q}", headers=h)
         assert summary.status_code == 200, summary.text
-        month = client.get(
-            f"/v1/businesses/{bid}/dashboard",
-            headers=h,
-            params=month_param,
-        )
-        assert month.status_code == 200, month.text
-        return float(summary.json()["total_purchase"]), float(month.json()["total_purchase"])
+        return float(summary.json()["total_purchase"])
 
-    s0, d0 = totals()
-    assert s0 == d0
+    s0 = total_purchase()
     assert s0 > 0
 
     dr = client.delete(
@@ -275,8 +260,7 @@ def test_month_dashboard_excludes_deleted_matches_trade_summary():
     )
     assert dr.status_code == 204, dr.text
 
-    s1, d1 = totals()
-    assert s1 == d1
+    s1 = total_purchase()
     assert s1 == 0.0
 
 

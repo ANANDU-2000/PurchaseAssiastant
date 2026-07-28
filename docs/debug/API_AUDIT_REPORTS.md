@@ -18,7 +18,7 @@
 | REPORTS-H2 | High | `trade-items` `supplier_id` / `category_id` / `subcategory_id` ignored or post-filtered on missing field | **Fixed** → SQL filters |
 | REPORTS-H3 | High | Item bundle `rate_avg` used `AVG(landing_cost)` | **Fixed** → money÷qty |
 | REPORTS-M1 | Medium | `home-overview` ~3s cold | Track (perf) |
-| REPORTS-M2 | Medium | Legacy tests hit `GET …/dashboard` → 404 (route removed) | Track |
+| REPORTS-M2 | Medium | Legacy tests hit `GET …/dashboard` → 404 (route removed) | **Fixed** |
 | REPORTS-L1 | Low | Categories/types hardcode `total_profit: 0` | Track |
 
 ## Tests

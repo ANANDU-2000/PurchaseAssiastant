@@ -86,7 +86,8 @@ async def _ensure_default_templates(db: AsyncSession, business_id: uuid.UUID) ->
                 sort_order=order,
             )
         )
-    await db.flush()
+    # Persist seed even on GET paths (get_db does not auto-commit).
+    await db.commit()
 
 
 async def _templates_for_business(

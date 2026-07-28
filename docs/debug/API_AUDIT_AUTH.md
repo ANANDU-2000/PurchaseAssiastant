@@ -222,6 +222,7 @@ Business profile settings
 
 #### AUTH-M3 — `membership_permissions` per business in loop
 - `GET /v1/me/businesses` awaits permissions per membership (fine for 1 tenant; watch N).
+- **Status:** **fixed** — sync `effective_permissions` (JSON on membership; no DB round-trip).
 
 ### Low
 

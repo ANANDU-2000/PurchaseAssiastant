@@ -22,6 +22,9 @@ from app.models import CatalogItem, CategoryType, ItemCategory, Supplier, TradeP
 from app.services.stock_inventory import catalog_reorder, catalog_stock_qty, stock_status
 from app.services import trade_query as tq
 
+# Bound in-memory export size (Harisree catalogs are far smaller; prevents OOM).
+_STOCK_EXPORT_MAX_ROWS = 5000
+
 
 async def fetch_stock_inventory_rows(
     db: AsyncSession, business_id: uuid.UUID
@@ -35,6 +38,7 @@ async def fetch_stock_inventory_rows(
             CatalogItem.deleted_at.is_(None),
         )
         .order_by(CatalogItem.name.asc())
+        .limit(_STOCK_EXPORT_MAX_ROWS)
     )
     rows = (await db.execute(stmt)).all()
     sup_ids = {item.last_supplier_id for item, _, _ in rows if item.last_supplier_id}

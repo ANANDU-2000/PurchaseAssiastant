@@ -20,7 +20,7 @@
 | OPS-H4 | High | Inventory summary exposed `total_value_inr` to staff | **Fixed** (redact) |
 | OPS-H5 | High | Warehouse checklist total counted business **and** global templates | **Fixed** |
 | OPS-H6 | High | Reorder list leaked `last_purchase_rate` to staff | **Fixed** |
-| OPS-M1 | Medium | `_ensure_default_templates` flush-only (no commit until route commits) | Track |
+| OPS-M1 | Medium | `_ensure_default_templates` flush-only (no commit until route commits) | **Fixed** |
 | OPS-M2 | Medium | Checklist complete does not validate `task_key` against templates | **Fixed** |
 
 ## Fixes (this pass)

@@ -57,6 +57,10 @@
 | OPS-H6 | High | COMPLETED | reorder last_purchase_rate redact | (this pass) |
 | EXP-H1 | High | COMPLETED | Backup ZIP purchase PDF cap (400) | (this pass) |
 | PUB-C1 | Critical | COMPLETED | Public item JSON strips rates/supplier | (this pass) |
+| EXP-M1 | Medium | COMPLETED | Cap catalog/supplier rows in exports | (this pass) |
+| OPS-M1 | Medium | COMPLETED | Persist checklist default template seed | (this pass) |
+| REPORTS-M2 | Medium | COMPLETED | Tests use trade-summary not dead /dashboard | (this pass) |
+| AUTH-M3 | Medium | COMPLETED | me/businesses sync perms (no DB N+1) | (this pass) |
 
 ## Ordered work queue (one-by-one)
 

@@ -18,7 +18,7 @@ from app.deps import (
 from app.models import Business, Membership, User
 from app.models.contacts import Broker, Supplier
 from app.services.default_workspace import bootstrap_user_workspace
-from app.services.permissions import membership_permissions
+from app.services.permissions import effective_permissions, membership_permissions
 
 _MAX_LOGO_BYTES = 2 * 1024 * 1024
 _LOGO_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
@@ -132,7 +132,10 @@ async def my_businesses(
     rows = q.all()
     out: list[BusinessBrief] = []
     for m, b in rows:
-        perms = await membership_permissions(m)
+        perms = effective_permissions(
+            m.role,
+            m.permissions_json if isinstance(m.permissions_json, dict) else None,
+        )
         out.append(_business_brief(b, m.role, perms))
     return out
 
