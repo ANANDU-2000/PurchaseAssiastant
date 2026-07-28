@@ -12,7 +12,7 @@ class DesktopPageShell extends StatelessWidget {
   const DesktopPageShell({
     super.key,
     required this.child,
-    this.maxContentWidth = 900,
+    this.maxContentWidth = HexaResponsive.maxFormWidth,
     this.minWidth = kDesktopMin,
     this.padding,
     this.fullWidth = false,

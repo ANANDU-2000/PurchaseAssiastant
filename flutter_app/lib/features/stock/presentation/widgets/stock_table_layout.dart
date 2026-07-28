@@ -7,12 +7,23 @@ abstract final class StockTableLayout {
   static const double desktopMetricColWidth = 72;
   static const double statusColWidth = 56;
   static const double rowMinHeight = 72;
+  static const double desktopRowMinHeight = 56;
   static const double cellHPadding = 6;
   static const double metricWidth = 44;
   static const double metricGap = 4;
   static const Color borderColor = Color(0xFFD8D5D0);
   static const Color headerFill = Color(0xFFE8E6E1);
   static const Color rowFill = Colors.white;
+
+  static double metricWidthFor(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    return w >= 1024 ? desktopMetricColWidth : metricColWidth;
+  }
+
+  static double rowHeightFor(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    return w >= 1024 ? desktopRowMinHeight : rowMinHeight;
+  }
 
   static const BorderSide cellBorder = BorderSide(color: borderColor, width: 1);
 

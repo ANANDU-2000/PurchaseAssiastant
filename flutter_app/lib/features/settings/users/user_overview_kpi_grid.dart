@@ -30,7 +30,7 @@ class UserOverviewKpiGrid extends StatelessWidget {
         crossAxisCount: cols,
         mainAxisSpacing: 8,
         crossAxisSpacing: 8,
-        childAspectRatio: desktop ? 1.6 : 1.45,
+        mainAxisExtent: desktop ? 88 : 96,
       ),
       itemCount: metrics.length,
       itemBuilder: (context, i) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/home_owner_dashboard_providers.dart'
     show homeLowStockAttentionCountProvider;
@@ -72,7 +73,9 @@ class ReportsOverviewKpiGrid extends ConsumerWidget {
 
     return LayoutBuilder(
       builder: (context, c) {
-        final cols = c.maxWidth >= 720 ? 4 : 2;
+        final cols = c.maxWidth >= kDesktopMin
+            ? 4
+            : (c.maxWidth >= 720 ? 4 : 2);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

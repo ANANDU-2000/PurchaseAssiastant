@@ -6,6 +6,7 @@ import 'package:shimmer/shimmer.dart';
 
 import '../../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../../core/design_system/hexa_operational_tokens.dart';
+import '../../../../core/design_system/hexa_responsive.dart';
 import '../../../../core/json_coerce.dart';
 import '../../../../core/providers/app_period_provider.dart';
 import '../../../../core/providers/delivery_pipeline_provider.dart';
@@ -966,48 +967,58 @@ class StaffHomeToolsGrid extends ConsumerWidget {
       ),
     ];
 
-    return GridView.count(
-      crossAxisCount: 3,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 8,
-      crossAxisSpacing: 8,
-      childAspectRatio: 1.35,
-      children: [
-        for (final t in tools)
-          Material(
-            color: t.color.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(12),
-            child: InkWell(
-              onTap: t.onTap,
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    HexaCountBadge(
-                      count: t.badge,
-                      child: Icon(t.icon, color: t.color, size: 22),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final cols = w >= kDesktopMin ? 4 : 3;
+        return GridView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: cols,
+            mainAxisExtent: 88,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+          ),
+          children: [
+            for (final t in tools)
+              Material(
+                color: t.color.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  onTap: t.onTap,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        HexaCountBadge(
+                          count: t.badge,
+                          child: Icon(t.icon, color: t.color, size: 22),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          t.label,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: t.color,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      t.label,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: t.color,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
-      ],
+          ],
+        );
+      },
     );
   }
 }

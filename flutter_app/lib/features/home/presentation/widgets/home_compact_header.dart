@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/auth/dashboard_role.dart';
 import '../../../../core/auth/session_notifier.dart';
 import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/design_system/hexa_responsive.dart';
 import '../../../../core/providers/home_dashboard_provider.dart'
     show homeDashboardDataProvider, homeNotificationsListFetchEnabledProvider;
 import '../../../../core/providers/notifications_provider.dart';
@@ -39,6 +40,9 @@ class HomeCompactHeader extends ConsumerWidget {
         : 'OWNER';
     final syncColor = offline ? const Color(0xFFC62828) : const Color(0xFF2E7D32);
     final syncLabel = offline ? 'Offline' : 'Synced';
+    // Side rail already exposes notifications + settings — avoid duplicate badges.
+    final showHeaderActions =
+        MediaQuery.sizeOf(context).width < kShellRailMin;
 
     return SizedBox(
       height: 48,
@@ -126,27 +130,29 @@ class HomeCompactHeader extends ConsumerWidget {
               ),
             ],
           ),
-          IconButton(
-            tooltip: 'Notifications',
-            onPressed: () {
-              ref.read(homeNotificationsListFetchEnabledProvider.notifier).state =
-                  true;
-              context.push('/notifications');
-            },
-            icon: Badge(
-              isLabelVisible: bellCount > 0,
-              label: Text(
-                bellCount > 99 ? '99+' : '$bellCount',
-                style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800),
+          if (showHeaderActions) ...[
+            IconButton(
+              tooltip: 'Notifications',
+              onPressed: () {
+                ref.read(homeNotificationsListFetchEnabledProvider.notifier).state =
+                    true;
+                context.push('/notifications');
+              },
+              icon: Badge(
+                isLabelVisible: bellCount > 0,
+                label: Text(
+                  bellCount > 99 ? '99+' : '$bellCount',
+                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800),
+                ),
+                child: const Icon(Icons.notifications_outlined, size: 22),
               ),
-              child: const Icon(Icons.notifications_outlined, size: 22),
             ),
-          ),
-          IconButton(
-            tooltip: 'Settings',
-            onPressed: () => context.push('/settings'),
-            icon: const Icon(Icons.settings_outlined, size: 22),
-          ),
+            IconButton(
+              tooltip: 'Settings',
+              onPressed: () => context.push('/settings'),
+              icon: const Icon(Icons.settings_outlined, size: 22),
+            ),
+          ],
         ],
       ),
     );

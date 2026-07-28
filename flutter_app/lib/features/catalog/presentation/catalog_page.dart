@@ -299,7 +299,7 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
                           ],
                         )
                       : HexaResponsiveCenter(
-                          maxWidth: desktop ? 1100 : HexaResponsive.maxContentWidth,
+                          maxWidth: HexaResponsive.maxContentWidth,
                           padding: EdgeInsets.zero,
                           child: GridView.builder(
                             keyboardDismissBehavior:

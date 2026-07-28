@@ -43,17 +43,20 @@ class StockWarehouseTableHeader extends StatelessWidget {
                 ),
               ),
               _metricHeader(
+                context,
                 'SYS',
                 hdr,
                 tooltip:
                     'System — ledger on-hand. Orange →N = target after sync (opening + verified purchases)',
               ),
               _metricHeader(
+                context,
                 'PHYS',
                 hdr,
                 tooltip: 'Physical — last warehouse count',
               ),
               _metricHeader(
+                context,
                 'DIFF',
                 hdr,
                 tooltip: 'Physical minus system',
@@ -65,9 +68,14 @@ class StockWarehouseTableHeader extends StatelessWidget {
     );
   }
 
-  Widget _metricHeader(String label, TextStyle style, {String? tooltip}) {
+  Widget _metricHeader(
+    BuildContext context,
+    String label,
+    TextStyle style, {
+    String? tooltip,
+  }) {
     final cell = Container(
-      width: StockTableLayout.metricColWidth,
+      width: StockTableLayout.metricWidthFor(context),
       decoration: StockTableLayout.cellDecoration(),
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),

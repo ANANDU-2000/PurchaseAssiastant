@@ -4,7 +4,7 @@ import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/design_system/hexa_responsive.dart';
 import '../../../../core/widgets/hexa_count_badge.dart';
 
-/// Owner dashboard quick actions (2×4 grid, ~56dp tiles).
+/// Owner dashboard quick actions (dense icon grid).
 class HomeOwnerQuickActions extends StatelessWidget {
   const HomeOwnerQuickActions({
     super.key,
@@ -45,36 +45,41 @@ class HomeOwnerQuickActions extends StatelessWidget {
       _Spec('Daily log', Icons.history_rounded, const Color(0xFF0D9488), onDailyLog),
     ];
 
-    final width = MediaQuery.sizeOf(context).width;
-    final cols = width < 360 ? 2 : 4;
-    const double spacing = 8.0;
-    final double gutter = HexaResponsive.pageGutter(context, operational: true);
-    
-    final double itemWidth = (width - (gutter * 2) - ((cols - 1) * spacing)) / cols;
-    final childAspectRatio = itemWidth / 72.0;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
           'Tools',
           style: TextStyle(
-            fontSize: 18, // Section Titles: 18 Bold
+            fontSize: 18,
             fontWeight: FontWeight.bold,
             color: Color(0xFF0F172A),
           ),
         ),
         const SizedBox(height: 8),
-        GridView.count(
-          crossAxisCount: cols,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: spacing,
-          crossAxisSpacing: spacing,
-          childAspectRatio: childAspectRatio,
-          children: [
-            for (final a in actions) _Tile(spec: a),
-          ],
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+                ? constraints.maxWidth
+                : MediaQuery.sizeOf(context).width;
+            final cols = width < 360
+                ? 2
+                : (context.isDesktopLayout ? 6 : 4);
+            const spacing = 8.0;
+            return GridView(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: cols,
+                mainAxisExtent: 72,
+                mainAxisSpacing: spacing,
+                crossAxisSpacing: spacing,
+              ),
+              children: [
+                for (final a in actions) _Tile(spec: a),
+              ],
+            );
+          },
         ),
       ],
     );

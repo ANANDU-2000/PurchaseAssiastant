@@ -6,6 +6,7 @@ import '../../../../core/router/navigation_ext.dart';
 import '../../../../core/router/shell_navigation.dart';
 import '../../../../features/shell/shell_branch_provider.dart';
 
+import '../../../../core/design_system/hexa_desktop_layout.dart';
 import '../../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../../core/design_system/hexa_responsive.dart';
 import '../../../../core/json_coerce.dart';
@@ -139,75 +140,54 @@ class HomeOwnerDashboardBody extends ConsumerWidget {
           ),
         ),
         SizedBox(height: gap),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final double spacing = 12.0;
-            // Use the grid's own max width — MediaQuery includes the side rail and
-            // produced bad/zero aspect ratios on wide desktops.
-            final double width = constraints.maxWidth.isFinite && constraints.maxWidth > 0
-                ? constraints.maxWidth
-                : MediaQuery.sizeOf(context).width;
-            // Keep 2 columns on all widths — 4-col GridView + shrinkWrap has
-            // blanked Flutter web desktop home (≥1024px) in production.
-            const int cols = 2;
-            
-            // Deduct space between columns only (gutter already applied by parents).
-            final double cardWidth =
-                ((width - ((cols - 1) * spacing)) / cols).clamp(48.0, 600.0);
-            final double childAspectRatio = cardWidth / 110.0;
-
-            return GridView.count(
-              crossAxisCount: cols,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: spacing,
-              crossAxisSpacing: spacing,
-              childAspectRatio: childAspectRatio,
-              children: [
-                _KpiTile(
-                  label: 'Purchases',
-                  value: '${dash.purchaseCount}',
-                  subtitle: dash.period.label,
-                  onTap: () => context.go('/purchase'),
-                ),
-                _KpiTile(
-                  label: 'Pending delivery',
-                  value: '$pending',
-                  subtitle: pending > 0 ? 'Needs action' : 'Clear',
-                  accent: pending > 0 ? const Color(0xFFDC2626) : null,
-                  onTap: () => context.go('/purchase?filter=pending_delivery'),
-                ),
-                _KpiTile(
-                  label: 'Low stock',
-                  value: '$lowCount',
-                  subtitle: 'Items below reorder',
-                  onTap: () => pushLowStockDashboard(context),
-                ),
-                _KpiTile(
-                  label: 'Warehouse',
-                  value: invSummary != null &&
-                          inventoryUnitsLine(invSummary).isNotEmpty
-                      ? inventoryUnitsLine(invSummary)
-                      : '${invSummary?.itemCount ?? dash.itemSlices.length}',
-                  subtitle: invSummary != null &&
-                          inventoryUnitsLine(invSummary).isNotEmpty
-                      ? '${invSummary.itemCount} items on hand'
-                      : 'Active items',
-                  onTap: () => goShellTab(
-                        context,
-                        ref,
-                        branch: ShellBranch.stock,
-                        location: '/stock',
-                      ),
-                ),
-              ],
-            );
-          },
+        HexaDenseKpiGrid(
+          mainAxisExtent: context.isDesktopLayout ? 100 : 96,
+          children: [
+            _KpiTile(
+              label: 'Purchases',
+              value: '${dash.purchaseCount}',
+              subtitle: dash.period.label,
+              onTap: () => context.go('/purchase'),
+            ),
+            _KpiTile(
+              label: 'Pending delivery',
+              value: '$pending',
+              subtitle: pending > 0 ? 'Needs action' : 'Clear',
+              accent: pending > 0 ? const Color(0xFFDC2626) : null,
+              onTap: () => context.go('/purchase?filter=pending_delivery'),
+            ),
+            _KpiTile(
+              label: 'Low stock',
+              value: '$lowCount',
+              subtitle: 'Items below reorder',
+              onTap: () => pushLowStockDashboard(context),
+            ),
+            _KpiTile(
+              label: 'Warehouse',
+              value: invSummary != null &&
+                      inventoryUnitsLine(invSummary).isNotEmpty
+                  ? inventoryUnitsLine(invSummary)
+                  : '${invSummary?.itemCount ?? dash.itemSlices.length}',
+              subtitle: invSummary != null &&
+                      inventoryUnitsLine(invSummary).isNotEmpty
+                  ? '${invSummary.itemCount} items on hand'
+                  : 'Active items',
+              onTap: () => goShellTab(
+                    context,
+                    ref,
+                    branch: ShellBranch.stock,
+                    location: '/stock',
+                  ),
+            ),
+          ],
         ),
         SizedBox(height: gap),
-        const HomeDeliveryPipelineCard(),
-        SizedBox(height: gap),
-        const HomePurchaseControlCenter(),
+        const DesktopTwoColumnGrid(
+          children: [
+            HomeDeliveryPipelineCard(),
+            HomePurchaseControlCenter(),
+          ],
+        ),
         SizedBox(height: gap),
         HomeOwnerQuickActions(
           lowStockCount: lowCount,
@@ -306,15 +286,21 @@ class _KpiTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final valueStyle = TextStyle(
+      fontSize: context.isDesktopLayout ? 20 : 22,
+      fontWeight: FontWeight.bold,
+      color: accent ?? const Color(0xFF0F172A),
+      height: 1.15,
+    );
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
         border: Border.all(
@@ -324,59 +310,49 @@ class _KpiTile extends StatelessWidget {
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF64748B),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Expanded(
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: value.contains(' · ')
                         ? WarehouseUnitsSubtitleText(
                             subtitle: value,
-                            fontSize: 18,
-                            fallbackStyle: TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.bold,
-                              color: accent ?? const Color(0xFF0F172A),
-                            ),
+                            fontSize: 14,
+                            fallbackStyle: valueStyle,
                           )
                         : Text(
                             value,
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.bold,
-                              color: accent ?? const Color(0xFF0F172A),
-                            ),
+                            style: valueStyle,
                           ),
                   ),
                 ),
-                const SizedBox(height: 4),
                 Text(
                   subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     color: Color(0xFF94A3B8),
                   ),
                 ),

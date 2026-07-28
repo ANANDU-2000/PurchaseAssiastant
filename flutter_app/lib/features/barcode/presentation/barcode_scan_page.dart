@@ -992,7 +992,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
     final theme = Theme.of(context);
     final size = MediaQuery.sizeOf(context);
     final landscape = size.width > size.height;
-    final desktopSplit = size.width >= 900;
+    final desktopSplit = size.width >= kNavigationRailMin;
     final cameraH = desktopSplit
         ? double.infinity
         : (size.height * (landscape ? 0.40 : 0.48))

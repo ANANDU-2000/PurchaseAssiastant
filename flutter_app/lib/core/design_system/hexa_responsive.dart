@@ -5,21 +5,29 @@ import 'package:flutter/material.dart';
 import 'hexa_ds_tokens.dart';
 import 'hexa_operational_tokens.dart';
 
-/// Spec-aligned breakpoints (DESKTOP_DESIGN_SPEC.md).
+/// Spec-aligned breakpoints (single source of truth).
+///
+/// | Token | Width | Use |
+/// |---|---|---|
+/// | Phone | &lt;600 | Bottom nav, single column |
+/// | Tablet | 600–1023 | 72px icon rail |
+/// | Desktop | ≥1024 | Master-detail, dense KPI grids |
+/// | Ultra | ≥1600 | Same density, more side padding |
 const double kMobileMax = 599;
 const double kTabletMin = 600;
 const double kDesktopMin = 1024;
+const double kUltraWideMin = 1600;
 
-/// Navigation rail shows at tablet width and above (legacy alias).
+/// Navigation rail / barcode split threshold (legacy alias).
 const double kNavigationRailMin = 900;
 
 /// Shell: bottom navigation only below this width.
 const double kShellBottomNavMax = 600;
 
-/// Shell: left NavigationRail from tablet up.
+/// Shell: left compact rail from tablet up.
 const double kShellRailMin = 600;
 
-/// Shell: extended rail with labels (desktop).
+/// Shell: extended rail with labels (unused — compact rail only on web).
 const double kShellRailExtendedMin = 900;
 
 /// Compact side-nav width (icons only). Keep ≥72 — Material [NavigationRail]
@@ -47,8 +55,9 @@ abstract final class HexaBreakpoints {
   static const double compactPhone = 360;
   static const double phone = 600;
   static const double tablet = 900;
-  static const double desktop = 1100;
-  static const double ultraWide = 1600;
+  /// Aligned with [kDesktopMin] — master-detail and dense dashboards.
+  static const double desktop = kDesktopMin;
+  static const double ultraWide = kUltraWideMin;
 
   /// Layout width; 0 when MediaQuery is not ready (web first frame).
   static double _layoutWidth(BuildContext context) {

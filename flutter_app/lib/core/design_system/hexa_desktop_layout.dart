@@ -3,6 +3,50 @@ import 'package:flutter/material.dart';
 import 'hexa_operational_tokens.dart';
 import 'hexa_responsive.dart';
 
+/// Dense KPI / metric tile grid — safe for Flutter web.
+///
+/// Uses [SliverGridDelegateWithFixedCrossAxisCount.mainAxisExtent] instead of
+/// `childAspectRatio` on shrink-wrapped grids (wide aspect ratios blanked
+/// desktop home at ≥1024px in production).
+class HexaDenseKpiGrid extends StatelessWidget {
+  const HexaDenseKpiGrid({
+    super.key,
+    required this.children,
+    this.spacing = 12,
+    this.mainAxisExtent = 96,
+    this.phoneColumns = 2,
+    this.desktopColumns = 4,
+  });
+
+  final List<Widget> children;
+  final double spacing;
+  final double mainAxisExtent;
+  final int phoneColumns;
+  final int desktopColumns;
+
+  @override
+  Widget build(BuildContext context) {
+    if (children.isEmpty) return const SizedBox.shrink();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final desktop = context.isDesktopLayout;
+        final cols = desktop ? desktopColumns : phoneColumns;
+        return GridView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: cols.clamp(1, 6),
+            mainAxisExtent: mainAxisExtent,
+            mainAxisSpacing: spacing,
+            crossAxisSpacing: spacing,
+          ),
+          children: children,
+        );
+      },
+    );
+  }
+}
+
 /// Master-detail split for desktop warehouse pages (≥ [kDesktopMin]).
 class DesktopMasterDetailScaffold extends StatelessWidget {
   const DesktopMasterDetailScaffold({

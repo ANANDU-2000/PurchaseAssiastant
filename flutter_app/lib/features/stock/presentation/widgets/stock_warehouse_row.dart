@@ -72,9 +72,9 @@ class StockWarehouseRow extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Container(
-            constraints: const BoxConstraints(
-              minHeight: StockTableLayout.rowMinHeight,
-              maxHeight: StockTableLayout.rowMinHeight,
+            constraints: BoxConstraints(
+              minHeight: StockTableLayout.rowHeightFor(context),
+              maxHeight: StockTableLayout.rowHeightFor(context),
             ),
             decoration: StockTableLayout.rowDecoration(isFirst: isFirstRow)
                 .copyWith(
@@ -181,15 +181,18 @@ class StockWarehouseRow extends StatelessWidget {
                     ),
                   ),
                   _boxedMetric(
+                    context,
                     StockRowMetrics.systemCellLabel(item),
                     StockRowMetrics.systemCellColor(item),
                     subtitle: StockRowMetrics.systemCellTargetLabel(item),
                   ),
                   _boxedMetric(
+                    context,
                     StockRowMetrics.physicalCellLabel(item),
                     const Color(0xFF0F766E),
                   ),
                   _boxedMetric(
+                    context,
                     StockRowMetrics.diffCellLabel(item),
                     StockRowMetrics.diffColor(diff),
                   ),
@@ -202,9 +205,14 @@ class StockWarehouseRow extends StatelessWidget {
     );
   }
 
-  Widget _boxedMetric(String primary, Color color, {String? subtitle}) {
+  Widget _boxedMetric(
+    BuildContext context,
+    String primary,
+    Color color, {
+    String? subtitle,
+  }) {
     return Container(
-      width: StockTableLayout.metricColWidth,
+      width: StockTableLayout.metricWidthFor(context),
       decoration: StockTableLayout.cellDecoration(),
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),

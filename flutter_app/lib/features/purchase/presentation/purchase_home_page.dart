@@ -1606,14 +1606,22 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                 const VerticalDivider(width: 1, thickness: 1),
                                 Expanded(
                                   flex: 6,
-                                  child: PurchaseDesktopDetailPane(
-                                    purchaseId: effectiveSelectedId,
-                                    seedPurchase: selectedSeed ??
-                                        (visible.isNotEmpty &&
-                                                effectiveSelectedId ==
-                                                    visible.first.id
-                                            ? visible.first
-                                            : null),
+                                  child: Align(
+                                    alignment: Alignment.topCenter,
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                        maxWidth: HexaResponsive.maxFormWidth,
+                                      ),
+                                      child: PurchaseDesktopDetailPane(
+                                        purchaseId: effectiveSelectedId,
+                                        seedPurchase: selectedSeed ??
+                                            (visible.isNotEmpty &&
+                                                    effectiveSelectedId ==
+                                                        visible.first.id
+                                                ? visible.first
+                                                : null),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],

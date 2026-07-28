@@ -678,7 +678,12 @@ class _HomePageState extends ConsumerState<HomePage>
                   delegate: HomeStickyPeriodHeader(),
                 ),
               SliverPadding(
-                padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 100),
+                padding: EdgeInsets.fromLTRB(
+                  gutter,
+                  8,
+                  gutter,
+                  context.isDesktopLayout ? 48 : 100,
+                ),
                 sliver: SliverToBoxAdapter(
                   child: HexaResponsiveCenter(
                     maxWidth: HexaResponsive.maxContentWidth,

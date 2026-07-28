@@ -807,7 +807,15 @@ class _StockPageState extends ConsumerState<StockPage>
         const VerticalDivider(width: 1, thickness: 1),
         Expanded(
           flex: 4,
-          child: StockDesktopDetailPane(item: selected),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: HexaResponsive.maxFormWidth,
+              ),
+              child: StockDesktopDetailPane(item: selected),
+            ),
+          ),
         ),
       ],
     );
