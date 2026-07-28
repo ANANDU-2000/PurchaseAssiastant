@@ -25,24 +25,11 @@ class HexaWebPageFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // On Flutter web, framing with a tight height SizedBox has blanked desktop
-    // shells when parent maxHeight was 0/odd. Prefer unconstrained child +
-    // horizontal centering only.
+    // Flutter web: never wrap scrollables in Align+maxWidth-only ConstrainedBox —
+    // that leaves height unbounded and blanks /home (CustomScrollView). Pages already
+    // use [HexaResponsiveCenter] for horizontal max width.
     if (fullWidth || !context.isDesktopLayout || kIsWeb) {
-      if (fullWidth || !context.isDesktopLayout) {
-        return child;
-      }
-      final framed = Padding(
-        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-        child: child,
-      );
-      return Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxWidth),
-          child: framed,
-        ),
-      );
+      return child;
     }
 
     return LayoutBuilder(
@@ -61,39 +48,23 @@ class HexaWebPageFrame extends StatelessWidget {
           },
         );
         // #endregion
-        if (constraints.maxWidth < 200) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: CircularProgressIndicator(),
-            ),
-          );
+        if (!constraints.hasBoundedWidth || constraints.maxWidth < 200) {
+          return child;
+        }
+        if (!constraints.hasBoundedHeight || constraints.maxHeight < 1) {
+          return child;
         }
 
         final width = math.min(constraints.maxWidth, maxWidth);
-        final framed = Padding(
-          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-          child: child,
-        );
-
-        if (constraints.hasBoundedHeight && constraints.maxHeight >= 1) {
-          return Align(
-            alignment: Alignment.topCenter,
-            child: SizedBox(
-              width: width,
-              height: constraints.maxHeight,
-              child: framed,
-            ),
-          );
-        }
-
-        final viewportHeight = MediaQuery.sizeOf(context).height;
         return Align(
           alignment: Alignment.topCenter,
           child: SizedBox(
             width: width,
-            height: viewportHeight > 0 ? viewportHeight : null,
-            child: framed,
+            height: constraints.maxHeight,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+              child: child,
+            ),
           ),
         );
       },
