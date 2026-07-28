@@ -172,4 +172,5 @@ async def health_db_check(db: AsyncSession = Depends(get_db)):
         return {"status": "ok", "tables": "trade_purchases, item_categories verified"}
     except Exception as e:  # noqa: BLE001
         logger.exception("db-check failed")
-        return {"status": "error", "detail": str(e)}
+        del e
+        return {"status": "error", "detail": "Database check failed"}

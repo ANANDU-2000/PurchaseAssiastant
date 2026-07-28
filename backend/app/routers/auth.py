@@ -4,13 +4,14 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.database import get_db
+from app.middleware.rate_limit import SlidingWindowLimiter
 from app.models import Business, Membership, User
 from app.models.user_session import UserSession
 from app.services.staff_audit import log_staff_login_if_applicable
@@ -32,6 +33,25 @@ from app.services.passwords import hash_password, verify_password
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
+_LOGIN_IP_LIMITER = SlidingWindowLimiter(max_requests=20, window_seconds=60.0)
+_FORGOT_IP_LIMITER = SlidingWindowLimiter(max_requests=10, window_seconds=60.0)
+_FORGOT_EMAIL_LIMITER = SlidingWindowLimiter(max_requests=5, window_seconds=3600.0)
+
+
+def _client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for", "")
+    ip = xff.split(",")[0].strip() if xff else ""
+    if not ip:
+        ip = request.client.host if request.client else "unknown"
+    return ip
+
+
+def _enforce_limiter(limiter: SlidingWindowLimiter, key: str) -> None:
+    if not limiter.allow(key):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many attempts. Please try again shortly.",
+        )
 
 def _username_from_google(email: str, sub: str) -> str:
     local = email.split("@", 1)[0].lower()
@@ -120,10 +140,16 @@ async def register(
 @router.post("/forgot-password")
 async def forgot_password(
     body: ForgotPasswordRequest,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
 ):
     """Store a one-time token (email delivery TBD). Response text is user-safe; in development a token is returned for testing."""
+    ip = _client_ip(request)
+    _enforce_limiter(_FORGOT_IP_LIMITER, f"forgot-ip:{ip}")
+    email_key = (body.email or "").strip().lower()
+    if email_key:
+        _enforce_limiter(_FORGOT_EMAIL_LIMITER, f"forgot-email:{email_key}")
     r = await db.execute(select(User).where(User.email == body.email))
     user = r.scalar_one_or_none()
     same: dict = {
@@ -191,10 +217,12 @@ async def reset_password_with_token(
 
 @router.post("/login", response_model=TokenPair)
 async def login(
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
     body: LoginRequest,
 ):
+    _enforce_limiter(_LOGIN_IP_LIMITER, f"login-ip:{_client_ip(request)}")
     try:
         try:
             user = await resolve_user_by_email(db, body.email)

@@ -12,6 +12,8 @@ _CATALOG_ITEM_FINANCIAL_KEYS = frozenset(
         "default_selling_cost",
         "last_purchase_price",
         "last_selling_rate",
+        "last_supplier_phone",
+        "last_broker_phone",
     }
 )
 

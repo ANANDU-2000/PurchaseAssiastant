@@ -180,6 +180,13 @@ async def checklist_complete(
     _m: Annotated[Membership, Depends(require_membership)],
 ):
     today = date.today()
+    templates = await _templates_for_business(db, business_id)
+    allowed = {(t.slot, t.task_key) for t in templates}
+    if (slot, body.task_key) not in allowed:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Unknown checklist task for this slot",
+        )
     existing = await db.execute(
         select(StaffChecklistCompletion).where(
             StaffChecklistCompletion.business_id == business_id,

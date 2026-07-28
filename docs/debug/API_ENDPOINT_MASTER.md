@@ -12,7 +12,7 @@
 |--------|-------|
 | Total endpoints | 216 |
 | Completed | 17 / 216 |
-| Current focus | Audit queue Critical/High closed (AUTH-H2/H3 blocked) |
+| Current focus | Medium backlog (AUTH-H2/H3 still blocked) |
 
 ## Status legend
 
@@ -27,6 +27,10 @@
 | AUTH-H4 | High | COMPLETED | Google bypasses ALLOW_PUBLIC_REGISTRATION | 8187417 |
 | AUTH-H2 | High | BLOCKED | Forgot-password email | needs approval |
 | AUTH-H3 | High | BLOCKED | Logo object storage | needs approval |
+| AUTH-M2 | Medium | COMPLETED | Login / forgot-password rate limits | (this pass) |
+| UTIL-M1 | Medium | COMPLETED | Health db-check no exception leak | (this pass) |
+| UTIL-M2 | Medium | COMPLETED | Search staff redact supplier/broker phones | (this pass) |
+| OPS-M2 | Medium | COMPLETED | Checklist complete validates task_key | (this pass) |
 | STOCK/HOME isce | Critical | COMPLETED | Shared-session gather sequentialized | a52dd46, 772bdc0 |
 | HOME-C1 | Critical | COMPLETED | home-overview isce (same as above) | 772bdc0 |
 | SUPPLIER-C1 | Critical | COMPLETED | Delete supplier/broker clears M2M (+ defaults) | (this pass) |

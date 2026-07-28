@@ -184,3 +184,22 @@ def test_login_persists_user_session():
     assert isinstance(rows, list)
     emails = {(r.get("email") or "").lower() for r in rows}
     assert staff_email.lower() in emails
+
+
+def test_login_rate_limited_per_ip():
+    """AUTH-M2: brute-force login attempts are throttled per IP."""
+    headers = {"X-Forwarded-For": "203.0.113.77"}
+    for _ in range(20):
+        r = client.post(
+            "/v1/auth/login",
+            headers=headers,
+            json={"email": "nobody@test.hexa.local", "password": "wrongpass99"},
+        )
+        assert r.status_code in (401, 429), r.text
+    blocked = client.post(
+        "/v1/auth/login",
+        headers=headers,
+        json={"email": "nobody@test.hexa.local", "password": "wrongpass99"},
+    )
+    assert blocked.status_code == 429
+    assert "too many" in blocked.json()["detail"].lower()

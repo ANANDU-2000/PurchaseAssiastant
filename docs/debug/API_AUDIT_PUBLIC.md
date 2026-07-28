@@ -8,8 +8,8 @@
 | ID | Severity | Issue | Status |
 |----|----------|-------|--------|
 | PUB-C1 | Critical | Unauth `/public/items` JSON/lookup exposed purchase rates + supplier | **Fixed** — stock/location only |
-| UTIL-M1 | Medium | Health DB error `str(e)` to client | Track |
-| UTIL-M2 | Medium | Search still returns supplier/broker phones to staff | Track |
+| UTIL-M1 | Medium | Health DB error `str(e)` to client | **Fixed** |
+| UTIL-M2 | Medium | Search still returns supplier/broker phones to staff | **Fixed** |
 
 ## Cleared
 

@@ -217,6 +217,7 @@ Business profile settings
 
 #### AUTH-M2 — No rate limit on login / forgot-password
 - OTP has IP limits; password login does not — brute-force risk.
+- **Status:** **fixed** — login 20/min/IP; forgot 10/min/IP + 5/hour/email.
 - **Fix:** Per-IP / per-email throttle middleware.
 
 #### AUTH-M3 — `membership_permissions` per business in loop
