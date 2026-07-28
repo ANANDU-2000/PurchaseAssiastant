@@ -105,12 +105,10 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     }
     final width = MediaQuery.sizeOf(context).width;
     final height = MediaQuery.sizeOf(context).height;
-    // Side rail paints correctly below 900px; at ≥900 the shell Row blanks the
-    // whole tab body on Flutter web (settings, which skips this rail, is fine).
-    final showRail =
-        width > 0 && width >= kShellRailMin && width < kShellRailExtendedMin;
-    final showBottomBar =
-        width > 0 && (width < kShellBottomNavMax || width >= kShellRailExtendedMin);
+    // Side rail from tablet up. [HexaWebPageFrame] is a pass-through — do not
+    // disable the rail on wide screens (that regressed desktop home).
+    final showRail = width > 0 && width >= kShellRailMin;
+    final showBottomBar = width > 0 && width < kShellBottomNavMax;
     // #region agent log
     agentDebugLog(
       hypothesisId: 'H3',

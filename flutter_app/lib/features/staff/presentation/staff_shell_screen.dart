@@ -86,12 +86,8 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
 
     final sessionHint = ref.watch(apiDegradedProvider);
     final width = MediaQuery.sizeOf(context).width;
-    // Match owner shell: side rail only in the mid band; ≥900 uses bottom nav
-    // (Flutter web blanks shell tabs when a side rail Row is used at ≥900).
-    final showRail =
-        width > 0 && width >= kShellRailMin && width < kShellRailExtendedMin;
-    final showBottomBar =
-        width > 0 && (width < kShellBottomNavMax || width >= kShellRailExtendedMin);
+    final showRail = width > 0 && width >= kShellRailMin;
+    final showBottomBar = width > 0 && width < kShellBottomNavMax;
     final notifN = ref.watch(notificationsUnreadCountProvider);
     final pendingDel = ref.watch(staffPendingDeliveryCountProvider);
 
