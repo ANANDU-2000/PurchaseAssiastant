@@ -105,10 +105,12 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     }
     final width = MediaQuery.sizeOf(context).width;
     final height = MediaQuery.sizeOf(context).height;
-    final showRail = width > 0 && width >= kShellRailMin;
-    // Never use NavigationRail.extended — it blanks Flutter web ≥900px even when
-    // wrapped in a width cap. Always use the hard-fixed [WebCompactSideNav].
-    final showBottomBar = width > 0 && width < kShellBottomNavMax;
+    // Side rail paints correctly below 900px; at ≥900 the shell Row blanks the
+    // whole tab body on Flutter web (settings, which skips this rail, is fine).
+    final showRail =
+        width > 0 && width >= kShellRailMin && width < kShellRailExtendedMin;
+    final showBottomBar =
+        width > 0 && (width < kShellBottomNavMax || width >= kShellRailExtendedMin);
     // #region agent log
     agentDebugLog(
       hypothesisId: 'H3',
