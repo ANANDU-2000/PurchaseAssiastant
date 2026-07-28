@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import uuid
 from collections import OrderedDict
@@ -622,21 +621,24 @@ async def _compute_trade_dashboard_snapshot_payload(
         .where(bf)
         .group_by(cat_id_key, cn, TradePurchaseLine.item_name)
     )
-    eroll, esum, enest = await asyncio.gather(
-        execute_with_retry(lambda: db.execute(roll)),
-        execute_with_retry(lambda: db.execute(sum_q)),
-        execute_with_retry(lambda: db.execute(nest_q)),
-    )
+    # Sequential on shared AsyncSession — gather would raise isce under concurrency.
+    eroll = await execute_with_retry(lambda: db.execute(roll))
+    esum = await execute_with_retry(lambda: db.execute(sum_q))
+    enest = await execute_with_retry(lambda: db.execute(nest_q))
     roll_row = eroll.mappings().one()
     srow = esum.mappings().one()
     flat = enest.mappings().all()
 
-    mapping, items, types, suppliers = await asyncio.gather(
-        trade_map.item_supplier_broker_rows(db, business_id, date_from, date_to),
-        _fetch_trade_items_breakdown_rows(db, business_id, date_from, date_to),
-        _fetch_trade_types_breakdown_rows(db, business_id, date_from, date_to),
-        _trade_suppliers_rows(db, business_id, date_from, date_to),
+    mapping = await trade_map.item_supplier_broker_rows(
+        db, business_id, date_from, date_to
     )
+    items = await _fetch_trade_items_breakdown_rows(
+        db, business_id, date_from, date_to
+    )
+    types = await _fetch_trade_types_breakdown_rows(
+        db, business_id, date_from, date_to
+    )
+    suppliers = await _trade_suppliers_rows(db, business_id, date_from, date_to)
     detail, recs = mapping
     total_purchase = float(srow["total_purchase"] or 0)
     total_selling = float(srow["total_selling"] or 0)
@@ -770,19 +772,11 @@ async def _compute_trade_dashboard_snapshot_payload(
         r = await execute_with_retry(lambda: db.execute(q))
         return int(r.scalar() or 0)
 
-    (
-        pending_delivery_count,
-        supplier_count,
-        broker_count,
-        received_delivery_count,
-        negative_stock_count,
-    ) = await asyncio.gather(
-        _count_scalar(pend_q),
-        _count_scalar(sup_q),
-        _count_scalar(bro_q),
-        _count_scalar(recv_q),
-        _count_scalar(neg_q),
-    )
+    pending_delivery_count = await _count_scalar(pend_q)
+    supplier_count = await _count_scalar(sup_q)
+    broker_count = await _count_scalar(bro_q)
+    received_delivery_count = await _count_scalar(recv_q)
+    negative_stock_count = await _count_scalar(neg_q)
 
     return {
         "from": date_from.isoformat(),

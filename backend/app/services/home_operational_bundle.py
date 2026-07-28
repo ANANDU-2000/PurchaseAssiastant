@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from typing import Any
 
@@ -57,17 +56,19 @@ async def build_home_operational_bundle(
     business_id: uuid.UUID,
     membership: Membership,
 ) -> dict[str, Any]:
-    """Stock chips, warehouse alerts, delivery pipeline, and notification unread for Home."""
-    stock, pipeline, unread, low_top = await asyncio.gather(
-        stock_alerts_summary(
-            business_id=business_id,
-            db=db,
-            _m=membership,
-        ),
-        tps.get_trade_purchase_delivery_pipeline(db, business_id),
-        _unread_notification_count(db, business_id, membership.user_id),
-        fetch_low_stock_top_rows(db, business_id, limit=6),
+    """Stock chips, warehouse alerts, delivery pipeline, and notification unread for Home.
+
+    Sequential awaits on the shared AsyncSession — concurrent asyncio.gather on one
+    session raises InvalidRequestError (isce) and 500s home-overview shell_bundle.
+    """
+    stock = await stock_alerts_summary(
+        business_id=business_id,
+        db=db,
+        _m=membership,
     )
+    pipeline = await tps.get_trade_purchase_delivery_pipeline(db, business_id)
+    unread = await _unread_notification_count(db, business_id, membership.user_id)
+    low_top = await fetch_low_stock_top_rows(db, business_id, limit=6)
     warehouse = await warehouse_alerts_from_stock(db, business_id, stock)
     return {
         "stock_status_counts": _stock_status_counts_from_alerts(stock),
