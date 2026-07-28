@@ -39,6 +39,7 @@ import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/services/offline_store.dart';
 import '../../../core/services/prefs_helper.dart';
 import '../../../core/theme/hexa_colors.dart';
+import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/services/offline_sync_service.dart';
 import '../../../core/services/staff_activity_logger.dart';
 import '../../../core/notifications/local_notifications_service.dart';
@@ -121,6 +122,8 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   List<Map<String, dynamic>>? _lastCatalogSnapshot;
 
   Timer? _draftDebounce;
+  Timer? _sessionWaitTimer;
+  bool _sessionWaitTimedOut = false;
 
   /// Sync snapshot for [dispose] — no [ref] after widget teardown.
   String? _cachedDraftPrefsKey;
@@ -651,11 +654,19 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
   }
 
   /// Immediate save for party-step footer (still debounces on normal edits via [_onDraftChanged]).
-  void _saveDraftNow() {
+  void _saveDraftNow({bool notify = false}) {
     _draftDebounce?.cancel();
     _flushDraftToPrefs();
     if (!mounted || widget.editingId != null) return;
-    // Auto-save is silent — no snackbar distraction
+    if (notify) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Draft saved on this device'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   Future<void> _clearDraftInPrefs() async {
@@ -673,6 +684,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     WidgetsBinding.instance.removeObserver(this);
     _draftDebounce?.cancel();
     _bootstrapSlowTimer?.cancel();
+    _sessionWaitTimer?.cancel();
     if ((widget.editingId == null || widget.editingId!.isEmpty) && _formDirty) {
       if (_cachedDraftJson == null) {
         _cacheDraftSnapshotForDispose();
@@ -1282,20 +1294,27 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
     }
     if (!mounted) return;
     if (catalogForSheet.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Catalog is still loading. Wait a moment and try again.',
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      if (mounted) {
+        setState(() {
+          _inlineSaveError =
+              'Catalog is still loading. Wait a moment and try again.';
+        });
+      }
       return;
     }
-    final initial = initialOverride ??
-        (editIndex != null
-            ? ref.read(purchaseDraftProvider).lines[editIndex].toLineMap()
-            : null);
+    final lines = ref.read(purchaseDraftProvider).lines;
+    Map<String, dynamic>? initial = initialOverride;
+    if (initial == null && editIndex != null) {
+      if (editIndex < 0 || editIndex >= lines.length) {
+        if (mounted) {
+          setState(() {
+            _inlineSaveError = 'That line is no longer available — add a new item.';
+          });
+        }
+        return;
+      }
+      initial = lines[editIndex].toLineMap();
+    }
     // Ensure the sheet can resolve `default_kg_per_bag` for this line (list may omit the row).
     final cid = initial?['catalog_item_id']?.toString();
     if (cid != null && cid.isNotEmpty) {
@@ -2172,6 +2191,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
               headerDiscFocus: _termsHeaderDiscFocus,
               narrationFocus: _termsNarrationFocus,
               onDraftChanged: _onDraftChanged,
+              embeddedInOuterScroll: true,
             ),
           ],
         );
@@ -2240,16 +2260,12 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
       duration: const Duration(milliseconds: 200),
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
-      // Default AnimatedSwitcher centers children in free height — party fields
-      // must stay at the top so keyboard + suggestion overlay have room below.
-      layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
-        return Stack(
-          fit: StackFit.passthrough,
+      // Do not stack previous step (Items uses Expanded; Party uses unbounded
+      // scroll). Keeping both in a Stack under mismatched parents blanks/crashes.
+      layoutBuilder: (Widget? currentChild, List<Widget> _) {
+        return Align(
           alignment: Alignment.topCenter,
-          children: <Widget>[
-            ...previousChildren,
-            if (currentChild != null) currentChild,
-          ],
+          child: currentChild ?? const SizedBox.shrink(),
         );
       },
       child: RepaintBoundary(
@@ -2506,6 +2522,32 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
         builder: (bodyContext) {
           final session = ref.watch(sessionProvider);
           if (session == null && !_isBootstrapping) {
+            _sessionWaitTimer ??= Timer(const Duration(seconds: 12), () {
+              if (!mounted) return;
+              if (ref.read(sessionProvider) == null) {
+                setState(() => _sessionWaitTimedOut = true);
+              }
+            });
+            if (_sessionWaitTimedOut) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: FriendlyLoadError(
+                    message:
+                        'Could not load your session. Sign in again to continue this purchase.',
+                    subtitle: 'Tap Sign in to continue.',
+                    onRetry: () {
+                      setState(() {
+                        _sessionWaitTimedOut = false;
+                        _sessionWaitTimer?.cancel();
+                        _sessionWaitTimer = null;
+                      });
+                      context.go('/login');
+                    },
+                  ),
+                ),
+              );
+            }
             return const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -2516,6 +2558,15 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
                 ],
               ),
             );
+          }
+          if (session != null) {
+            _sessionWaitTimer?.cancel();
+            _sessionWaitTimer = null;
+            if (_sessionWaitTimedOut) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) setState(() => _sessionWaitTimedOut = false);
+              });
+            }
           }
 
           if (_isBootstrapping) {
@@ -2640,13 +2691,43 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
             icon: const Icon(Icons.arrow_back),
             onPressed: _isSaving ? null : () => _wizBack(),
           ),
+          actions: [
+            if (!isEdit)
+              TextButton(
+                onPressed: _isSaving
+                    ? null
+                    : () {
+                        setState(() => _formDirty = true);
+                        _saveDraftNow(notify: true);
+                      },
+                child: const Text('Save draft'),
+              ),
+          ],
         ),
         body: SafeArea(
           bottom: false,
           child: HexaPageErrorBoundary(
             title: 'Purchase wizard',
             onRetry: _bootstrap,
-            child: purchaseWizardMainContent(),
+            child: LayoutBuilder(
+              builder: (ctx, constraints) {
+                final windowW = MediaQuery.sizeOf(ctx).width;
+                final framed = HexaResponsiveCenter(
+                  maxWidth: HexaResponsive.desktopFormMax(windowW),
+                  padding: EdgeInsets.zero,
+                  child: purchaseWizardMainContent(),
+                );
+                // Height-bound so Expanded steps never meet unbounded parents.
+                if (!constraints.maxHeight.isFinite ||
+                    constraints.maxHeight <= 0) {
+                  return SizedBox(
+                    height: MediaQuery.sizeOf(ctx).height * 0.85,
+                    child: framed,
+                  );
+                }
+                return framed;
+              },
+            ),
           ),
         ),
       ),

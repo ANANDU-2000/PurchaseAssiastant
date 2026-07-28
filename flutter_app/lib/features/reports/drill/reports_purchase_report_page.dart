@@ -4,8 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/models/trade_purchase_models.dart';
+import '../../../core/router/navigation_ext.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/utils/unit_utils.dart';
+import '../../../core/widgets/friendly_load_error.dart';
+import '../../../core/widgets/list_skeleton.dart';
+import '../../purchase/providers/trade_purchase_detail_provider.dart';
 import 'reports_breadcrumb_bar.dart';
 
 String _inr0(num n) =>
@@ -13,6 +17,9 @@ String _inr0(num n) =>
         .format(n);
 
 /// Purchase-centric report view inside Reports flow.
+///
+/// [initialPurchase] is an optional cache from navigation `extra`. Refresh and
+/// deep links always resolve via [tradePurchaseDetailProvider] when needed.
 class ReportsPurchaseReportPage extends ConsumerWidget {
   const ReportsPurchaseReportPage({
     super.key,
@@ -25,14 +32,70 @@ class ReportsPurchaseReportPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final p = initialPurchase;
-    if (p == null) {
+    final id = purchaseId.trim();
+    if (id.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text('Purchase report')),
-        body: const Center(child: Text('Purchase not found')),
+        body: FriendlyLoadError(
+          message: 'Missing purchase id',
+          subtitle: 'Open Reports to pick a purchase.',
+          onRetry: () => context.go('/reports?tab=purchase'),
+        ),
       );
     }
 
+    final seedOk =
+        initialPurchase != null && initialPurchase!.id == id;
+    final async = ref.watch(tradePurchaseDetailProvider(id));
+
+    return async.when(
+      skipLoadingOnReload: true,
+      skipLoadingOnRefresh: true,
+      loading: () {
+        if (seedOk) {
+          return _PurchaseReportBody(purchase: initialPurchase!);
+        }
+        return Scaffold(
+          backgroundColor: HexaColors.brandBackground,
+          appBar: AppBar(
+            title: const Text('Purchase report'),
+            backgroundColor: HexaColors.brandBackground,
+            foregroundColor: HexaColors.brandPrimary,
+          ),
+          body: const Center(child: ListSkeleton()),
+        );
+      },
+      error: (e, _) => Scaffold(
+        backgroundColor: HexaColors.brandBackground,
+        appBar: AppBar(
+          title: const Text('Purchase report'),
+          backgroundColor: HexaColors.brandBackground,
+          foregroundColor: HexaColors.brandPrimary,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () => context.popOrGo('/reports?tab=purchase'),
+          ),
+        ),
+        body: FriendlyLoadError(
+          message: e is TradePurchaseUnavailableError
+              ? 'Purchase not found'
+              : 'Could not load purchase',
+          onRetry: () => ref.invalidate(tradePurchaseDetailProvider(id)),
+        ),
+      ),
+      data: (p) => _PurchaseReportBody(purchase: p),
+    );
+  }
+}
+
+class _PurchaseReportBody extends StatelessWidget {
+  const _PurchaseReportBody({required this.purchase});
+
+  final TradePurchase purchase;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = purchase;
     final df = DateFormat('d MMM yyyy');
     final supplier = p.supplierName ?? 'Supplier';
 
@@ -41,13 +104,7 @@ class ReportsPurchaseReportPage extends ConsumerWidget {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/reports?tab=purchase');
-            }
-          },
+          onPressed: () => context.popOrGo('/reports?tab=purchase'),
         ),
         title: Text(p.humanId),
         backgroundColor: HexaColors.brandBackground,
@@ -99,12 +156,14 @@ class ReportsPurchaseReportPage extends ConsumerWidget {
               subtitle: Text(
                 '${formatStockQtyForUnit(line.unit, line.qty)} ${line.unit.toUpperCase()}',
               ),
-              trailing: Text(_inr0((line.lineTotal ?? line.landingGross).round())),
+              trailing:
+                  Text(_inr0((line.lineTotal ?? line.landingGross).round())),
             ),
           Padding(
             padding: const EdgeInsets.all(16),
             child: FilledButton(
-              onPressed: () => context.push('/purchase/detail/${p.id}', extra: p),
+              onPressed: () =>
+                  context.push('/purchase/detail/${p.id}', extra: p),
               child: const Text('Open purchase detail'),
             ),
           ),

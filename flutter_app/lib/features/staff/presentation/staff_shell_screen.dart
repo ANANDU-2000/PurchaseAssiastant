@@ -86,8 +86,10 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
 
     final sessionHint = ref.watch(apiDegradedProvider);
     final width = MediaQuery.sizeOf(context).width;
+    // width==0 (web first frame): keep bottom bar so chrome is not fully blank.
+    // Phone/desktop thresholds unchanged once MediaQuery has a real size.
     final showRail = width > 0 && width >= kShellRailMin;
-    final showBottomBar = width > 0 && width < kShellBottomNavMax;
+    final showBottomBar = width <= 0 || width < kShellBottomNavMax;
     final notifN = ref.watch(notificationsUnreadCountProvider);
     final pendingDel = ref.watch(staffPendingDeliveryCountProvider);
 

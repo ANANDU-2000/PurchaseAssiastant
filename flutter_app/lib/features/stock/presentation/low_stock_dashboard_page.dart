@@ -503,36 +503,46 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final boundedHeight =
-              constraints.maxHeight.isFinite && constraints.maxHeight > 0;
+          // Always bind height — TabBarView blanks on Flutter web when maxHeight
+          // is 0/unbounded (same class of bug as Opening Stock / item detail).
+          final h = constraints.maxHeight.isFinite && constraints.maxHeight > 0
+              ? constraints.maxHeight
+              : MediaQuery.sizeOf(context).height;
           return groupedAsync.when(
-            loading: () => Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_loadTimedOut) ...[
-                    Text(
-                      'Taking longer than usual',
-                      style: HexaDsType.body(14, color: HexaDsColors.textMuted),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton.tonalIcon(
-                      onPressed: _refreshLowStock,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Refresh'),
-                    ),
-                    const SizedBox(height: 20),
+            loading: () => SizedBox(
+              height: h,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_loadTimedOut) ...[
+                      Text(
+                        'Taking longer than usual',
+                        style:
+                            HexaDsType.body(14, color: HexaDsColors.textMuted),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.tonalIcon(
+                        onPressed: _refreshLowStock,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Refresh'),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                    const CircularProgressIndicator(),
                   ],
-                  const CircularProgressIndicator(),
-                ],
+                ),
               ),
             ),
-            error: (e, _) => FriendlyLoadError(
-              message: 'Could not load low stock',
-              subtitle: loadStateErrorSubtitle(e),
-              onRetry: _refreshLowStock,
+            error: (e, _) => SizedBox(
+              height: h,
+              child: FriendlyLoadError(
+                message: 'Could not load low stock',
+                subtitle: loadStateErrorSubtitle(e),
+                onRetry: _refreshLowStock,
+              ),
             ),
             data: (grouped) {
               final desktop = context.isDesktopLayout;
@@ -564,18 +574,21 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
                   await ref.read(lowStockOperationsPageProvider.future);
                 },
                 child: desktop
-                    ? HexaResponsiveCenter(
-                        maxWidth: 1280,
-                        padding: EdgeInsets.zero,
-                        child: tree,
+                    ? Align(
+                        alignment: Alignment.topLeft,
+                        child: SizedBox(
+                          width: constraints.maxWidth.isFinite
+                              ? (constraints.maxWidth < 1280
+                                  ? constraints.maxWidth
+                                  : 1280)
+                              : 1280,
+                          height: h,
+                          child: tree,
+                        ),
                       )
                     : tree,
               );
-              if (!boundedHeight) return content;
-              return SizedBox(
-                height: constraints.maxHeight,
-                child: content,
-              );
+              return SizedBox(height: h, child: content);
             },
           );
         },

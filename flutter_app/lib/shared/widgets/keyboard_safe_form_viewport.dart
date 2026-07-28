@@ -66,7 +66,15 @@ class KeyboardSafeFormViewport extends StatelessWidget {
             if (prepend != null) prepend!,
             if (minFieldsHeight > 0)
               ConstrainedBox(
-                constraints: BoxConstraints(minHeight: minFieldsHeight),
+                constraints: BoxConstraints(
+                  // Never let min > max (crashes ConstrainedBox).
+                  minHeight: hasBoundedH
+                      ? (minFieldsHeight > maxH ? maxH : minFieldsHeight)
+                      : minFieldsHeight,
+                  // Bound max when parent height is known so Expanded/Spacer
+                  // inside [fields] cannot crash on unbounded scroll height.
+                  maxHeight: hasBoundedH ? maxH : double.infinity,
+                ),
                 child: fields,
               )
             else

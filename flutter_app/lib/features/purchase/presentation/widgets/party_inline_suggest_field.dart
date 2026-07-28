@@ -838,79 +838,82 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: borderColor.withValues(alpha: 0.45)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 4, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${rows.length} of ${allHits.length}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 240),
+          child: Column(
+            mainAxisSize: MainAxisSize.max,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 4, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${rows.length} of ${allHits.length}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    if (showSeeAll)
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        onPressed: () async {
+                          await _openSeeAllSheet();
+                          if (mounted) setState(() {});
+                        },
+                        child: const Text('See more'),
+                      ),
+                    IconButton(
+                      tooltip: 'Close suggestions',
+                      visualDensity: VisualDensity.compact,
+                      icon: Icon(
+                        Icons.close_rounded,
                         color: cs.onSurfaceVariant,
                       ),
-                    ),
-                  ),
-                  if (showSeeAll)
-                    TextButton(
-                      style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                      onPressed: () async {
-                        await _openSeeAllSheet();
+                      onPressed: () {
+                        _overlayStayOpenUntilDismiss = false;
+                        widget.focusNode.unfocus();
+                        FocusManager.instance.primaryFocus?.unfocus();
+                        _overlayController.hide();
                         if (mounted) setState(() {});
                       },
-                      child: const Text('See more'),
                     ),
-                  IconButton(
-                    tooltip: 'Close suggestions',
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(
-                      Icons.close_rounded,
-                      color: cs.onSurfaceVariant,
-                    ),
-                    onPressed: () {
-                      _overlayStayOpenUntilDismiss = false;
-                      widget.focusNode.unfocus();
-                      FocusManager.instance.primaryFocus?.unfocus();
-                      _overlayController.hide();
-                      if (mounted) setState(() {});
-                    },
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Scrollbar(
-                controller: _overlaySuggestScroll,
-                thumbVisibility: true,
-                interactive: true,
-                child: ListView(
-                  controller: _overlaySuggestScroll,
-                  shrinkWrap: false,
-                  primary: false,
-                  physics: const ClampingScrollPhysics(),
-                  padding: EdgeInsets.zero,
-                  clipBehavior: Clip.hardEdge,
-                  children: [
-                    for (final it in rows) _buildSuggestionTile(cs, it),
-                    if (showDivider)
-                      Divider(height: 1, thickness: 1, color: borderColor),
-                    if (showAddFocused && widget.onAddRow != null)
-                      _buildAddRowTile(cs),
                   ],
                 ),
               ),
-            ),
-          ],
+              Expanded(
+                child: Scrollbar(
+                  controller: _overlaySuggestScroll,
+                  thumbVisibility: true,
+                  interactive: true,
+                  child: ListView(
+                    controller: _overlaySuggestScroll,
+                    shrinkWrap: false,
+                    primary: false,
+                    physics: const ClampingScrollPhysics(),
+                    padding: EdgeInsets.zero,
+                    clipBehavior: Clip.hardEdge,
+                    children: [
+                      for (final it in rows) _buildSuggestionTile(cs, it),
+                      if (showDivider)
+                        Divider(height: 1, thickness: 1, color: borderColor),
+                      if (showAddFocused && widget.onAddRow != null)
+                        _buildAddRowTile(cs),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

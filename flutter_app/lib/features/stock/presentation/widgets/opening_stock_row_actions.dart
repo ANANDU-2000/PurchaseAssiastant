@@ -59,7 +59,7 @@ Future<void> showOpeningStockRowActions({
             onTap: () {
               Navigator.pop(context);
               context.push(
-                '/catalog/item/$id?tab=history&name=${Uri.encodeComponent(name)}',
+                '/catalog/item/$id?tab=activity&name=${Uri.encodeComponent(name)}',
               );
             },
           ),

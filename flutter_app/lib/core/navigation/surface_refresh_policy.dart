@@ -4,7 +4,7 @@ const Duration kShellTabReturnMinInterval = Duration(seconds: 45);
 /// Lightweight home surfaces (activity + inventory) may refresh more often.
 const Duration kHomeSoftRefreshMinInterval = Duration(seconds: 30);
 
-const Duration kStockListCacheTtl = Duration(seconds: 30);
+const Duration kStockListCacheTtl = Duration(seconds: 45);
 
 bool shouldRefreshOnShellTabReturn(DateTime? lastRefreshedAt) {
   if (lastRefreshedAt == null) return true;

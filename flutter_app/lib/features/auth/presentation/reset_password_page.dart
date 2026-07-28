@@ -236,6 +236,7 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
                       'New password',
                       icon: Icons.key_rounded,
                       err: p1 != null,
+                      errorText: p1,
                       suffix: IconButton(
                         onPressed: () => setState(() => _obscure1 = !_obscure1),
                         icon: Icon(
@@ -247,18 +248,6 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
                       ),
                     ),
                   ),
-                  if (p1 != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6, left: 4),
-                      child: Text(
-                        p1,
-                        style: TextStyle(
-                          color: Colors.red.shade700,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _pass2,
@@ -273,6 +262,7 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
                       'Confirm password',
                       icon: Icons.lock_outline_rounded,
                       err: p2 != null,
+                      errorText: p2,
                       suffix: IconButton(
                         onPressed: () => setState(() => _obscure2 = !_obscure2),
                         icon: Icon(
@@ -284,18 +274,6 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
                       ),
                     ),
                   ),
-                  if (p2 != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6, left: 4),
-                      child: Text(
-                        p2,
-                        style: TextStyle(
-                          color: Colors.red.shade700,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
                   if (_inlineError != null) ...[
                     const SizedBox(height: 8),
                     Text(

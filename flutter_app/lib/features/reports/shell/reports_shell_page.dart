@@ -561,7 +561,8 @@ class _ReportsShellPageState extends ConsumerState<ReportsShellPage> {
     final merged = ref.watch(reportsPurchasesMergedProvider);
     final aggAll = ref.watch(reportsAggregateProvider);
     final filtered = ref.watch(reportsFilteredDataProvider);
-    final filterCount = ref.watch(reportsFilterProvider).activeCount;
+    final filterCount =
+        ref.watch(reportsFilterProvider.select((f) => f.activeCount));
     final session = ref.watch(sessionProvider);
     final hasFetchError = purchasesAsync.hasError;
     final showSkeleton = !hasFetchError &&
@@ -596,16 +597,23 @@ class _ReportsShellPageState extends ConsumerState<ReportsShellPage> {
     );
 
     final screenW = MediaQuery.sizeOf(context).width;
-    final wideDesktop = screenW >= 900;
-    final showSidebar = wideDesktop;
+    // Desktop sidebar from ≥1024 (same as isDesktopLayout); tablet keeps period in top bar.
+    final showSidebar = screenW >= kDesktopMin;
     final showFilterDrawer = context.isReportsDesktop;
-    final totalFixed = (showSidebar ? 181.0 : 0.0) + (showFilterDrawer ? 261.0 : 0.0);
+    final periodW = screenW < 1366
+        ? HexaResponsive.reportsPeriodNavCompact
+        : HexaResponsive.reportsPeriodNavWidth;
+    final filterW = screenW < 1366
+        ? HexaResponsive.reportsFilterDrawerCompact
+        : HexaResponsive.reportsFilterDrawerWidth;
+    // stretch (not start): nested Column+Expanded / ListViews need a bounded
+    // cross-axis on Flutter web — start left the main pane at 0 height (blank Reports).
     final content = Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (showSidebar) ...[
           SizedBox(
-            width: screenW - totalFixed < 580 ? 140 : 180,
+            width: periodW,
             child: _ReportsPeriodNav(
               selected: _presetLabel(_preset),
               onSelect: _applyDatePresetFromLabel,
@@ -631,10 +639,10 @@ class _ReportsShellPageState extends ConsumerState<ReportsShellPage> {
         if (showFilterDrawer) ...[
           const VerticalDivider(width: 1),
           SizedBox(
-            width: screenW - totalFixed < 580 ? 200 : 260,
+            width: filterW,
             child: const ReportsFilterDrawer(),
           ),
-        ],
+          ],
       ],
     );
 
@@ -656,12 +664,12 @@ class _ReportsShellPageState extends ConsumerState<ReportsShellPage> {
           filterCount: filterCount,
           onExport: () => _openExportSheet(merged),
           exporting: _exportingPdf || _exportingCsv,
-          selectedPeriodPreset: wideDesktop ? null : _presetLabel(_preset),
+          selectedPeriodPreset: showSidebar ? null : _presetLabel(_preset),
           onPeriodPresetSelected:
-              wideDesktop ? null : _applyDatePresetFromLabel,
-          onCustomPeriod: wideDesktop ? null : () => unawaited(_pickCustomRange()),
-          onSyncHomePeriod: wideDesktop ? null : _syncRangeWithHome,
-          showPeriodRow: !wideDesktop,
+              showSidebar ? null : _applyDatePresetFromLabel,
+          onCustomPeriod: showSidebar ? null : () => unawaited(_pickCustomRange()),
+          onSyncHomePeriod: showSidebar ? null : _syncRangeWithHome,
+          showPeriodRow: !showSidebar,
         ),
         body: session == null
             ? const Center(child: Text('Sign in'))
@@ -671,7 +679,22 @@ class _ReportsShellPageState extends ConsumerState<ReportsShellPage> {
                     _bumpInvalidate();
                     await ref.read(reportsPurchasesPayloadProvider.future);
                   },
-                  child: content,
+                  // Bind viewport size so the desktop Row + Expanded tab pane
+                  // never lays out at 0 height on Flutter web.
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final h = constraints.hasBoundedHeight
+                          ? constraints.maxHeight
+                          : MediaQuery.sizeOf(context).height;
+                      return SizedBox(
+                        width: constraints.maxWidth.isFinite
+                            ? constraints.maxWidth
+                            : MediaQuery.sizeOf(context).width,
+                        height: h,
+                        child: content,
+                      );
+                    },
+                  ),
                 ),
               ),
       ),

@@ -175,20 +175,9 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
                       'Email',
                       icon: Icons.mail_outline_rounded,
                       err: eErr != null,
+                      errorText: eErr,
                     ),
                   ),
-                  if (eErr != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6, left: 4),
-                      child: Text(
-                        eErr,
-                        style: TextStyle(
-                          color: Colors.red.shade700,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
                   if (_inlineError != null) ...[
                     const SizedBox(height: 8),
                     Text(

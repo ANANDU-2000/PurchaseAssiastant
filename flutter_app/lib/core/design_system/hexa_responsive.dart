@@ -147,6 +147,87 @@ abstract final class HexaResponsive {
   static const double maxFormWidth = 720;
   static const double maxSheetWidth = 640;
 
+  /// Reports desktop chrome (period nav + filter drawer).
+  static const double reportsPeriodNavWidth = 200;
+  static const double reportsPeriodNavCompact = 160;
+  static const double reportsFilterDrawerWidth = 280;
+  static const double reportsFilterDrawerCompact = 220;
+
+  /// Desktop content max for standard pages (window width bands).
+  /// Body is already window − rail; do not subtract [kShellCompactRailWidth] again.
+  static double desktopContentMax(double windowW) {
+    if (windowW < 1280) return 1100;
+    if (windowW < 1366) return 1120; // 1280
+    if (windowW < 1440) return 1200; // 1366
+    if (windowW < 1600) return 1280; // 1440
+    if (windowW < 1920) return 1400; // 1600
+    return 1520; // ≥1920
+  }
+
+  /// Owner home — fills more of the body so 1600/1920 are not empty gutters.
+  static double desktopHomeContentMax(double windowW) {
+    if (windowW < 1280) return 1180;
+    if (windowW < 1366) return 1160;
+    if (windowW < 1440) return 1240;
+    if (windowW < 1600) return 1320;
+    if (windowW < 1920) return 1480;
+    return 1680;
+  }
+
+  /// Settings / edit forms.
+  static double desktopFormMax(double windowW) {
+    if (windowW < 1600) return 720;
+    if (windowW < 1920) return 760;
+    return 800;
+  }
+
+  /// Master-detail preview/detail column width (fixed pane, not flex-stretch).
+  static double desktopDetailPaneMax(double windowW) {
+    if (windowW < 1440) return 420;
+    if (windowW < 1600) return 480;
+    if (windowW < 1920) return 520;
+    return 560;
+  }
+
+  /// Detail *card* inside a flex pane (stock/purchase) — grows with screen.
+  static double desktopDetailContentMax(double windowW) {
+    if (windowW < 1440) return 720;
+    if (windowW < 1600) return 760;
+    if (windowW < 1920) return 820;
+    return 880;
+  }
+
+  /// Resolve a requested max against desktop bands when callers pass the
+  /// standard constants (mobile callers keep the literal width).
+  static double resolveDesktopMax(double windowW, double requested) {
+    if (windowW < kDesktopMin) return requested;
+    if ((requested - maxHomeContentWidth).abs() < 0.5) {
+      return desktopHomeContentMax(windowW);
+    }
+    if ((requested - maxContentWidth).abs() < 0.5) {
+      return desktopContentMax(windowW);
+    }
+    if ((requested - maxFormWidth).abs() < 0.5 ||
+        (requested - 720).abs() < 0.5) {
+      return desktopFormMax(windowW);
+    }
+    if ((requested - 900).abs() < 0.5) {
+      return desktopContentMax(windowW);
+    }
+    return requested;
+  }
+
+  static double desktopPageGutter(
+    double windowW, {
+    bool operational = false,
+  }) {
+    if (windowW < 1280) return operational ? 20 : 24;
+    if (windowW < 1440) return operational ? 20 : 24; // 1280–1439
+    if (windowW < 1600) return operational ? 24 : 28; // 1440
+    if (windowW < 1920) return operational ? 28 : 32; // 1600
+    return operational ? 32 : 40; // ≥1920
+  }
+
   /// Vertical gap between home/report sections (tighter on phones).
   static double sectionGap(BuildContext context) {
     final width = _hexaLayoutWidth(context);
@@ -161,11 +242,10 @@ abstract final class HexaResponsive {
   }) {
     final width = _hexaLayoutWidth(context);
     if (width == 0 || width < HexaBreakpoints.compactPhone) return 12;
-    if (operational) {
-      if (width >= HexaBreakpoints.desktop) return 20;
-      return HexaOp.pageGutter;
+    if (width >= HexaBreakpoints.desktop) {
+      return desktopPageGutter(width, operational: operational);
     }
-    if (width >= HexaBreakpoints.desktop) return 32;
+    if (operational) return HexaOp.pageGutter;
     if (width >= HexaBreakpoints.tablet) return 24;
     return 16;
   }
@@ -209,17 +289,25 @@ class HexaResponsiveCenter extends StatelessWidget {
     // Never use Align/Center around scroll sliver children on Flutter web —
     // unbounded height + expand-to-fit blanks the page. Pad horizontally when
     // the parent is wider than [maxWidth] instead.
+    // Desktop: pad only the *right* so content stays flush with the sidebar.
+    // Phone/tablet: keep symmetric padding (unchanged).
     final pad = padding ?? HexaResponsive.pagePadding(context);
+    final windowW = _hexaLayoutWidth(context);
+    final desktop = windowW >= kDesktopMin;
+    final effectiveMax =
+        HexaResponsive.resolveDesktopMax(windowW, maxWidth);
     return Padding(
       padding: pad,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final w = constraints.maxWidth;
           Widget content = child;
-          if (w.isFinite && w > maxWidth) {
-            final side = (w - maxWidth) / 2;
+          if (w.isFinite && w > effectiveMax) {
+            final extra = w - effectiveMax;
             content = Padding(
-              padding: EdgeInsets.symmetric(horizontal: side),
+              padding: desktop
+                  ? EdgeInsets.only(right: extra)
+                  : EdgeInsets.symmetric(horizontal: extra / 2),
               child: child,
             );
           }
@@ -327,7 +415,11 @@ Future<T?> showHexaBottomSheet<T>({
       barrierDismissible: true,
       builder: (ctx) {
         final mq = MediaQuery.sizeOf(ctx);
-        final sheetW = maxWidth.clamp(320.0, 560.0);
+        final windowW = mq.width;
+        final formCap = HexaResponsive.desktopFormMax(windowW);
+        // Allow up to form band on large desktops; keep phone-dialog feel on smaller.
+        final upper = math.min(formCap, mq.width * 0.48);
+        final sheetW = maxWidth.clamp(320.0, upper).toDouble();
         final inset = EdgeInsets.only(
           bottom: MediaQuery.viewInsetsOf(ctx).bottom,
         );

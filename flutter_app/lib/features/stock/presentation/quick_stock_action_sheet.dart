@@ -5,9 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/auth/session_permissions.dart';
 import '../../../core/stock/stock_version_retry.dart';
 import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/json_coerce.dart';
@@ -20,14 +22,20 @@ import '../../../core/providers/stock_providers.dart'
     show
         applyStockItemDetailPatch,
         applyStockListRowPatch,
+        stockChangesFeedProvider,
+        stockItemActivityProvider,
         stockStatusCountsProvider;
 import '../stock_list_row_patch.dart'
-    show stockListPatchFromPhysicalCount, stockListPatchFromStockDetail;
+    show
+        stockListPatchFromPhysicalCount,
+        stockListPatchFromStockDetail,
+        stockStatusForPatchRow;
 import '../../../core/providers/notification_center_provider.dart';
 import '../../../core/providers/server_notifications_provider.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../../core/design_system/hexa_responsive.dart';
 import 'widgets/stock_update_mode_toggle.dart';
+import 'stock_undo_snackbar.dart';
 
 const _kReasonChips = <(String label, String type)>[
   ('Physical count', 'verification'),
@@ -37,7 +45,7 @@ const _kReasonChips = <(String label, String type)>[
   ('Wastage', 'damaged'),
 ];
 
-/// Quick physical stock update (patch / compact update).
+/// Quick physical / system stock update (patch / compact update).
 Future<bool> showQuickStockActionSheet({
   required BuildContext context,
   required WidgetRef ref,
@@ -46,12 +54,28 @@ Future<bool> showQuickStockActionSheet({
   bool skipInitialRefresh = false,
   bool refreshItemDetail = false,
 }) async {
+  final id = item['id']?.toString().trim() ?? '';
+  if (id.isEmpty) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Item not found — cannot update stock'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+    return false;
+  }
+  final safeItem = normalizeStockDetailMap(Map<String, dynamic>.from(item));
+  if ((safeItem['id']?.toString() ?? '').isEmpty) {
+    safeItem['id'] = id;
+  }
   final result = await showHexaBottomSheet<bool>(
     context: context,
     compact: true,
     padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
     child: _QuickStockActionBody(
-      item: item,
+      item: safeItem,
       parentRef: ref,
       initialMode: initialMode,
       skipInitialRefresh: skipInitialRefresh,
@@ -83,6 +107,8 @@ class _QuickStockActionBody extends ConsumerStatefulWidget {
 
 class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
   bool _saving = false;
+  bool _refreshing = false;
+  String? _refreshError;
   Map<String, dynamic>? _preSaveItemSnapshot;
   late Map<String, dynamic> _item;
   late final TextEditingController _qtyCtrl;
@@ -97,7 +123,11 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
   @override
   void initState() {
     super.initState();
-    _item = Map<String, dynamic>.from(widget.item);
+    _item = normalizeStockDetailMap(Map<String, dynamic>.from(widget.item));
+    if ((_item['id']?.toString() ?? '').isEmpty &&
+        (widget.item['id']?.toString() ?? '').isNotEmpty) {
+      _item['id'] = widget.item['id'];
+    }
     _mode = widget.initialMode;
     _current = _seedQtyForMode(_mode);
     _qtyCtrl = TextEditingController(
@@ -105,7 +135,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     );
     _notesCtrl = TextEditingController();
     _qtyCtrl.addListener(_revalidateQty);
-    if (!widget.skipInitialRefresh && !_itemIsFresh(widget.item)) {
+    if (!widget.skipInitialRefresh && !_itemIsFresh(_item)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(_refreshItemFromServer());
       });
@@ -144,16 +174,36 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
 
   Future<bool> _refreshItemFromServer() async {
     final session = ref.read(sessionProvider);
-    if (session == null) return false;
+    if (session == null || _itemId.isEmpty) return false;
+    if (mounted) {
+      setState(() {
+        _refreshing = true;
+        _refreshError = null;
+      });
+    }
     try {
       final fresh = await ref.read(hexaApiProvider).getStockItem(
             businessId: session.primaryBusiness.id,
             itemId: _itemId,
           );
       if (!mounted) return false;
-      await _applyFreshItem(fresh);
+      if (fresh.isEmpty) {
+        setState(() {
+          _refreshing = false;
+          _refreshError = 'Could not refresh stock — using last known values';
+        });
+        return false;
+      }
+      await _applyFreshItem(normalizeStockDetailMap(fresh));
+      if (mounted) setState(() => _refreshing = false);
       return true;
     } catch (_) {
+      if (mounted) {
+        setState(() {
+          _refreshing = false;
+          _refreshError = 'Could not refresh stock — using last known values';
+        });
+      }
       return false;
     }
   }
@@ -199,6 +249,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
   bool get _canSave {
     final parsedQty = _parseEnteredQty();
     return !_saving &&
+        _itemId.isNotEmpty &&
         parsedQty != null &&
         (_mode == StockUpdateMode.physical ||
             (_reasonType != null && _reasonType!.isNotEmpty));
@@ -216,25 +267,137 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     super.dispose();
   }
 
-  String get _itemId => _item['id']?.toString() ?? '';
+  String get _itemId => _item['id']?.toString().trim() ?? '';
 
-  String get _name => _item['name']?.toString() ?? 'Item';
+  String get _name {
+    final n = _item['name']?.toString().trim() ?? '';
+    if (n.isNotEmpty) return n;
+    final code = _itemCode;
+    return code.isNotEmpty ? code : 'Item';
+  }
 
-  String get _unit =>
-      _item['stock_unit']?.toString() ??
-      _item['unit']?.toString() ??
-      'piece';
+  String get _itemCode =>
+      (_item['item_code'] ?? _item['sku'] ?? _item['barcode'])
+          ?.toString()
+          .trim() ??
+      '';
+
+  String get _unit {
+    final u = (_item['stock_unit'] ?? _item['unit'])?.toString().trim() ?? '';
+    return u.isNotEmpty ? u : 'piece';
+  }
 
   String get _unitLabel => _unit.isNotEmpty ? _unit.toUpperCase() : '';
 
+  String get _warehouseLabel {
+    final session = ref.read(sessionProvider);
+    final title = session?.primaryBusiness.effectiveDisplayTitle.trim() ?? '';
+    return title.isNotEmpty ? title : 'Warehouse';
+  }
+
+  /// Live difference: entered physical qty − system ledger.
+  double? get _liveDiff {
+    final entered = _parseEnteredQty();
+    if (entered == null) return null;
+    final system = coerceToDouble(_item['current_stock']);
+    if (!system.isFinite) return entered;
+    return entered - system;
+  }
+
+  /// System-mode adjustment: entered system qty − current system qty.
+  double? get _systemAdjustmentVariance {
+    if (_mode != StockUpdateMode.system) return null;
+    final entered = _parseEnteredQty();
+    if (entered == null) return null;
+    final system = coerceToDouble(_item['current_stock']);
+    if (!system.isFinite) return entered;
+    return entered - system;
+  }
+
+  double? get _physicalQty {
+    final phys = coerceToDoubleNullable(_item['physical_stock_qty']);
+    if (phys == null || !phys.isFinite) return null;
+    return phys;
+  }
+
+  /// Physical − system (ledger variance), independent of the qty field.
+  double? get _physicalVsSystemVariance {
+    final phys = _physicalQty;
+    if (phys == null) return null;
+    final system = coerceToDouble(_item['current_stock']);
+    if (!system.isFinite) return phys;
+    return phys - system;
+  }
+
+  String? get _historyLabel {
+    final by = _item['last_stock_updated_by']?.toString().trim();
+    final atRaw = _item['last_stock_updated_at']?.toString().trim();
+    if ((by == null || by.isEmpty) && (atRaw == null || atRaw.isEmpty)) {
+      return null;
+    }
+    String? when;
+    if (atRaw != null && atRaw.isNotEmpty) {
+      final dt = DateTime.tryParse(atRaw);
+      if (dt != null) {
+        when = DateFormat('d MMM · HH:mm').format(dt.toLocal());
+      }
+    }
+    if (by != null && by.isNotEmpty && when != null) {
+      return 'History: last system edit by $by · $when';
+    }
+    if (by != null && by.isNotEmpty) return 'History: last system edit by $by';
+    if (when != null) return 'History: last system edit · $when';
+    return null;
+  }
+
+  String get _approvalNote {
+    final session = ref.read(sessionProvider);
+    if (session == null) {
+      return 'Approval: sign in again before saving system stock.';
+    }
+    if (sessionIsPrivilegedStockRole(session)) {
+      return 'Approval: applies immediately (owner/manager). Undo available for 15 min.';
+    }
+    return 'Approval: owner is notified when staff updates system stock.';
+  }
+
   String? get _lastPhysicalLabel {
-    if (_item['physical_stock_qty'] == null) return null;
-    final qty = coerceToDouble(_item['physical_stock_qty']);
-    if (!qty.isFinite) return null;
-    final diff = coerceToDouble(_item['physical_stock_difference_qty']);
-    final sign = diff >= 0 ? '+' : '';
-    return 'Last physical: ${formatStockQtyForUnit(_unit, qty)} $_unitLabel'
-        '${diff.abs() > 0.001 ? ' ($sign${formatStockQtyForUnit(_unit, diff)} diff)' : ''}';
+    final phys = coerceToDoubleNullable(_item['physical_stock_qty']);
+    if (phys == null || !phys.isFinite) return null;
+    final diff = coerceToDoubleNullable(_item['physical_stock_difference_qty']);
+    final sign = (diff ?? 0) >= 0 ? '+' : '';
+    final diffPart = diff != null && diff.abs() > 0.001
+        ? ' ($sign${formatStockQtyForUnit(_unit, diff)} diff)'
+        : '';
+    return 'Last physical: ${formatStockQtyForUnit(_unit, phys)} $_unitLabel$diffPart';
+  }
+
+  Map<String, dynamic> _systemOptimisticFallback({
+    required num parsed,
+    required Map<String, dynamic> row,
+  }) {
+    return _systemOptimisticFallbackStatic(
+      parsed: parsed,
+      row: row,
+    );
+  }
+
+  static Map<String, dynamic> _systemOptimisticFallbackStatic({
+    required num parsed,
+    required Map<String, dynamic> row,
+  }) {
+    final phys = coerceToDoubleNullable(row['physical_stock_qty']);
+    final status = stockStatusForPatchRow({
+      ...row,
+      'current_stock': parsed,
+    });
+    return {
+      'current_stock': parsed,
+      if (status != null) 'stock_status': status,
+      if (phys != null && phys.isFinite)
+        'physical_stock_difference_qty': phys - parsed.toDouble(),
+      'last_stock_updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
   }
 
   static Future<Map<String, dynamic>?> _persistStockWithRef({
@@ -313,6 +476,12 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         'physical_stock_counted_at': now,
       };
     }
+    if (patch.isEmpty && updateMode == StockUpdateMode.system) {
+      patch = _systemOptimisticFallback(
+        parsed: parsed,
+        row: row,
+      );
+    }
     if (patch.isEmpty) return;
     if (kDebugMode) {
       debugPrint('[STOCK_CACHE_REFRESH] patchKeys=${patch.keys.toList()}');
@@ -350,12 +519,17 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     final reorder = coerceToDouble(itemRow['reorder_level']);
     final crossedReorder = reorder > 0 && parsed <= reorder;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Always refresh detail + activity history after a system/physical save.
       invalidateStockRowSaveSurfaces(
         parentRef,
         itemId: itemId,
         reorderAlert: crossedReorder,
-        refreshItemDetail: refreshItemDetail,
+        refreshItemDetail: true,
       );
+      parentRef.invalidate(stockChangesFeedProvider);
+      if (itemId.isNotEmpty) {
+        parentRef.invalidate(stockItemActivityProvider(itemId));
+      }
     });
     if (crossedReorder) {
       final unitLabel = unit.isNotEmpty ? unit.toUpperCase() : '';
@@ -423,6 +597,14 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
             duration: Duration(seconds: 5),
             behavior: SnackBarBehavior.floating,
           ),
+        );
+      } else {
+        // System ledger edit — offer 15‑min undo (same as barcode scan path).
+        showStockUndoSnackBar(
+          messenger: messenger,
+          ref: parentRef,
+          itemId: itemId,
+          itemName: itemName,
         );
       }
       await _afterSaveBackgroundWithRef(
@@ -511,6 +693,12 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         'physical_stock_counted_at': now,
       };
     }
+    if (patch.isEmpty && mode == StockUpdateMode.system) {
+      patch = _systemOptimisticFallbackStatic(
+        parsed: parsed,
+        row: itemRow,
+      );
+    }
     if (patch.isEmpty) return;
     applyStockListRowPatch(parentRef, itemId: itemId, patch: patch);
     applyStockItemDetailPatch(parentRef, itemId: itemId, patch: patch);
@@ -519,6 +707,11 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
     if (!mounted) return;
+
+    if (_itemId.isEmpty) {
+      setState(() => _qtyError = 'Item missing — close and try again');
+      return;
+    }
 
     if (!_canSave) {
       if (!mounted) return;
@@ -531,7 +724,11 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
       });
       return;
     }
-    final parsed = _parseEnteredQty()!;
+    final parsed = _parseEnteredQty();
+    if (parsed == null) {
+      setState(() => _qtyError = _qtyErrorText());
+      return;
+    }
     if (_saving) return;
     if (!mounted) return;
     setState(() => _saving = true);
@@ -597,173 +794,376 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
 
   @override
   Widget build(BuildContext context) {
+    try {
+      return _buildForm(context);
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[STOCK_UPDATE_SHEET] build failed: $e\n$st');
+      }
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(8, 16, 8, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Could not open stock update',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Close and try again from the stock list.',
+              style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Widget _buildForm(BuildContext context) {
     final canSave = _canSave;
+    final systemQty = coerceToDouble(_item['current_stock']);
+    final systemSafe = systemQty.isFinite ? systemQty : 0.0;
     final stockLabel = stockDisplayPrimary(_current, _unit);
     final lastPhysical = _lastPhysicalLabel;
-    final systemQty = coerceToDouble(_item['current_stock']);
+    final entered = _parseEnteredQty();
+    final liveDiff = _liveDiff;
+    final systemAdj = _systemAdjustmentVariance;
+    final physQty = _physicalQty;
+    final physVsSystem = _physicalVsSystemVariance;
+    final history = _historyLabel;
+    final desktop = HexaBreakpoints.isDesktop(context);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => Navigator.of(context).pop(false),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close_rounded),
+              tooltip: 'Cancel',
+              onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+            ),
+          ],
+        ),
+        if (_itemCode.isNotEmpty)
+          Text(
+            'Product code: $_itemCode',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF64748B),
+            ),
+          ),
+        const SizedBox(height: 4),
+        Text(
+          'Warehouse: $_warehouseLabel',
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF64748B),
+          ),
+        ),
+        if (_refreshing) ...[
+          const SizedBox(height: 8),
+          const LinearProgressIndicator(minHeight: 2),
+        ],
+        if (_refreshError != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            _refreshError!,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFFB45309),
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Text.rich(
+          TextSpan(
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF64748B),
+            ),
+            children: [
+              TextSpan(
+                text: _mode == StockUpdateMode.physical
+                    ? 'Current physical: '
+                    : 'System quantity: ',
+              ),
+              TextSpan(
+                text: _mode == StockUpdateMode.system
+                    ? '${formatStockQtyForUnit(_unit, systemSafe)} $_unitLabel'
+                    : stockLabel,
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color: _mode == StockUpdateMode.physical
+                      ? const Color(0xFF0F766E)
+                      : const Color(0xFF2563EB),
+                  fontSize: 15,
+                ),
               ),
             ],
           ),
-          Text.rich(
-            TextSpan(
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF64748B),
-              ),
-              children: [
-                TextSpan(
-                  text: _mode == StockUpdateMode.physical
-                      ? 'Editing: '
-                      : 'System now: ',
-                ),
-                TextSpan(
-                  text: stockLabel,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    color: _mode == StockUpdateMode.physical
-                        ? const Color(0xFF0F766E)
-                        : const Color(0xFF2563EB),
-                    fontSize: 15,
-                  ),
-                ),
-              ],
+        ),
+        if (_mode == StockUpdateMode.physical) ...[
+          const SizedBox(height: 3),
+          Text(
+            'System ledger: ${formatStockQtyForUnit(_unit, systemSafe)} $_unitLabel (unchanged by this save)',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF64748B),
             ),
           ),
-          if (_mode == StockUpdateMode.physical) ...[
+        ],
+        if (_mode == StockUpdateMode.system) ...[
+          const SizedBox(height: 3),
+          Text(
+            physQty == null
+                ? 'Physical quantity: — (no count recorded)'
+                : 'Physical quantity: ${formatStockQtyForUnit(_unit, physQty)} $_unitLabel',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF0D6B5E),
+            ),
+          ),
+          if (physVsSystem != null) ...[
             const SizedBox(height: 3),
             Text(
-              'System ledger: ${formatStockQtyForUnit(_unit, systemQty)} $_unitLabel (unchanged until owner syncs)',
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF64748B),
-              ),
-            ),
-          ],
-          if (lastPhysical != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: Text(
-                lastPhysical,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF0D6B5E),
-                ),
-              ),
-            ),
-          if (_item['last_stock_updated_by'] != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Last system edit: ${_item['last_stock_updated_by']}',
-              style: const TextStyle(
+              'Ledger variance (physical − system): '
+              '${physVsSystem > 0.001 ? '+' : ''}'
+              '${formatStockQtyForUnit(_unit, physVsSystem)} $_unitLabel',
+              style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF64748B),
+                color: physVsSystem.abs() < 0.001
+                    ? const Color(0xFF64748B)
+                    : physVsSystem > 0
+                        ? const Color(0xFF15803D)
+                        : const Color(0xFFB91C1C),
               ),
             ),
           ],
-          const SizedBox(height: 10),
-          StockUpdateModeToggle(
-            mode: _mode,
-            onChanged: _onModeChanged,
+        ],
+        if (lastPhysical != null && _mode == StockUpdateMode.physical)
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Text(
+              lastPhysical,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0D6B5E),
+              ),
+            ),
           ),
-          const Divider(height: 20),
+        if (history != null) ...[
+          const SizedBox(height: 4),
           Text(
-            _mode == StockUpdateMode.system ? 'System stock' : 'Physical stock',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            history,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF64748B),
+            ),
           ),
+        ],
+        if (_mode == StockUpdateMode.system) ...[
           const SizedBox(height: 6),
-          TextField(
-            controller: _qtyCtrl,
-            autofocus: true,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            textInputAction: TextInputAction.done,
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
-            ],
-            decoration: InputDecoration(
-              isDense: true,
-              border: const OutlineInputBorder(),
-              errorText: _qtyError,
+          Text(
+            _approvalNote,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF475569),
             ),
-            onSubmitted: (_) {
-              if (canSave) _onSavePressed();
-            },
           ),
-          if (_mode == StockUpdateMode.system) ...[
-            const SizedBox(height: 14),
-            const Text(
-              'Reason',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final chip in _kReasonChips)
-                  HexaAccessibleFilterChip(
-                    label: chip.$1,
-                    selected: _reasonLabel == chip.$1,
-                    onSelected: (_) => setState(() {
-                      _reasonType = chip.$2;
-                      _reasonLabel = chip.$1;
-                      _reasonError = null;
-                    }),
-                    compact: true,
-                  ),
-              ],
-            ),
-            if (_reasonError != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                _reasonError!,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFFB91C1C),
-                ),
-              ),
-            ],
+        ],
+        const SizedBox(height: 10),
+        StockUpdateModeToggle(
+          mode: _mode,
+          onChanged: _saving ? (_) {} : _onModeChanged,
+        ),
+        const Divider(height: 20),
+        Text(
+          _mode == StockUpdateMode.system
+              ? 'Entered system quantity'
+              : 'Entered physical quantity',
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _qtyCtrl,
+          autofocus: true,
+          enabled: !_saving,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          textInputAction: TextInputAction.done,
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
           ],
-          const SizedBox(height: 14),
+          decoration: InputDecoration(
+            isDense: true,
+            border: const OutlineInputBorder(),
+            errorText: _qtyError,
+            suffixText: _unitLabel,
+          ),
+          onSubmitted: (_) {
+            if (canSave) _onSavePressed();
+          },
+        ),
+        if (_mode == StockUpdateMode.physical) ...[
+          const SizedBox(height: 10),
+          _DifferenceBanner(
+            label: 'Difference',
+            emptyHint:
+                'Difference: enter a quantity to compare with system stock',
+            entered: entered,
+            baselineQty: systemSafe,
+            diff: liveDiff,
+            unit: _unit,
+            unitLabel: _unitLabel,
+            baselineName: 'system',
+          ),
+          const SizedBox(height: 10),
           const Text(
-            'Notes (optional)',
+            'Reason',
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 6),
-          TextField(
-            controller: _notesCtrl,
-            maxLines: 2,
-            decoration: const InputDecoration(
-              isDense: true,
-              border: OutlineInputBorder(),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Chip(
+              avatar: const Icon(Icons.inventory_outlined, size: 16),
+              label: Text(
+                _reasonLabel.isNotEmpty ? _reasonLabel : 'Physical count',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+              ),
             ),
           ),
-          const SizedBox(height: 16),
+        ],
+        if (_mode == StockUpdateMode.system) ...[
+          const SizedBox(height: 10),
+          _DifferenceBanner(
+            label: 'Variance',
+            emptyHint:
+                'Variance: enter a quantity to see change vs current system stock',
+            entered: entered,
+            baselineQty: systemSafe,
+            diff: systemAdj,
+            unit: _unit,
+            unitLabel: _unitLabel,
+            baselineName: 'current',
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Reason',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final chip in _kReasonChips)
+                HexaAccessibleFilterChip(
+                  label: chip.$1,
+                  selected: _reasonLabel == chip.$1,
+                  onSelected: _saving
+                      ? null
+                      : (_) => setState(() {
+                            _reasonType = chip.$2;
+                            _reasonLabel = chip.$1;
+                            _reasonError = null;
+                          }),
+                  compact: true,
+                ),
+            ],
+          ),
+          if (_reasonError != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              _reasonError!,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFFB91C1C),
+              ),
+            ),
+          ],
+        ],
+        const SizedBox(height: 14),
+        const Text(
+          'Notes (optional)',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _notesCtrl,
+          enabled: !_saving,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            isDense: true,
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (desktop)
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed:
+                      _saving ? null : () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: SizedBox(
+                  height: 48,
+                  child: FilledButton(
+                    onPressed: canSave && !_saving ? _onSavePressed : null,
+                    child: _saving
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(
+                            _mode == StockUpdateMode.system
+                                ? 'SAVE SYSTEM STOCK'
+                                : 'SAVE PHYSICAL COUNT',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                  ),
+                ),
+              ),
+            ],
+          )
+        else
           SizedBox(
             height: 48,
             child: FilledButton(
@@ -782,7 +1182,82 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
                     ),
             ),
           ),
-        ],
+      ],
+    );
+  }
+}
+
+class _DifferenceBanner extends StatelessWidget {
+  const _DifferenceBanner({
+    required this.label,
+    required this.emptyHint,
+    required this.entered,
+    required this.baselineQty,
+    required this.diff,
+    required this.unit,
+    required this.unitLabel,
+    required this.baselineName,
+  });
+
+  final String label;
+  final String emptyHint;
+  final double? entered;
+  final double baselineQty;
+  final double? diff;
+  final String unit;
+  final String unitLabel;
+  final String baselineName;
+
+  @override
+  Widget build(BuildContext context) {
+    if (entered == null || diff == null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Text(
+          emptyHint,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF64748B),
+          ),
+        ),
       );
+    }
+    final d = diff!;
+    final sign = d > 0.001 ? '+' : '';
+    final color = d.abs() < 0.001
+        ? const Color(0xFF334155)
+        : d > 0
+            ? const Color(0xFF15803D)
+            : const Color(0xFFB91C1C);
+    final bg = d.abs() < 0.001
+        ? const Color(0xFFF1F5F9)
+        : d > 0
+            ? const Color(0xFFECFDF5)
+            : const Color(0xFFFEF2F2);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Text(
+        '$label: $sign${formatStockQtyForUnit(unit, d)} $unitLabel'
+        '  (entered ${formatStockQtyForUnit(unit, entered!)} − $baselineName ${formatStockQtyForUnit(unit, baselineQty)})',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          color: color,
+        ),
+      ),
+    );
   }
 }

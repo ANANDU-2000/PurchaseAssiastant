@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/design_system/hexa_responsive.dart';
 import 'keyboard_safe_form_viewport.dart';
 
 /// Full-screen form with keyboard-safe scroll body and footer CTAs merged into the scroll lane.
@@ -29,6 +30,7 @@ class FullScreenFormScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final surface = Theme.of(context).colorScheme.surface;
+    final windowW = MediaQuery.sizeOf(context).width;
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
@@ -62,13 +64,17 @@ class FullScreenFormScaffold extends StatelessWidget {
         bottom: false,
         left: true,
         right: true,
-        child: KeyboardSafeFormViewport(
-          dismissKeyboardOnTap: true,
-          fields: body,
-          footer: Material(
-            elevation: 8,
-            color: surface,
-            child: bottom,
+        child: HexaResponsiveCenter(
+          maxWidth: HexaResponsive.desktopFormMax(windowW),
+          padding: EdgeInsets.zero,
+          child: KeyboardSafeFormViewport(
+            dismissKeyboardOnTap: true,
+            fields: body,
+            footer: Material(
+              elevation: 8,
+              color: surface,
+              child: bottom,
+            ),
           ),
         ),
       ),

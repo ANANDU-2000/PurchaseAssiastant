@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/design_system/hexa_responsive.dart';
 import '../../../../core/theme/hexa_colors.dart';
 
 /// Compact 2×3 quick actions (warehouse operational density).
@@ -73,13 +74,19 @@ class HomeQuickActionsGrid extends StatelessWidget {
       ),
     ];
 
-    return GridView.count(
-      crossAxisCount: 3,
+    // Desktop: fixed mainAxisExtent — wide childAspectRatio in shrinkWrap grids
+    // blanked the home CustomScrollView on Flutter web (≥1024). Phone keeps ratio.
+    final desktop = MediaQuery.sizeOf(context).width >= kDesktopMin;
+    return GridView(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 8,
-      crossAxisSpacing: 8,
-      childAspectRatio: 1.14,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        childAspectRatio: 1.14,
+        mainAxisExtent: desktop ? 100 : null,
+      ),
       children: [
         for (final a in actions)
           _CompactCircularAction(

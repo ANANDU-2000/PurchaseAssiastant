@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/providers/brokers_list_provider.dart';
 import '../../../core/providers/catalog_providers.dart';
@@ -65,6 +66,8 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
   bool _unitManuallySelected = false;
   bool _saving = false;
   String? _error;
+  String? _nameFieldError;
+  String? _partyFieldError;
   bool _prefilled = false;
   bool _supplierManuallySelected = false;
   bool _brokerManuallySelected = false;
@@ -174,6 +177,7 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
       _supplierId = it.id;
       _supplierDisplayName = it.label;
       _supplierManuallySelected = true;
+      _partyFieldError = null;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -194,6 +198,7 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
       _brokerId = it.id;
       _brokerDisplayName = it.label;
       _brokerManuallySelected = true;
+      _partyFieldError = null;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -430,17 +435,29 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
 
   bool _validate() {
     if (_supplierId == null && _supplierSearchCtrl.text.trim().isNotEmpty) {
-      setState(() => _error =
-          'Supplier not selected — pick from the dropdown list or clear the field.');
+      setState(() {
+        _partyFieldError =
+            'Supplier not selected — pick from the list or clear the field.';
+        _error = null;
+        _nameFieldError = null;
+      });
       return false;
     }
     if (_brokerId == null && _brokerSearchCtrl.text.trim().isNotEmpty) {
-      setState(() => _error =
-          'Broker not selected — pick from the dropdown list or clear the field.');
+      setState(() {
+        _partyFieldError =
+            'Broker not selected — pick from the list or clear the field.';
+        _error = null;
+        _nameFieldError = null;
+      });
       return false;
     }
     if (_nameCtrl.text.trim().isEmpty) {
-      setState(() => _error = 'Item name is required.');
+      setState(() {
+        _nameFieldError = 'Item name is required.';
+        _error = null;
+        _partyFieldError = null;
+      });
       return false;
     }
     final types = ref.read(categoryTypesIndexProvider).valueOrNull ?? [];
@@ -448,19 +465,30 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
         _typeId != null ? _rowByTypeId(types, _typeId!) : null;
     if (typeRow == null ||
         typeRow['name']?.toString().trim() != _typeSearchCtrl.text.trim()) {
-      setState(() => _error =
-          'Pick a subcategory in More options (required once).');
+      setState(() {
+        _error = 'Pick a subcategory in More options (required once).';
+        _nameFieldError = null;
+        _partyFieldError = null;
+      });
       return false;
     }
     if (StockTrackingMode.isBagMode(_packagingMode)) {
       final kg = _parsedKgFromName();
       if (kg == null) {
-        setState(() => _error =
-            'Bag items need weight in the name (e.g. SUGAR 50KG).');
+        setState(() {
+          _nameFieldError =
+              'Bag items need weight in the name (e.g. SUGAR 50KG).';
+          _error = null;
+          _partyFieldError = null;
+        });
         return false;
       }
     }
-    setState(() => _error = null);
+    setState(() {
+      _error = null;
+      _nameFieldError = null;
+      _partyFieldError = null;
+    });
     return true;
   }
 
@@ -708,60 +736,92 @@ class _CatalogItemCreatePageState extends ConsumerState<CatalogItemCreatePage> {
           ),
         ),
         body: SafeArea(
-          child: Column(
-            children: [
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                  children: [
-                    ..._buildPartyFields(suppliersAsync, brokersAsync),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: _nameCtrl,
-                      focusNode: _nameFocus,
-                      decoration: const InputDecoration(
-                        labelText: 'Item name *',
-                        hintText: 'e.g. SUGAR 50KG',
-                        border: OutlineInputBorder(),
-                      ),
-                      textCapitalization: TextCapitalization.characters,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) {
-                        if (_validate()) {
-                          unawaited(_submit(addMore: false));
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    PackagingTypeSelector(
-                      selectedMode: _packagingMode,
-                      onModeChanged: _onPackagingModeChanged,
-                    ),
-                    const SizedBox(height: 8),
-                    ExpansionTile(
-                      tilePadding: EdgeInsets.zero,
-                      title: Text(
-                        'More options',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
+          child: LayoutBuilder(
+            builder: (context, _) {
+              final windowW = MediaQuery.sizeOf(context).width;
+              return Column(
+                children: [
+                  Expanded(
+                    child: HexaResponsiveCenter(
+                      maxWidth: HexaResponsive.desktopFormMax(windowW),
+                      padding: EdgeInsets.zero,
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                        children: [
+                          ..._buildPartyFields(suppliersAsync, brokersAsync),
+                          if (_partyFieldError != null) ...[
+                            Text(
+                              _partyFieldError!,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
+                            const SizedBox(height: 8),
+                          ],
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: _nameCtrl,
+                            focusNode: _nameFocus,
+                            decoration: InputDecoration(
+                              labelText: 'Item name *',
+                              hintText: 'e.g. SUGAR 50KG',
+                              border: const OutlineInputBorder(),
+                              errorText: _nameFieldError,
+                            ),
+                            textCapitalization: TextCapitalization.characters,
+                            textInputAction: TextInputAction.done,
+                            onChanged: (_) {
+                              if (_nameFieldError != null) {
+                                setState(() => _nameFieldError = null);
+                              }
+                            },
+                            onSubmitted: (_) {
+                              if (_validate()) {
+                                unawaited(_submit(addMore: false));
+                              }
+                            },
+                          ),
+                          const SizedBox(height: 14),
+                          PackagingTypeSelector(
+                            selectedMode: _packagingMode,
+                            onModeChanged: _onPackagingModeChanged,
+                          ),
+                          const SizedBox(height: 8),
+                          ExpansionTile(
+                            tilePadding: EdgeInsets.zero,
+                            title: Text(
+                              'More options',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                            subtitle: Text(
+                              _typeId == null
+                                  ? 'Subcategory, item code, HSN, rates'
+                                  : 'Subcategory, item code, HSN, rates',
+                            ),
+                            children: _buildMoreOptions(typesAsync),
+                          ),
+                          if (_error != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              _error!,
+                              style: const TextStyle(color: Colors.red),
+                            ),
+                          ],
+                        ],
                       ),
-                      subtitle: Text(
-                        _typeId == null
-                            ? 'Subcategory, item code, HSN, rates'
-                            : 'Subcategory, item code, HSN, rates',
-                      ),
-                      children: _buildMoreOptions(typesAsync),
                     ),
-                    if (_error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(_error!, style: const TextStyle(color: Colors.red)),
-                    ],
-                  ],
-                ),
-              ),
-              _buildFooter(),
-            ],
+                  ),
+                  _buildFooter(),
+                ],
+              );
+            },
           ),
         ),
       ),

@@ -99,6 +99,7 @@ class _LowStockApprovalSheetBodyState
   @override
   Widget build(BuildContext context) {
     return HexaResponsiveSheetViewport(
+      compact: true,
       child: FutureBuilder(
         future: _future,
         builder: (ctx, snap) {

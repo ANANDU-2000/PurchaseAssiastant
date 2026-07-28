@@ -165,7 +165,7 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
         label: const Text('Add category'),
       ),
       body: DesktopPageShell(
-        maxContentWidth: 900,
+        maxContentWidth: HexaResponsive.maxContentWidth,
         child: Column(
         children: [
           Padding(
@@ -308,11 +308,14 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
                               parent: BouncingScrollPhysics(),
                             ),
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                            // Desktop: mainAxisExtent — wide childAspectRatio (3.6)
+                            // asserted/blanked CanvasKit category cards at ≥1024.
                             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: gridCols,
                               mainAxisSpacing: 10,
                               crossAxisSpacing: 10,
-                              childAspectRatio: desktop ? 3.6 : 4.2,
+                              childAspectRatio: 4.2,
+                              mainAxisExtent: desktop ? 88 : null,
                             ),
                             itemCount: display.length,
                             itemBuilder: (context, i) {

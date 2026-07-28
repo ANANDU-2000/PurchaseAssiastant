@@ -2053,51 +2053,43 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
     final line = _validateAndBuildLine();
     if (line == null) {
       if (mounted) {
-        final msg = _errKgPerBag ??
-            _errQty ??
-            _errItem ??
-            _errUnit ??
-            _errLanding ??
-            _errSelling;
-        if (msg != null && msg.isNotEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(msg),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _scrollToFirstBlockingError();
-          });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _scrollToFirstBlockingError();
+        });
+      }
+      return;
+    }
+    setState(() => _commitInFlight = true);
+    try {
+      widget.onCommitted(line);
+      final itemId = _selectedCatalogItemId;
+      final rate = _parseD(_landingCtrl.text);
+      final qty = _parseD(_qtyCtrl.text);
+      if (itemId != null && itemId.isNotEmpty) {
+        if (rate != null && rate > 0) {
+          unawaited(PurchaseSmartDefaults.saveLastRateForItem(itemId, rate));
+        }
+        if (qty != null && qty > 0) {
+          unawaited(PurchaseSmartDefaults.recordQtyForItem(itemId, qty));
         }
       }
-      return;
-    }
-    _commitInFlight = true;
-    widget.onCommitted(line);
-    final itemId = _selectedCatalogItemId;
-    final rate = _parseD(_landingCtrl.text);
-    final qty = _parseD(_qtyCtrl.text);
-    if (itemId != null && itemId.isNotEmpty) {
-      if (rate != null && rate > 0) {
-        unawaited(PurchaseSmartDefaults.saveLastRateForItem(itemId, rate));
+      if (!widget.fullPage) {
+        if (closeSheet) {
+          _popSheet();
+        } else {
+          _resetAfterAdd();
+        }
+        return;
       }
-      if (qty != null && qty > 0) {
-        unawaited(PurchaseSmartDefaults.recordQtyForItem(itemId, qty));
-      }
-    }
-    if (!widget.fullPage) {
-      if (closeSheet) {
-        _popSheet();
+      // Full-screen page: caller may chain another add via pop result.
+      _popSheet<bool>(!closeSheet);
+    } finally {
+      if (mounted) {
+        setState(() => _commitInFlight = false);
       } else {
-        _resetAfterAdd();
+        _commitInFlight = false;
       }
-      _commitInFlight = false;
-      return;
     }
-    // Full-screen page: caller may chain another add via pop result.
-    _popSheet<bool>(!closeSheet);
-    _commitInFlight = false;
   }
 
   String _purchaseRateLabel(bool _) {
@@ -4029,7 +4021,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
           ? Padding(
               padding: footerPad,
               child: FilledButton(
-                onPressed: () => _commit(closeSheet: true),
+                onPressed: _commitInFlight ? null : () => _commit(closeSheet: true),
                 style: FilledButton.styleFrom(
                   backgroundColor: teal,
                   padding: const EdgeInsets.symmetric(vertical: 14),
@@ -4038,13 +4030,22 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Text(
-                  'Save',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
+                child: _commitInFlight
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text(
+                        'Save',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
               ),
             )
           : Padding(
@@ -4053,7 +4054,8 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () => _commit(closeSheet: false),
+                      onPressed:
+                          _commitInFlight ? null : () => _commit(closeSheet: false),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: teal,
                         side: const BorderSide(color: teal),
@@ -4063,13 +4065,22 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                           borderRadius: BorderRadius.all(Radius.circular(12)),
                         ),
                       ),
-                      child: const Text('DONE +'),
+                      child: _commitInFlight
+                          ? SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: teal,
+                              ),
+                            )
+                          : const Text('DONE +'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton(
-                      onPressed: () => _commit(closeSheet: true),
+                      onPressed: _commitInFlight ? null : () => _commit(closeSheet: true),
                       style: FilledButton.styleFrom(
                         backgroundColor: teal,
                         minimumSize: const Size(double.infinity, 50),
@@ -4078,13 +4089,22 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                           borderRadius: BorderRadius.all(Radius.circular(12)),
                         ),
                       ),
-                      child: const Text(
-                        'SAVE LINE',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
+                      child: _commitInFlight
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              'SAVE LINE',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                     ),
                   ),
                 ],
@@ -4119,6 +4139,8 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                     safeBottom > 0 ? safeBottom + 6.0 : 10.0;
                 final kbd = _keyboardVisible ||
                     MediaQuery.viewInsetsOf(context).bottom > 20;
+                final windowW = MediaQuery.sizeOf(context).width;
+                final formMax = HexaResponsive.desktopFormMax(windowW);
 
                 final previewPinned = Material(
                   elevation: 8,
@@ -4148,7 +4170,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                           ),
                   ),
                 );
-                return Column(
+                final column = Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(
@@ -4170,6 +4192,14 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                     previewPinned,
                   ],
                 );
+                if (windowW >= HexaBreakpoints.desktop) {
+                  return HexaResponsiveCenter(
+                    maxWidth: formMax,
+                    padding: EdgeInsets.zero,
+                    child: column,
+                  );
+                }
+                return column;
               },
             ),
           ),
@@ -4179,7 +4209,8 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
 
     final footer = widget.isEdit
         ? FilledButton(
-            onPressed: () => _commit(closeSheet: true),
+                      onPressed:
+                          _commitInFlight ? null : () => _commit(closeSheet: true),
             style: FilledButton.styleFrom(
               backgroundColor: teal,
               foregroundColor: Colors.white,
@@ -4189,16 +4220,26 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: const Text(
-              'Save',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
+            child: _commitInFlight
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text(
+                    'Save',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
           )
         : Row(
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () => _commit(closeSheet: false),
+                  onPressed:
+                      _commitInFlight ? null : () => _commit(closeSheet: false),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: teal,
                     side: const BorderSide(color: teal),
@@ -4208,16 +4249,25 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                       borderRadius: BorderRadius.all(Radius.circular(12)),
                     ),
                   ),
-                  child: const Text(
-                    'Add more',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
+                  child: _commitInFlight
+                      ? SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: teal,
+                          ),
+                        )
+                      : const Text(
+                          'Add more',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: FilledButton(
-                  onPressed: () => _commit(closeSheet: true),
+                  onPressed: _commitInFlight ? null : () => _commit(closeSheet: true),
                   style: FilledButton.styleFrom(
                     backgroundColor: teal,
                     foregroundColor: Colors.white,
@@ -4227,10 +4277,19 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                       borderRadius: BorderRadius.all(Radius.circular(12)),
                     ),
                   ),
-                  child: const Text(
-                    'Save',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
+                  child: _commitInFlight
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Save',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
                 ),
               ),
             ],
@@ -4360,7 +4419,8 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
               SizedBox(
                 height: 34,
                 child: OutlinedButton(
-                  onPressed: () => _commit(closeSheet: false),
+                  onPressed:
+                      _commitInFlight ? null : () => _commit(closeSheet: false),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: const Color(0xFF17A8A7),
                     side: const BorderSide(color: Color(0xFF17A8A7)),
@@ -4370,14 +4430,23 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(6)),
                   ),
-                  child: const Text('Add+'),
+                  child: _commitInFlight
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Color(0xFF17A8A7),
+                          ),
+                        )
+                      : const Text('Add+'),
                 ),
               ),
             if (!widget.isEdit) const SizedBox(width: 4),
             SizedBox(
               height: 34,
               child: FilledButton(
-                onPressed: () => _commit(closeSheet: true),
+                onPressed: _commitInFlight ? null : () => _commit(closeSheet: true),
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF17A8A7),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -4386,7 +4455,16 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(6)),
                 ),
-                child: const Text('Save'),
+                child: _commitInFlight
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Save'),
               ),
             ),
           ],

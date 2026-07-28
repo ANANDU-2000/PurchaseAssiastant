@@ -146,51 +146,75 @@ class _HomeWarehouseActivityPageState
                       'Deliveries, purchases, and stock updates appear here.',
                 ),
               )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                sliver: SliverToBoxAdapter(
-                  child: Card(
-                    margin: EdgeInsets.zero,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text(
-                                title,
-                                style: HexaOp.cardTitle(context),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '${displayItems.length} events in period',
-                                style: HexaDsType.label(
-                                  11,
-                                  color: HexaDsColors.textMuted,
-                                ),
-                              ),
-                            ],
-                          ),
+            else ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        title,
+                        style: HexaOp.cardTitle(context),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${displayItems.length} events in period',
+                        style: HexaDsType.label(
+                          11,
+                          color: HexaDsColors.textMuted,
                         ),
-                        const SizedBox(height: 8),
-                        _ActivityTableHeader(),
-                        for (var i = 0; i < displayItems.length; i++) ...[
-                          WarehouseActivityDetailRow(item: displayItems[i]),
-                          if (i < displayItems.length - 1)
-                            const Divider(height: 1),
-                        ],
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
+              if (MediaQuery.sizeOf(context).width >= 1024) ...[
+                const _SliverActivityHeader(),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) {
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            WarehouseActivityDetailRow(item: displayItems[i]),
+                            if (i < displayItems.length - 1)
+                              const Divider(height: 1),
+                          ],
+                        );
+                      },
+                      childCount: displayItems.length,
+                    ),
+                  ),
+                ),
+              ] else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  sliver: SliverToBoxAdapter(
+                    child: Card(
+                      margin: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const SizedBox(height: 8),
+                          const _ActivityTableHeader(),
+                          for (var i = 0; i < displayItems.length; i++) ...[
+                            WarehouseActivityDetailRow(item: displayItems[i]),
+                            if (i < displayItems.length - 1)
+                              const Divider(height: 1),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ],
         ),
       ),
@@ -198,7 +222,47 @@ class _HomeWarehouseActivityPageState
   }
 }
 
+class _SliverActivityHeader extends StatelessWidget {
+  const _SliverActivityHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverPersistentHeader(
+      pinned: true,
+      delegate: _ActivityTableHeaderDelegate(),
+    );
+  }
+}
+
+class _ActivityTableHeaderDelegate extends SliverPersistentHeaderDelegate {
+  @override
+  double get minExtent => 40;
+
+  @override
+  double get maxExtent => 40;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return ColoredBox(
+      color: HexaColors.brandBackground,
+      child: const Padding(
+        padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
+        child: _ActivityTableHeader(),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _ActivityTableHeaderDelegate old) => false;
+}
+
 class _ActivityTableHeader extends StatelessWidget {
+  const _ActivityTableHeader();
+
   @override
   Widget build(BuildContext context) {
     return Container(

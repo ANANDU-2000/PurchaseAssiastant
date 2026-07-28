@@ -248,34 +248,45 @@ class PurchaseReviewTallyStep extends ConsumerWidget {
                 children: [
                   Row(
                     children: [
-                      _ReviewStat(label: 'QTY', value: qtyLine),
-                      const Spacer(),
-                      _ReviewStat(
-                        label: 'GRAND TOTAL',
-                        value: _inr(bd.grand),
-                        isPrimary: true,
+                      Flexible(
+                        child: _ReviewStat(label: 'QTY', value: qtyLine),
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: _ReviewStat(
+                          label: 'GRAND TOTAL',
+                          value: _inr(bd.grand),
+                          isPrimary: true,
+                        ),
                       ),
                     ],
                   ),
                   const Divider(height: 12),
                   Row(
                     children: [
-                      _ReviewStat(
-                        label: 'TAX TOTAL',
-                        value: _inr(bd.taxTotal),
+                      Flexible(
+                        child: _ReviewStat(
+                          label: 'TAX TOTAL',
+                          value: _inr(bd.taxTotal),
+                        ),
                       ),
                       const _ReviewMetricSep(),
-                      _ReviewStat(
-                        label: 'CHARGES',
-                        value: _inr(bd.commission + bd.freight),
-                      ),
-                      const Spacer(),
-                      if (hasRetail)
-                        _ReviewStat(
-                          label: 'EST. PROFIT',
-                          value: _inr(estRetail),
-                          isSuccess: true,
+                      Flexible(
+                        child: _ReviewStat(
+                          label: 'CHARGES',
+                          value: _inr(bd.commission + bd.freight),
                         ),
+                      ),
+                      if (hasRetail) ...[
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: _ReviewStat(
+                            label: 'EST. PROFIT',
+                            value: _inr(estRetail),
+                            isSuccess: true,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ],
@@ -492,6 +503,8 @@ class _ReviewStat extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           value,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: (isPrimary ? tt.titleLarge : tt.titleSmall)?.copyWith(
             fontWeight: FontWeight.w900,
             color: isSuccess ? successColor : primaryColor,

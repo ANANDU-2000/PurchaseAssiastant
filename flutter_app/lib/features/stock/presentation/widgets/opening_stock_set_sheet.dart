@@ -42,6 +42,8 @@ class _OpeningStockSetBody extends ConsumerStatefulWidget {
 
 class _OpeningStockSetBodyState extends ConsumerState<_OpeningStockSetBody> {
   bool _saving = false;
+  String? _qtyError;
+  String? _reasonError;
   late final TextEditingController _qtyCtrl;
   late final TextEditingController _notesCtrl;
   late final TextEditingController _reasonCtrl;
@@ -88,9 +90,10 @@ class _OpeningStockSetBodyState extends ConsumerState<_OpeningStockSetBody> {
     if (session == null) return;
     final parsed = double.tryParse(_qtyCtrl.text.trim().replaceAll(',', ''));
     if (parsed == null || !parsed.isFinite || parsed < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid opening stock quantity')),
-      );
+      setState(() {
+        _qtyError = 'Enter a valid opening stock quantity';
+        _reasonError = null;
+      });
       return;
     }
 
@@ -99,15 +102,18 @@ class _OpeningStockSetBodyState extends ConsumerState<_OpeningStockSetBody> {
     final reasonNeeded = _locked && changed;
     final reason = _reasonCtrl.text.trim();
     if (reasonNeeded && reason.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Reason is required when updating locked opening stock'),
-        ),
-      );
+      setState(() {
+        _qtyError = null;
+        _reasonError = 'Reason is required when updating locked opening stock';
+      });
       return;
     }
 
-    setState(() => _saving = true);
+    setState(() {
+      _qtyError = null;
+      _reasonError = null;
+      _saving = true;
+    });
     try {
       final saved = await ref.read(hexaApiProvider).setOpeningStock(
             businessId: session.primaryBusiness.id,
@@ -199,6 +205,7 @@ class _OpeningStockSetBodyState extends ConsumerState<_OpeningStockSetBody> {
           const SizedBox(height: 14),
           TextField(
             controller: _qtyCtrl,
+            enabled: !_saving,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
@@ -208,11 +215,13 @@ class _OpeningStockSetBodyState extends ConsumerState<_OpeningStockSetBody> {
               suffixText: _unit.isEmpty ? null : _unit,
               border: const OutlineInputBorder(),
               labelText: 'Opening stock',
+              errorText: _qtyError,
             ),
           ),
           const SizedBox(height: 14),
           TextField(
             controller: _notesCtrl,
+            enabled: !_saving,
             maxLines: 2,
             decoration: const InputDecoration(
               isDense: true,
@@ -229,10 +238,12 @@ class _OpeningStockSetBodyState extends ConsumerState<_OpeningStockSetBody> {
             const SizedBox(height: 6),
             TextField(
               controller: _reasonCtrl,
+              enabled: !_saving,
               maxLines: 2,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 isDense: true,
-                border: OutlineInputBorder(),
+                border: const OutlineInputBorder(),
+                errorText: _reasonError,
               ),
             ),
             const SizedBox(height: 14),
