@@ -148,7 +148,9 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Enter your email. If an account exists, you will receive reset instructions.',
+                    'Enter your email. Password reset email is not enabled yet — '
+                    'ask your business owner to reset your password in Settings → Users. '
+                    'If an account exists, we still record the request.',
                     style: TextStyle(
                       fontSize: 13,
                       color: Colors.grey.shade700,
@@ -207,7 +209,8 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'If this email is registered, reset instructions will be sent. Check your inbox.',
+                            'Request recorded. Ask your business owner to reset the password '
+                            'in Settings → Users (email reset is not enabled yet).',
                             style: TextStyle(
                               color: Colors.green.shade900,
                               fontSize: 13,

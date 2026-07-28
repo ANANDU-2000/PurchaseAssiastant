@@ -144,18 +144,31 @@ async def forgot_password(
     db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
 ):
-    """Store a one-time token (email delivery TBD). Response text is user-safe; in development a token is returned for testing."""
+    """Create a one-time reset token. Email delivery is not wired in production yet.
+
+    Production response still looks identical whether the account exists (enumeration-safe)
+    and tells users to ask the business owner to reset via Settings → Users.
+    """
     ip = _client_ip(request)
     _enforce_limiter(_FORGOT_IP_LIMITER, f"forgot-ip:{ip}")
     email_key = (body.email or "").strip().lower()
     if email_key:
         _enforce_limiter(_FORGOT_EMAIL_LIMITER, f"forgot-email:{email_key}")
-    r = await db.execute(select(User).where(User.email == body.email))
-    user = r.scalar_one_or_none()
+    env = (settings.app_env or "").lower()
+    is_dev = env in ("development", "dev", "test")
+    # AUTH-H2: no transactional email in prod — owner reset is the supported path.
     same: dict = {
         "ok": True,
-        "message": "If an account exists for that email, you will receive reset instructions.",
+        "message": (
+            "If an account exists for that email, ask your business owner to reset "
+            "the password in Settings → Users. Email reset is not enabled yet."
+            if not is_dev
+            else "If an account exists for that email, you will receive reset instructions."
+        ),
+        "email_delivery": False,
     }
+    r = await db.execute(select(User).where(User.email == body.email))
+    user = r.scalar_one_or_none()
     if not user or not user.password_hash:
         return same
     await db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
@@ -170,8 +183,11 @@ async def forgot_password(
         )
     )
     await db.commit()
-    logger.info("Password reset token created for user_id=%s", user.id)
-    if (settings.app_env or "").lower() in ("development", "dev", "test"):
+    logger.info(
+        "Password reset token created for user_id=%s email_delivery=false",
+        user.id,
+    )
+    if is_dev:
         same["dev_reset_token"] = raw
     return same
 

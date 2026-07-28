@@ -216,9 +216,23 @@ async def upload_business_logo(
     settings: Annotated[Settings, Depends(get_settings)],
     file: UploadFile = File(...),
 ):
-    """Owner: upload a logo (JPEG/PNG/WebP, max 2MB). Stored under /static/branding/."""
+    """Owner: upload a logo (JPEG/PNG/WebP, max 2MB).
+
+    Production without object storage (S3/R2) rejects upload — Render disk is ephemeral.
+    Prefer PATCH branding with ``branding_logo_url`` until S3 is configured.
+    """
     if _owner.business_id != business_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Not owner of this business")
+    env = (settings.app_env or "").lower()
+    has_object_store = bool((settings.s3_bucket or "").strip())
+    if env == "production" and not has_object_store:
+        raise HTTPException(
+            status.HTTP_501_NOT_IMPLEMENTED,
+            detail=(
+                "Logo file upload is not available on this host (ephemeral disk). "
+                "Set a logo URL under branding instead, or configure object storage."
+            ),
+        )
     ct = (file.content_type or "").split(";")[0].strip().lower()
     if ct not in _LOGO_TYPES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Use JPEG, PNG, or WebP")

@@ -189,16 +189,12 @@ Business profile settings
 
 #### AUTH-H2 — Password reset has no email delivery in production
 - **Endpoints:** `POST /v1/auth/forgot-password`
-- **Root cause:** Creates hashed token; docstring says “email delivery TBD”; only exposes raw token in non-production.
-- **Effect:** Forgot-password UI cannot complete for real users without out-of-band token.
-- **Estimated fix:** 4–8h (provider + template) or product decision to hide UI / owner-only reset.
+- **Status:** **closed (product path)** — prod message points to owner Settings → Users; `email_delivery: false`; Flutter copy updated. Full SMTP remains optional later.
 - **Recommended fix:** Wire transactional email **or** disable Flutter forgot flow until ready; owner reset via Settings already exists.
 
 #### AUTH-H3 — Logo upload on ephemeral Render disk
 - **Endpoints:** `POST /v1/me/businesses/{id}/branding/logo`
-- **Root cause:** Writes under `backend/static/branding/`; Render filesystem is ephemeral.
-- **Effect:** Logos lost on redeploy/restart; URLs 404.
-- **Estimated fix:** 4–8h — object storage (S3/R2) or skip upload and URL-only branding.
+- **Status:** **closed (product path)** — production without `S3_BUCKET` returns `501`; use branding URL. Object storage remains optional later.
 - **Recommended fix:** Persist to object storage; serve via CDN/`APP_URL`.
 
 #### AUTH-H4 — Google register bypasses `ALLOW_PUBLIC_REGISTRATION` (latent)

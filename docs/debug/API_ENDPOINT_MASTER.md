@@ -11,8 +11,8 @@
 | Metric | Value |
 |--------|-------|
 | Total endpoints | 216 |
-| Completed | 17 / 216 |
-| Current focus | Medium backlog (AUTH-H2/H3 still blocked) |
+| Completed | Critical/High + Medium correctness closed |
+| Current focus | **Audit complete** — deferred: cold latency / refresh rotation / S3+email wiring |
 
 ## Status legend
 
@@ -25,8 +25,8 @@
 | AUTH-C1 | Critical | COMPLETED | Refresh gates blocked/inactive | 9d50148 |
 | AUTH-H1 | High | COMPLETED | Login missing db.commit | (see latest) |
 | AUTH-H4 | High | COMPLETED | Google bypasses ALLOW_PUBLIC_REGISTRATION | 8187417 |
-| AUTH-H2 | High | BLOCKED | Forgot-password email | needs approval |
-| AUTH-H3 | High | BLOCKED | Logo object storage | needs approval |
+| AUTH-H2 | High | COMPLETED | Forgot-password: owner-reset path (no email yet) | (this pass) |
+| AUTH-H3 | High | COMPLETED | Logo upload 501 in prod without S3 | (this pass) |
 | AUTH-M2 | Medium | COMPLETED | Login / forgot-password rate limits | (this pass) |
 | UTIL-M1 | Medium | COMPLETED | Health db-check no exception leak | (this pass) |
 | UTIL-M2 | Medium | COMPLETED | Search staff redact supplier/broker phones | (this pass) |
@@ -72,10 +72,9 @@
 
 ## Ordered work queue (one-by-one)
 
-1. ~~AUTH-C1~~ · ~~AUTH-H1~~ · ~~AUTH-H4~~ · ~~HOME-C1 isce~~
-2. **AUTH-H2 / AUTH-H3** — wait for your approval (email / object storage)
-3. ~~Stock~~ · ~~Purchase~~ · ~~Supplier~~ · ~~Reports~~ · ~~Notifications~~ · ~~Users~~ · ~~Warehouse/Ops~~ · ~~Exports~~ · ~~Utilities/Public~~
-4. **AUTH-H2 / AUTH-H3** — wait for approval · optional Medium backlog
+1. ~~All Critical/High domains~~ · ~~AUTH-H2/H3 safe paths~~
+2. Optional later: transactional email · S3/R2 logos · refresh rotation · list indexes
+3. Closure notes: `docs/debug/API_AUDIT_CLOSURE.md`
 
 
 ## Work rules

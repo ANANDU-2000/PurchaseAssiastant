@@ -79,7 +79,7 @@ async def build_home_operational_bundle(
         membership.user_id,
         user_role=(membership.role or "").strip().lower(),
     )
-    low_top = await fetch_low_stock_top_rows(db, business_id, limit=6)
+    low_top = await fetch_low_stock_top_rows(db, business_id, limit=3)
     warehouse = await warehouse_alerts_from_stock(db, business_id, stock)
     return {
         "stock_status_counts": _stock_status_counts_from_alerts(stock),
