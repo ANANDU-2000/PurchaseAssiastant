@@ -6,7 +6,7 @@ from sqlalchemy import String, desc, func, select
 from starlette.responses import HTMLResponse, JSONResponse
 
 from app.database import async_session_factory
-from app.models import Business, CatalogItem, ItemCategory, Supplier
+from app.models import Business, CatalogItem, ItemCategory
 from app.models.stock_physical_count import StockPhysicalCount
 from app.services.stock_inventory import (
     movement_delivered_qty_map,
@@ -55,15 +55,6 @@ async def _latest_physical_qty(
     return float(row.counted_qty or 0), when
 
 
-async def _supplier_name_for_item(db, item: CatalogItem) -> str | None:
-    if not item.last_supplier_id:
-        return None
-    r = await db.execute(
-        select(Supplier.name).where(Supplier.id == item.last_supplier_id)
-    )
-    return r.scalar_one_or_none()
-
-
 def _safe_item_payload(
     item: CatalogItem,
     category_name: str | None,
@@ -71,10 +62,9 @@ def _safe_item_payload(
     delivered_qty: float | None = None,
     physical_qty: float | None = None,
     physical_counted_at: str | None = None,
-    supplier_name: str | None = None,
 ) -> dict:
+    """Public QR payload — stock/location only; never rates or supplier (no auth)."""
     current = float(item.current_stock or 0)
-    reorder = float(item.reorder_level or 0)
     unit = item.stock_unit or item.default_unit or item.selling_unit or "unit"
     opening = float(getattr(item, "opening_stock_qty", None) or 0)
     delivered = delivered_qty if delivered_qty is not None else 0.0
@@ -94,23 +84,12 @@ def _safe_item_payload(
         else None,
         "physical_stock_qty": physical_qty,
         "physical_stock_counted_at": physical_counted_at,
-        "last_purchase_date": item.last_purchase_at.isoformat()
-        if item.last_purchase_at
-        else None,
-        "last_purchase_rate": float(item.last_purchase_price)
-        if item.last_purchase_price is not None
-        else None,
-        "last_purchase_qty": float(item.last_line_qty)
-        if item.last_line_qty is not None
-        else None,
-        "last_purchase_unit": item.last_line_unit or unit,
-        "supplier_name": supplier_name,
     }
 
 
 async def _load_public_item(
     token: str,
-) -> tuple[CatalogItem, str | None, float, float | None, str | None, str | None]:
+) -> tuple[CatalogItem, str | None, float, float | None, str | None]:
     clean = token.strip()
     if not clean or len(clean) > 64:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
@@ -141,8 +120,7 @@ async def _load_public_item(
         )
         delivered = float(delivered_map.get(item.id, 0))
         phys_qty, phys_at = await _latest_physical_qty(db, item.business_id, item.id)
-        supplier = await _supplier_name_for_item(db, item)
-        return item, category_name, delivered, phys_qty, phys_at, supplier
+        return item, category_name, delivered, phys_qty, phys_at
 
 
 async def _resolve_business_id(db, business: str) -> str:
@@ -166,16 +144,13 @@ async def _resolve_business_id(db, business: str) -> str:
 @router.get("/{token}.json")
 async def public_item_json(token: str, request: Request) -> JSONResponse:
     _enforce_public_rate_limit(request)
-    item, category_name, delivered, phys_qty, phys_at, supplier = await _load_public_item(
-        token
-    )
+    item, category_name, delivered, phys_qty, phys_at = await _load_public_item(token)
     payload = _safe_item_payload(
         item,
         category_name,
         delivered_qty=delivered,
         physical_qty=phys_qty,
         physical_counted_at=phys_at,
-        supplier_name=supplier,
     )
     return JSONResponse(
         payload,
@@ -210,14 +185,12 @@ async def public_lookup(
         delivered_map = await movement_delivered_qty_map(db, item.business_id, [item.id])
         delivered = float(delivered_map.get(item.id, 0))
         phys_qty, phys_at = await _latest_physical_qty(db, item.business_id, item.id)
-        supplier = await _supplier_name_for_item(db, item)
         payload = _safe_item_payload(
             item,
             category_name,
             delivered_qty=delivered,
             physical_qty=phys_qty,
             physical_counted_at=phys_at,
-            supplier_name=supplier,
         )
     return JSONResponse(payload, headers={"Cache-Control": "public, max-age=60"})
 
@@ -225,16 +198,13 @@ async def public_lookup(
 @router.get("/{token}", response_class=HTMLResponse)
 async def public_item_page(token: str, request: Request) -> HTMLResponse:
     _enforce_public_rate_limit(request)
-    item, category_name, delivered, phys_qty, phys_at, supplier = await _load_public_item(
-        token
-    )
+    item, category_name, delivered, phys_qty, phys_at = await _load_public_item(token)
     payload = _safe_item_payload(
         item,
         category_name,
         delivered_qty=delivered,
         physical_qty=phys_qty,
         physical_counted_at=phys_at,
-        supplier_name=supplier,
     )
     status_label = str(payload["status"]).replace("_", " ").title()
     stock_qty = payload["current_stock"]

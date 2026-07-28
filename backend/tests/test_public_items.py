@@ -37,7 +37,7 @@ def _type_id(h, bid):
     return types.json()[0]["id"]
 
 
-def test_public_item_json_includes_last_purchase_fields():
+def test_public_item_json_stock_only_no_financials():
     h, bid = _owner_headers()
     tid = _type_id(h, bid)
     suffix = uuid.uuid4().hex[:8]
@@ -63,10 +63,16 @@ def test_public_item_json_includes_last_purchase_fields():
     for key in (
         "current_stock",
         "physical_stock_qty",
+        "stock_unit",
+        "status",
+        "item_code",
+    ):
+        assert key in body, key
+    for key in (
         "last_purchase_date",
         "last_purchase_rate",
         "last_purchase_qty",
         "last_purchase_unit",
         "supplier_name",
     ):
-        assert key in body, key
+        assert key not in body, key

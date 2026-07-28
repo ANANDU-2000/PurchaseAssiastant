@@ -12,7 +12,7 @@
 |--------|-------|
 | Total endpoints | 216 |
 | Completed | 17 / 216 |
-| Current focus | Exports (Warehouse/Ops Critical/High done) |
+| Current focus | Audit queue Critical/High closed (AUTH-H2/H3 blocked) |
 
 ## Status legend
 
@@ -51,13 +51,15 @@
 | OPS-H4 | High | COMPLETED | inventory-summary redact value for staff | (this pass) |
 | OPS-H5 | High | COMPLETED | warehouse checklist template denom | (this pass) |
 | OPS-H6 | High | COMPLETED | reorder last_purchase_rate redact | (this pass) |
+| EXP-H1 | High | COMPLETED | Backup ZIP purchase PDF cap (400) | (this pass) |
+| PUB-C1 | Critical | COMPLETED | Public item JSON strips rates/supplier | (this pass) |
 
 ## Ordered work queue (one-by-one)
 
 1. ~~AUTH-C1~~ · ~~AUTH-H1~~ · ~~AUTH-H4~~ · ~~HOME-C1 isce~~
 2. **AUTH-H2 / AUTH-H3** — wait for your approval (email / object storage)
-3. ~~Stock~~ · ~~Purchase~~ · ~~Supplier~~ · ~~Reports~~ · ~~Notifications~~ · ~~Users~~ · ~~Warehouse/Ops~~
-4. **Exports** → Utilities → Public
+3. ~~Stock~~ · ~~Purchase~~ · ~~Supplier~~ · ~~Reports~~ · ~~Notifications~~ · ~~Users~~ · ~~Warehouse/Ops~~ · ~~Exports~~ · ~~Utilities/Public~~
+4. **AUTH-H2 / AUTH-H3** — wait for approval · optional Medium backlog
 
 
 ## Work rules

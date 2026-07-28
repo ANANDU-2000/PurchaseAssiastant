@@ -14,7 +14,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.responses import Response
@@ -35,6 +35,9 @@ from app.services.export_files import (
 
 router = APIRouter(prefix="/v1/businesses/{business_id}/exports", tags=["exports"])
 logger = logging.getLogger(__name__)
+
+# Per-order PDFs in one in-memory ZIP — keep bounded to avoid worker OOM.
+_BACKUP_ZIP_MAX_PURCHASES = 400
 
 
 class BackupRequest(BaseModel):
@@ -81,12 +84,26 @@ async def post_backup_zip(
         conds.append(TradePurchase.purchase_date >= d_from)
     conds.append(TradePurchase.purchase_date <= d_to)
 
+    count_r = await db.execute(
+        select(func.count()).select_from(TradePurchase).where(*conds)
+    )
+    purchase_count = int(count_r.scalar_one() or 0)
+    if purchase_count > _BACKUP_ZIP_MAX_PURCHASES:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                f"Too many purchases in this range ({purchase_count}). "
+                f"ZIP backup allows at most {_BACKUP_ZIP_MAX_PURCHASES} — "
+                "use a shorter range or GET /exports/backup/export for JSON."
+            ),
+        )
+
     pr = await db.execute(
         select(TradePurchase)
         .where(*conds)
         .options(selectinload(TradePurchase.supplier_row))
         .order_by(TradePurchase.purchase_date.desc())
-        .limit(5000)
+        .limit(_BACKUP_ZIP_MAX_PURCHASES)
     )
     purchases = list(pr.scalars().all())
     if not purchases:
