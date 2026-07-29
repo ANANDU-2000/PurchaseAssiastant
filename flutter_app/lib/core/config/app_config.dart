@@ -18,13 +18,14 @@ class AppConfig {
 
   static const List<String> wrongProductionWebHosts = [
     'purchase-assistant.vercel.app',
+    'purchase-assiatant.vercel.app',
     'purchase-assastant.vercel.app',
     'purchase-assiantant.vercel.app',
   ];
 
   /// True on web when opened on a typo/wrong Vercel host.
-  /// Note: the typo domain is often a *different* Vercel project (blank React app),
-  /// so this Flutter gate only runs if our build is somehow served there.
+  /// Note: typo domains are often a *different* Vercel project (404 HTML / blank app),
+  /// so redirects in this repo only help after those hosts are aliased to this project.
   static bool get isWrongProductionWebHost {
     if (!kIsWeb) return false;
     final host = Uri.base.host.toLowerCase();
@@ -34,11 +35,15 @@ class AppConfig {
     }
     final canonical = Uri.parse(productionWebUrl).host.toLowerCase();
     if (host == canonical) return false;
-    // Any *.vercel.app preview of a typo slug, or known wrong hosts.
+    if (host.startsWith('purchase-assiastant')) return false;
     if (wrongProductionWebHosts.contains(host)) return true;
-    if (host.contains('purchase-assistant') &&
-        host.endsWith('.vercel.app') &&
-        host != canonical) {
+    // Common misspellings of the production slug on *.vercel.app.
+    if (host.endsWith('.vercel.app') &&
+        host.startsWith('purchase-assi') &&
+        !host.startsWith('purchase-assiastant')) {
+      return true;
+    }
+    if (host.contains('purchase-assistant') && host.endsWith('.vercel.app')) {
       return true;
     }
     return false;

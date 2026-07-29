@@ -91,6 +91,24 @@
       "has": [{ "type": "host", "value": "purchase-assistant.vercel.app" }],
       "destination": "https://purchase-assiastant.vercel.app/:path*",
       "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "purchase-assiatant.vercel.app" }],
+      "destination": "https://purchase-assiastant.vercel.app/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "purchase-assastant.vercel.app" }],
+      "destination": "https://purchase-assiastant.vercel.app/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "purchase-assiantant.vercel.app" }],
+      "destination": "https://purchase-assiastant.vercel.app/:path*",
+      "permanent": true
     }
   ],
   "routes": [
