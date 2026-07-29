@@ -42,7 +42,8 @@ class ReportsBreadcrumbBar extends StatelessWidget {
   }
 }
 
-/// Prefer pop when drill was pushed; otherwise go to the crumb route.
+/// Prefer pop when drill was pushed; otherwise go to the crumb route
+/// (handles empty stack after web refresh / deep link).
 void _navigateCrumb(BuildContext context, String route) {
   if (context.canPop()) {
     context.pop();

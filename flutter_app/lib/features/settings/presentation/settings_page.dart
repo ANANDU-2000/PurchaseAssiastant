@@ -15,6 +15,7 @@ import '../../../core/router/navigation_ext.dart';
 import '../../../core/router/post_auth_route.dart'
     show sessionCanAdminUsers, sessionIsStaff;
 import '../../../core/theme/theme_context_ext.dart';
+import '../../../core/design_system/hexa_responsive.dart';
 import '../../../shared/widgets/desktop_page_shell.dart';
 import '../widgets/backup_monthly_banner.dart';
 
@@ -345,7 +346,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 const VerticalDivider(width: 1),
                 Expanded(
                   child: DesktopPageShell(
-                    maxContentWidth: 720,
+                    maxContentWidth: HexaResponsive.maxFormWidth,
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
                     child: settingsList,
                   ),
@@ -353,7 +354,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ],
             )
           : DesktopPageShell(
-              maxContentWidth: 720,
+              maxContentWidth: HexaResponsive.maxFormWidth,
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
               child: settingsList,
             ),

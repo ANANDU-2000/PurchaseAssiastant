@@ -22,6 +22,9 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
     this.headerDiscFocus,
     this.narrationFocus,
     required this.onDraftChanged,
+    /// When true (Party step embeds this under an outer scroll), skip nested
+    /// [KeyboardSafeFormViewport] to avoid unbounded-height viewport crashes.
+    this.embeddedInOuterScroll = false,
   });
 
   final FocusNode paymentDaysFocus;
@@ -34,6 +37,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
   final FocusNode? headerDiscFocus;
   final FocusNode? narrationFocus;
   final VoidCallback onDraftChanged;
+  final bool embeddedInOuterScroll;
 
   static String _duePreview(WidgetRef ref, TextEditingController c) {
     final pd = int.tryParse(c.text.trim());
@@ -435,16 +439,23 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
       ],
     );
 
+    final fields = FocusTraversalGroup(
+      policy: OrderedTraversalPolicy(),
+      child: column,
+    );
+
+    // Nested under wizard SingleChildScrollView — never wrap another scroll viewport.
+    if (embeddedInOuterScroll) {
+      return fields;
+    }
+
     return KeyboardSafeFormViewport(
       dismissKeyboardOnTap: true,
       horizontalPadding: 0,
       topPadding: 0,
       bottomExtraInset: MediaQuery.viewInsetsOf(context).bottom,
       minFieldsHeight: 0,
-      fields: FocusTraversalGroup(
-        policy: OrderedTraversalPolicy(),
-        child: column,
-      ),
+      fields: fields,
       footer: const SizedBox.shrink(),
     );
   }

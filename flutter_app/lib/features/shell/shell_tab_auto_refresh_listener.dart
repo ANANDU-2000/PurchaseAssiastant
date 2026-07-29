@@ -71,10 +71,10 @@ class _ShellTabAutoRefreshListenerState
         ref.invalidate(deliveryPipelineProvider);
         ref.invalidate(homeStockAttentionCountProvider);
       case ShellBranch.stock:
+        // One list invalidate; status/delivery counts refresh from list/bundle
+        // dependents instead of a 4-provider storm on every tab return.
         ref.invalidate(stockListProvider);
-        ref.invalidate(stockStatusCountsProvider);
-        ref.invalidate(stockFilteredStatusCountsProvider);
-        ref.invalidate(stockDeliveryIndicatorCountsProvider);
+        ref.invalidate(stockShellBundleProvider);
       case ShellBranch.reports:
         markReportsPurchasesNeedsLiveFetch(ref);
         if (ref.read(shellCurrentBranchProvider) == ShellBranch.reports) {

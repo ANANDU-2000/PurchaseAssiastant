@@ -53,6 +53,7 @@ class OpeningStockTableRow extends StatelessWidget {
         ? const Color(0xFF16A34A)
         : const Color(0xFFE65100);
     final statusFg = Colors.white;
+    final desktop = HexaBreakpoints.isDesktop(context);
 
     return Padding(
       padding: EdgeInsets.symmetric(
@@ -83,10 +84,20 @@ class OpeningStockTableRow extends StatelessWidget {
                         children: [
                           if (selectionMode)
                             Padding(
-                              padding: const EdgeInsets.only(right: 10),
-                              child: Checkbox(
-                                value: isSelected,
-                                onChanged: (_) => onToggleSelected?.call(),
+                              padding: EdgeInsets.only(right: desktop ? 6 : 10),
+                              child: SizedBox(
+                                width: desktop ? 28 : null,
+                                height: desktop ? 28 : null,
+                                child: Checkbox(
+                                  value: isSelected,
+                                  materialTapTargetSize: desktop
+                                      ? MaterialTapTargetSize.shrinkWrap
+                                      : MaterialTapTargetSize.padded,
+                                  visualDensity: desktop
+                                      ? VisualDensity.compact
+                                      : VisualDensity.standard,
+                                  onChanged: (_) => onToggleSelected?.call(),
+                                ),
                               ),
                             ),
                           const Icon(
@@ -190,10 +201,12 @@ class OpeningStockTableRow extends StatelessWidget {
                   Container(
                     width: 90,
                     alignment: Alignment.center,
-                    child: Center(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: desktop ? 8 : 10,
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
@@ -202,7 +215,9 @@ class OpeningStockTableRow extends StatelessWidget {
                         ),
                         child: Text(
                           isCompleted ? 'Completed' : 'Pending',
-                          style: HexaDsType.label(11).copyWith(
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: HexaDsType.label(desktop ? 10 : 11).copyWith(
                             color: statusFg,
                             fontWeight: FontWeight.w900,
                           ),

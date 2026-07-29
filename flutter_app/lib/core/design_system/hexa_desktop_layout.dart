@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'hexa_operational_tokens.dart';
@@ -48,6 +50,9 @@ class HexaDenseKpiGrid extends StatelessWidget {
 }
 
 /// Master-detail split for desktop warehouse pages (≥ [kDesktopMin]).
+///
+/// Detail pane uses a capped width (left-aligned) so large screens do not
+/// stretch empty flex space beside a narrow card.
 class DesktopMasterDetailScaffold extends StatelessWidget {
   const DesktopMasterDetailScaffold({
     super.key,
@@ -56,6 +61,7 @@ class DesktopMasterDetailScaffold extends StatelessWidget {
     this.listFlex = 5,
     this.detailFlex = 5,
     this.showDivider = true,
+    this.capDetailPane = true,
   });
 
   final Widget list;
@@ -63,19 +69,37 @@ class DesktopMasterDetailScaffold extends StatelessWidget {
   final int listFlex;
   final int detailFlex;
   final bool showDivider;
+  final bool capDetailPane;
 
   @override
   Widget build(BuildContext context) {
     if (!context.isDesktopLayout) {
       return list;
     }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(flex: listFlex, child: list),
-        if (showDivider) const VerticalDivider(width: 1, thickness: 1),
-        Expanded(flex: detailFlex, child: detail),
-      ],
+    if (!capDetailPane) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(flex: listFlex, child: list),
+          if (showDivider) const VerticalDivider(width: 1, thickness: 1),
+          Expanded(flex: detailFlex, child: detail),
+        ],
+      );
+    }
+    final windowW = MediaQuery.sizeOf(context).width;
+    final detailMax = HexaResponsive.desktopDetailPaneMax(windowW);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final paneW = detailMax.clamp(320.0, constraints.maxWidth * 0.46);
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: list),
+            if (showDivider) const VerticalDivider(width: 1, thickness: 1),
+            SizedBox(width: paneW, child: detail),
+          ],
+        );
+      },
     );
   }
 }
@@ -110,7 +134,10 @@ class DesktopTwoColumnGrid extends StatelessWidget {
     }
     return LayoutBuilder(
       builder: (context, constraints) {
-        final cols = (constraints.maxWidth / (minTileWidth + spacing))
+        final windowW = MediaQuery.sizeOf(context).width;
+        // Prefer 2 cols; on ultra-wide allow denser tiles without stretching one card.
+        final minW = windowW >= 1600 ? math.max(minTileWidth, 320.0) : minTileWidth;
+        final cols = (constraints.maxWidth / (minW + spacing))
             .floor()
             .clamp(1, 2);
         if (cols <= 1) {

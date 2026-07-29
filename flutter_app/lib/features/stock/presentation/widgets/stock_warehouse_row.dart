@@ -77,7 +77,11 @@ class StockWarehouseRow extends StatelessWidget {
           child: Container(
             constraints: BoxConstraints(
               minHeight: StockTableLayout.rowHeightFor(context),
-              maxHeight: StockTableLayout.rowHeightFor(context),
+              // Desktop: do not clamp maxHeight — 2-line name + delivery cues
+              // overflowed and clipped under a fixed 56px max.
+              maxHeight: MediaQuery.sizeOf(context).width >= 1024
+                  ? double.infinity
+                  : StockTableLayout.rowHeightFor(context),
             ),
             decoration: StockTableLayout.rowDecoration(isFirst: isFirstRow)
                 .copyWith(

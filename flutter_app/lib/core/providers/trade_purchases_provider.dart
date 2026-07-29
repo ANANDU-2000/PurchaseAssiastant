@@ -228,6 +228,8 @@ class TradePurchasesListNotifier extends AutoDisposeAsyncNotifier<TradePurchases
     final fullscreenSearch =
         ref.watch(purchaseHistoryFullscreenSearchActiveProvider);
     if (branch != ShellBranch.history && !fullscreenSearch) {
+      final cached = state.valueOrNull;
+      if (cached != null) return cached;
       return const TradePurchasesListView(rows: [], hasMore: false);
     }
 

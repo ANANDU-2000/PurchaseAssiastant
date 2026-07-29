@@ -99,6 +99,17 @@ import '../../features/stock/presentation/stock_missing_labels_page.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
+/// Friendly fallback when a path param is missing/blank (never a blank body).
+Page<void> _invalidRoutePage(GoRouterState state) {
+  return MaterialPage<void>(
+    key: state.pageKey,
+    child: GoRouterErrorScreen(
+      uri: state.uri,
+      routerError: 'Invalid or missing route parameters',
+    ),
+  );
+}
+
 bool _isOwnerShellTab(String loc) {
   if (loc == '/home' || loc.startsWith('/home/')) return true;
   if (loc == '/stock') return true;
@@ -180,7 +191,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       );
     },
     redirect: (context, state) {
-      final loc = state.matchedLocation;
+      // Prefer the browser/deep-link path; matchedLocation can be incomplete
+      // on unknown or partially matched URIs.
+      final loc = state.uri.path.isNotEmpty
+          ? state.uri.path
+          : state.matchedLocation;
       try {
         syncPurchaseOverlayActive(ProviderScope.containerOf(context), loc);
       } catch (_) {}
@@ -493,7 +508,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['categoryId'];
           if (id == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           return iosPushPage(
             key: state.pageKey,
@@ -507,7 +522,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final cid = state.pathParameters['categoryId'];
           final tid = state.pathParameters['typeId'];
           if (cid == null || tid == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           final sid = state.uri.queryParameters['defaultSupplierId']?.trim();
           final bid = state.uri.queryParameters['defaultBrokerId']?.trim();
@@ -527,10 +542,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['itemId'];
           if (id == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           return iosPushPage(
-            key: state.pageKey,
+            key: ValueKey(
+              'item_detail_${id}_${state.uri.queryParameters['tab'] ?? 'default'}',
+            ),
             child: HexaPageErrorBoundary(
               title: 'Item could not load',
               shellBranchIndex: null,
@@ -545,7 +562,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['itemId'];
           if (id == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           return iosPushPage(
             key: state.pageKey,
@@ -558,7 +575,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['itemId'];
           if (id == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           return iosPushPage(
             key: state.pageKey,
@@ -635,7 +652,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['itemId'];
           if (id == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           return iosPushPage(
             key: state.pageKey,
@@ -648,7 +665,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['itemId'];
           if (id == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           return iosPushPage(
             key: state.pageKey,
@@ -664,7 +681,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['categoryId'];
           if (id == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           return iosPushPage(
             key: state.pageKey,
@@ -678,7 +695,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final cid = state.pathParameters['categoryId'];
           final tid = state.pathParameters['typeId'];
           if (cid == null || tid == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           return iosPushPage(
             key: state.pageKey,
@@ -691,7 +708,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['supplierId'];
           if (id == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           return iosPushPage(
             key: state.pageKey,
@@ -704,7 +721,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['supplierId'];
           if (id == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           return iosPushPage(
             key: state.pageKey,
@@ -717,7 +734,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['supplierId'];
           if (id == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           return iosPushPage(
             key: state.pageKey,
@@ -730,7 +747,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['brokerId'];
           if (id == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           return iosPushPage(
             key: state.pageKey,
@@ -743,7 +760,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['brokerId'];
           if (id == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           return iosPushPage(
             key: state.pageKey,
@@ -766,7 +783,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final enc = state.pathParameters['itemKey'];
           if (enc == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           final name = Uri.decodeComponent(enc);
           return iosPushPage(
@@ -821,7 +838,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             pageBuilder: (context, state) {
               final id = state.pathParameters['userId'];
               if (id == null) {
-                return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+                return _invalidRoutePage(state);
               }
               return iosPushPage(
                 key: state.pageKey,
@@ -845,7 +862,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             pageBuilder: (context, state) {
               final id = state.pathParameters['purchaseId'];
               if (id == null) {
-                return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+                return _invalidRoutePage(state);
               }
               return iosPushPage(
                 key: state.pageKey,
@@ -904,7 +921,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['purchaseId'];
           if (id == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           return iosPushPage(
             key: state.pageKey,
@@ -926,11 +943,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/purchase/new',
         name: 'purchase_new',
         pageBuilder: (context, state) {
-          final cid = state.uri.queryParameters['catalogItemId']?.trim();
+          final q = state.uri.queryParameters;
+          final cid = (q['catalogItemId'] ??
+                  q['catalog_item_id'] ??
+                  q['itemId'] ??
+                  q['item_id'])
+              ?.trim();
           PurchaseDraft? seed;
           bool resumeDraft =
-              state.uri.queryParameters['resumeDraft'] == 'true' ||
-                  state.uri.queryParameters['resume'] == '1';
+              q['resumeDraft'] == 'true' || q['resume'] == '1';
           final ex = state.extra;
           if (ex is PurchaseDraft) {
             seed = ex;
@@ -983,7 +1004,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['purchaseId'];
           if (id == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           final trimmedId = id.trim();
           final ex = state.extra;
@@ -1004,7 +1025,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['purchaseId'];
           if (id == null) {
-            return MaterialPage<void>(child: Scaffold(body: Center(child: Text('Invalid route'))));
+            return _invalidRoutePage(state);
           }
           final ex = state.extra;
           final seed = ex is TradePurchase ? ex : null;
@@ -1096,12 +1117,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final id = state.pathParameters['catalogItemId'] ?? '';
           if (id.isEmpty) {
-            return iosPushPage(
-              key: state.pageKey,
-              child: const Scaffold(
-                body: Center(child: Text('Item not found')),
-              ),
-            );
+            return _invalidRoutePage(state);
           }
           final rawName = state.uri.queryParameters['name'];
           final name =
@@ -1119,11 +1135,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/reports/purchase/:purchaseId',
         name: 'reports_purchase_report',
         pageBuilder: (context, state) {
+          final id = state.pathParameters['purchaseId']?.trim() ?? '';
+          if (id.isEmpty) {
+            return _invalidRoutePage(state);
+          }
           final extra = state.extra;
           return iosPushPage(
             key: state.pageKey,
             child: ReportsPurchaseReportPage(
-              purchaseId: state.pathParameters['purchaseId'] ?? '',
+              purchaseId: id,
               initialPurchase:
                   extra is TradePurchase ? extra : null,
             ),

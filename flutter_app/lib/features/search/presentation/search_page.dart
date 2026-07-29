@@ -1419,19 +1419,26 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     if (!context.isDesktopLayout || query.isEmpty) {
       return scrollBody;
     }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(flex: 4, child: scrollBody),
-        const VerticalDivider(width: 1, thickness: 1),
-        Expanded(
-          flex: 5,
-          child: SearchDesktopPreviewPane(
-            itemId: _desktopPreviewItemId,
-            itemName: _desktopPreviewItemName,
-          ),
-        ),
-      ],
+    final windowW = MediaQuery.sizeOf(context).width;
+    final detailMax = HexaResponsive.desktopDetailPaneMax(windowW);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final paneW = detailMax.clamp(320.0, constraints.maxWidth * 0.46);
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: scrollBody),
+            const VerticalDivider(width: 1, thickness: 1),
+            SizedBox(
+              width: paneW,
+              child: SearchDesktopPreviewPane(
+                itemId: _desktopPreviewItemId,
+                itemName: _desktopPreviewItemName,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

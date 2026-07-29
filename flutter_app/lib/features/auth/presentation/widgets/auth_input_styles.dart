@@ -7,8 +7,11 @@ InputDecoration authFilledDecoration(
   String hint, {
   required IconData icon,
   bool err = false,
+  String? errorText,
   Widget? suffix,
 }) {
+  final hasErr = err || (errorText != null && errorText.isNotEmpty);
+  final errSide = BorderSide(color: Colors.red.shade500, width: 1.5);
   return InputDecoration(
     filled: true,
     fillColor: const Color(0xFFF3F4F6),
@@ -20,6 +23,12 @@ InputDecoration authFilledDecoration(
       color: Colors.grey.shade500,
       fontWeight: FontWeight.w400,
     ),
+    errorText: errorText,
+    errorStyle: TextStyle(
+      color: Colors.red.shade700,
+      fontSize: 12,
+      fontWeight: FontWeight.w500,
+    ),
     prefixIcon: Icon(icon, size: 20, color: Colors.grey.shade600),
     prefixIconConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
     suffixIcon: suffix,
@@ -28,14 +37,23 @@ InputDecoration authFilledDecoration(
     ),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),
-      borderSide: BorderSide(
-        color: err ? Colors.red.shade500 : const Color(0xFFE5E7EB),
-        width: err ? 1.5 : 1,
-      ),
+      borderSide: hasErr
+          ? errSide
+          : const BorderSide(color: Color(0xFFE5E7EB), width: 1),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),
-      borderSide: const BorderSide(color: HexaColors.brandPrimary, width: 1.5),
+      borderSide: hasErr
+          ? errSide
+          : const BorderSide(color: HexaColors.brandPrimary, width: 1.5),
+    ),
+    errorBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: errSide,
+    ),
+    focusedErrorBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: errSide,
     ),
   );
 }

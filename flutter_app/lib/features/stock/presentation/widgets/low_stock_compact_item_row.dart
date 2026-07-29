@@ -177,33 +177,75 @@ class LowStockCompactItemRow extends ConsumerWidget {
                   ],
                 ),
               ),
-              if (onStockUpdate != null)
-                _CompactAction(
-                  label: '+ Stock',
-                  filled: true,
-                  onTap: () => onStockUpdate!(item),
-                ),
-              if (!staffMode && onOrderNow != null)
-                _CompactAction(
-                  label: 'Order',
-                  filled: false,
-                  onTap: () => onOrderNow!(item),
+              if (MediaQuery.sizeOf(context).width >= 1024)
+                PopupMenuButton<String>(
+                  tooltip: 'Actions',
+                  icon: const Icon(Icons.more_vert, size: 20),
+                  onSelected: (v) {
+                    switch (v) {
+                      case 'stock':
+                        onStockUpdate?.call(item);
+                      case 'order':
+                        onOrderNow?.call(item);
+                      case 'inform':
+                        onNotifyOwner?.call(item);
+                      case 'details':
+                        openDetails();
+                    }
+                  },
+                  itemBuilder: (ctx) => [
+                    if (onStockUpdate != null)
+                      const PopupMenuItem(
+                        value: 'stock',
+                        child: Text('+ Stock'),
+                      ),
+                    if (!staffMode && onOrderNow != null)
+                      const PopupMenuItem(
+                        value: 'order',
+                        child: Text('Order'),
+                      ),
+                    if (staffMode && onNotifyOwner != null)
+                      PopupMenuItem(
+                        value: 'inform',
+                        enabled: !ownerInformed,
+                        child: Text(ownerInformed ? 'Sent' : 'Inform'),
+                      ),
+                    const PopupMenuItem(
+                      value: 'details',
+                      child: Text('Details'),
+                    ),
+                  ],
                 )
-              else if (staffMode && onNotifyOwner != null)
-                _CompactAction(
-                  label: ownerInformed ? 'Sent' : 'Inform',
-                  filled: false,
-                  enabled: !ownerInformed,
-                  onTap: () => onNotifyOwner!(item),
+              else ...[
+                if (onStockUpdate != null)
+                  _CompactAction(
+                    label: '+ Stock',
+                    filled: true,
+                    onTap: () => onStockUpdate!(item),
+                  ),
+                if (!staffMode && onOrderNow != null)
+                  _CompactAction(
+                    label: 'Order',
+                    filled: false,
+                    onTap: () => onOrderNow!(item),
+                  )
+                else if (staffMode && onNotifyOwner != null)
+                  _CompactAction(
+                    label: ownerInformed ? 'Sent' : 'Inform',
+                    filled: false,
+                    enabled: !ownerInformed,
+                    onTap: () => onNotifyOwner!(item),
+                  ),
+                IconButton(
+                  icon: const Icon(Icons.more_vert, size: 20),
+                  color: const Color(0xFF64748B),
+                  onPressed: openDetails,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints(minWidth: 40, minHeight: 40),
                 ),
-              IconButton(
-                icon: const Icon(Icons.more_vert, size: 20),
-                color: const Color(0xFF64748B),
-                onPressed: openDetails,
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-              ),
+              ],
             ],
           ),
         ),

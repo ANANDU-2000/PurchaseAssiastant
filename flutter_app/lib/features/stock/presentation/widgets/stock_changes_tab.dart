@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/design_system/hexa_operational_tokens.dart';
+import '../../../../core/design_system/hexa_responsive.dart';
 import '../../../../core/providers/home_dashboard_provider.dart';
 import '../../../../core/providers/stock_providers.dart';
 import '../../../../core/utils/stock_audit_rows.dart';
@@ -25,6 +26,7 @@ class StockChangesTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final period = ref.watch(stockPagePeriodProvider);
     final feed = ref.watch(stockChangesFeedProvider);
+    final desktop = context.isDesktopLayout;
 
     return feed.when(
       loading: () => const ListSkeleton(rowCount: 8, rowHeight: 72),
@@ -44,7 +46,7 @@ class StockChangesTab extends ConsumerWidget {
             onPrimaryAction: () => ref.invalidate(stockChangesFeedProvider),
           );
         }
-        return RefreshIndicator(
+        final list = RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(stockChangesFeedProvider);
             await ref.read(stockChangesFeedProvider.future);
@@ -130,7 +132,7 @@ class StockChangesTab extends ConsumerWidget {
                             );
                             if (!context.mounted) return;
                             if (stock.isEmpty) {
-                              context.push('/catalog/item/$itemId');
+                              context.push('/catalog/item/$itemId?tab=activity');
                               return;
                             }
                             await showQuickStockActionSheet(
@@ -140,13 +142,32 @@ class StockChangesTab extends ConsumerWidget {
                               skipInitialRefresh: true,
                             );
                           } else {
-                            context.push('/catalog/item/$itemId');
+                            context.push('/catalog/item/$itemId?tab=activity');
                           }
                         },
                 ),
               );
             },
           ),
+        );
+        if (!desktop) return list;
+        // Desktop: left-align with content max + height-bound (never blank).
+        final windowW = MediaQuery.sizeOf(context).width;
+        final maxW = HexaResponsive.desktopContentMax(windowW);
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final h = constraints.maxHeight.isFinite && constraints.maxHeight > 0
+                ? constraints.maxHeight
+                : MediaQuery.sizeOf(context).height * 0.7;
+            return Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                height: h,
+                width: maxW.clamp(0, constraints.maxWidth),
+                child: list,
+              ),
+            );
+          },
         );
       },
     );

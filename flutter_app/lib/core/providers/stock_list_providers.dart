@@ -12,6 +12,7 @@ import '../auth/session_notifier.dart';
 import '../json_coerce.dart';
 import '../navigation/surface_refresh_policy.dart' show kStockListCacheTtl;
 import '../../features/shell/shell_branch_provider.dart';
+import '../../features/staff/staff_shell_branch_provider.dart';
 import 'api_read_snapshots.dart';
 import 'app_period_provider.dart';
 import 'home_dashboard_provider.dart'
@@ -24,10 +25,20 @@ import 'home_dashboard_provider.dart'
         lowStockDashboardMountedProvider;
 import '../providers/analytics_kpi_provider.dart' show analyticsDateRangeProvider;
 import 'stock_list_exceptions.dart';
+import '../utils/stock_audit_rows.dart';
 
 final Map<String, Future<Map<String, dynamic>>> _stockListInflight = {};
 final Map<String, Future<Map<String, dynamic>>> _deliveryCountsInflight = {};
 final Map<String, Future<Map<String, dynamic>>> _stockAlertsSummaryInflight = {};
+
+/// True when the owner Stock tab or staff Stock tab is the active IndexedStack branch.
+bool stockShellTabIsVisible(dynamic ref) {
+  if (ref.watch(shellCurrentBranchProvider) == ShellBranch.stock) return true;
+  if (ref.watch(staffShellCurrentBranchProvider) == StaffShellBranch.stock) {
+    return true;
+  }
+  return false;
+}
 
 /// Query for GET `/v1/businesses/{id}/stock/list`.
 class StockListQuery {
@@ -355,6 +366,10 @@ final stockShellBundleProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final disposed = registerProviderDisposeGuard(ref);
   registerProviderKeepAliveTimer(ref, const Duration(seconds: 30));
+  // IndexedStack keeps Stock mounted off-tab — skip network until visible.
+  if (!stockShellTabIsVisible(ref)) {
+    return const {};
+  }
   final session = ref.watch(sessionProvider);
   if (session == null || providerSkipApi(ref)) return const {};
   final query = ref.watch(stockListQueryProvider);
@@ -399,35 +414,11 @@ final stockChangesFeedProvider =
   final rows = await ref.watch(stockAuditRecentSnapshotProvider.future);
   if (providerWasDisposed(disposed)) return [];
   final period = ref.read(stockPagePeriodProvider);
-  final range = homePeriodRange(period, now: DateTime.now());
-  final from = DateTime(range.start.year, range.start.month, range.start.day);
-  final end = DateTime(
-    range.end.year,
-    range.end.month,
-    range.end.day,
-    23,
-    59,
-    59,
+  // Prefer `updated_at` (API StockAdjustmentOut) via shared helpers — filtering
+  // only on `created_at` left the Activity tab empty on desktop/web.
+  return sortStockAuditRowsNewestFirst(
+    filterStockAuditRowsByHomePeriod(rows, period),
   );
-  final out = <Map<String, dynamic>>[];
-  for (final raw in rows) {
-    final m = Map<String, dynamic>.from(raw);
-    final at = DateTime.tryParse(
-          m['created_at']?.toString() ?? m['audited_at']?.toString() ?? '',
-        ) ??
-        DateTime.tryParse(m['on']?.toString() ?? '');
-    if (at == null) continue;
-    if (at.isBefore(from) || at.isAfter(end)) continue;
-    out.add(m);
-  }
-  out.sort((a, b) {
-    final ta = DateTime.tryParse(a['created_at']?.toString() ?? '') ??
-        DateTime.fromMillisecondsSinceEpoch(0);
-    final tb = DateTime.tryParse(b['created_at']?.toString() ?? '') ??
-        DateTime.fromMillisecondsSinceEpoch(0);
-    return tb.compareTo(ta);
-  });
-  return out;
 });
 
 Map<String, dynamic> _stockListFinalizePayload(
@@ -458,6 +449,20 @@ final stockListProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final query = ref.watch(stockListQueryProvider);
   if (session == null) {
     throw const StockListFetchBlockedException('no_session');
+  }
+  // Off-tab: serve RAM cache only — History/Reports already gate this way.
+  if (!stockShellTabIsVisible(ref)) {
+    final cachedBody = ref.read(stockListCachedBodyProvider);
+    if (stockListCacheBodyIsUsable(cachedBody) && cachedBody != null) {
+      return Map<String, dynamic>.from(cachedBody);
+    }
+    // Prefer empty payload over a blocking exception so IndexedStack paint stays calm.
+    return const <String, dynamic>{
+      'items': <dynamic>[],
+      'total': 0,
+      'page': 1,
+      'per_page': 50,
+    };
   }
   if (!kIsWeb) {
     await awaitProviderApiReady(ref);

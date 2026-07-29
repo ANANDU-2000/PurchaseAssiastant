@@ -118,7 +118,7 @@ class ItemQuickActionsBar extends ConsumerWidget {
         icon: Icons.history_rounded,
         color: const Color(0xFF1565C0),
         onTap: () => context.push(
-          '/catalog/item/$itemId?tab=history&name=${Uri.encodeComponent(itemName)}',
+          '/catalog/item/$itemId?tab=activity&name=${Uri.encodeComponent(itemName)}',
         ),
       ),
     ];

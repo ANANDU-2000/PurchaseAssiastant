@@ -40,6 +40,7 @@ import '../../../core/widgets/friendly_load_error.dart'
     show FriendlyLoadError, kFriendlyLoadNetworkSubtitle;
 import '../../../core/widgets/list_skeleton.dart';
 import '../../../core/widgets/focused_search_chrome.dart';
+import '../../../features/shell/shell_branch_provider.dart';
 import '../../../shared/widgets/fullscreen_date_range_picker.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
 import '../../../shared/widgets/operational_ui.dart';
@@ -1028,6 +1029,11 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // IndexedStack keeps History mounted — skip heavy watches off-tab.
+    if (ref.watch(shellCurrentBranchProvider) != ShellBranch.history) {
+      return const SizedBox.shrink();
+    }
+
     final session = ref.watch(sessionProvider);
     final listAsync = ref.watch(tradePurchasesListProvider);
     final parsed = ref.watch(tradePurchasesParsedProvider);
@@ -1247,7 +1253,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
         child: session == null
           ? _SignInPrompt(onTap: () => context.go('/login'))
           : listAsync.when(
-              skipLoadingOnReload: false,
+              skipLoadingOnReload: true,
               skipLoadingOnRefresh: true,
               loading: () => const ListSkeleton(),
               error: (e, _) {
@@ -1587,7 +1593,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 Expanded(
-                                  flex: 4,
+                                  flex: 5,
                                   child: RefreshIndicator(
                                     onRefresh: _refreshHistory,
                                     child: _historyScrollContent(
@@ -1605,17 +1611,21 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                 ),
                                 const VerticalDivider(width: 1, thickness: 1),
                                 Expanded(
-                                  flex: 6,
+                                  flex: 5,
                                   child: LayoutBuilder(
                                     builder: (context, constraints) {
-                                      final w = constraints.maxWidth <
-                                              HexaResponsive.maxFormWidth
+                                      final windowW =
+                                          MediaQuery.sizeOf(context).width;
+                                      final cap = HexaResponsive
+                                          .desktopDetailContentMax(windowW);
+                                      final w = constraints.maxWidth < cap
                                           ? constraints.maxWidth
-                                          : HexaResponsive.maxFormWidth;
+                                          : cap;
                                       // Bind height — Align + maxWidth-only blanks
                                       // detail panes with Expanded/ListView on web.
+                                      // Desktop: topLeft — flush with list/sidebar.
                                       return Align(
-                                        alignment: Alignment.topCenter,
+                                        alignment: Alignment.topLeft,
                                         child: SizedBox(
                                           width: w,
                                           height: constraints.maxHeight,
@@ -1768,7 +1778,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
         parent: BouncingScrollPhysics(),
       ),
       key: PageStorageKey<String>(
-        'hist_${primary}_${secondary ?? ''}_${ref.watch(purchaseHistorySearchProvider)}',
+        'hist_${primary}_${secondary ?? ''}',
       ),
       controller: _scroll,
       padding: EdgeInsets.fromLTRB(

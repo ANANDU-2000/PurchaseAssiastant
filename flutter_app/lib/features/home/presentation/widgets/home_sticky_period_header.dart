@@ -23,35 +23,45 @@ class HomeStickyPeriodHeader extends SliverPersistentHeaderDelegate {
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     final wide = MediaQuery.sizeOf(context).width >= HexaBreakpoints.tablet;
+    final desktop = context.isDesktopLayout;
+    final windowW = MediaQuery.sizeOf(context).width;
+    final homeMax = HexaResponsive.desktopHomeContentMax(windowW);
+    final headerInner = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const HomePeriodFilterRow(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+          child: Text(
+            wide
+                ? 'Applies to purchase center and warehouse activity'
+                : 'Applies to purchase & warehouse',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFF64748B),
+            ),
+          ),
+        ),
+      ],
+    );
     return SizedBox.expand(
       child: Material(
         color: HexaColors.brandBackground,
         elevation: overlapsContent ? 1 : 0,
         child: Align(
-          alignment: Alignment.topCenter,
+          // Desktop: flush with sidebar / home body; phone keeps full width.
+          alignment: desktop ? Alignment.topLeft : Alignment.topCenter,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(0, 4, 0, 4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const HomePeriodFilterRow(),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
-                  child: Text(
-                    wide
-                        ? 'Applies to purchase center and warehouse activity'
-                        : 'Applies to purchase & warehouse',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF64748B),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            child: desktop
+                ? ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: homeMax),
+                    child: headerInner,
+                  )
+                : headerInner,
           ),
         ),
       ),

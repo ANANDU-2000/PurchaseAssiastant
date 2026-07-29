@@ -11,7 +11,6 @@ import '../../core/providers/notifications_provider.dart'
     show notificationsUnreadCountProvider;
 import '../../core/design_system/hexa_ds_tokens.dart';
 import '../../core/auth/provider_api_guard.dart';
-import '../../core/debug/agent_debug_log.dart';
 import '../../core/router/navigation_ext.dart';
 import '../../core/router/shell_navigation.dart';
 import '../../core/design_system/hexa_responsive.dart';
@@ -104,28 +103,12 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
       });
     }
     final width = MediaQuery.sizeOf(context).width;
-    final height = MediaQuery.sizeOf(context).height;
     // Side rail from tablet up. [HexaWebPageFrame] is a pass-through — do not
     // disable the rail on wide screens (that regressed desktop home).
+    // width==0 (web first frame): keep bottom bar so chrome is not fully blank.
+    // Phone/desktop thresholds unchanged once MediaQuery has a real size.
     final showRail = width > 0 && width >= kShellRailMin;
-    final showBottomBar = width > 0 && width < kShellBottomNavMax;
-    // #region agent log
-    agentDebugLog(
-      hypothesisId: 'H3',
-      location: 'shell_screen.dart:build',
-      message: 'Shell layout metrics',
-      data: {
-        'w': width,
-        'h': height,
-        'showRail': showRail,
-        'showBottomBar': showBottomBar,
-        'idx': idx,
-        'routePath': routePath,
-        'navSelectedIndex': navSelectedIndex,
-        'host': Uri.base.host,
-      },
-    );
-    // #endregion
+    final showBottomBar = width <= 0 || width < kShellBottomNavMax;
 
     void go(int branch) {
       HapticFeedback.selectionClick();

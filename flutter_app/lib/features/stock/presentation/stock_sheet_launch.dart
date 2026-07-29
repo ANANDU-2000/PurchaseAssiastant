@@ -18,8 +18,30 @@ Future<bool> openQuickStockWithFreshItem({
   StockUpdateMode initialMode = StockUpdateMode.physical,
   bool skipFreshFetch = false,
 }) async {
+  final id = itemId.trim();
+  if (id.isEmpty) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Item not found — cannot update stock'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+    return false;
+  }
   final session = ref.read(sessionProvider);
-  if (session == null) return false;
+  if (session == null) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign in again to update stock'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+    return false;
+  }
 
   Map<String, dynamic> item;
   final canUseFallback = fallbackRow != null &&
@@ -35,7 +57,7 @@ Future<bool> openQuickStockWithFreshItem({
     try {
       item = await ref.read(hexaApiProvider).getStockItem(
             businessId: session.primaryBusiness.id,
-            itemId: itemId,
+            itemId: id,
           );
     } on DioException catch (e) {
       if (context.mounted) {
@@ -52,10 +74,10 @@ Future<bool> openQuickStockWithFreshItem({
 
   if (!context.mounted) return false;
   if (!item.containsKey('id') || (item['id']?.toString() ?? '').isEmpty) {
-    item['id'] = itemId;
+    item['id'] = id;
   }
   if (!item.containsKey('name') || (item['name']?.toString() ?? '').isEmpty) {
-    item['name'] = itemName;
+    item['name'] = itemName.trim().isNotEmpty ? itemName.trim() : 'Item';
   }
 
   return showQuickStockActionSheet(

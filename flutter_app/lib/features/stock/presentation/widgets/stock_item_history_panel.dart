@@ -110,27 +110,44 @@ class _StockItemHistoryPanelState extends ConsumerState<StockItemHistoryPanel> {
         final filtered = [
           for (final r in rows)
             if (_matchesFilter(
-              DateTime.tryParse(r['updated_at']?.toString() ?? ''),
+              () {
+                final raw = r['updated_at']?.toString() ?? '';
+                final parsed = DateTime.tryParse(raw);
+                return parsed?.toLocal();
+              }(),
             ))
               r,
         ];
         if (filtered.isEmpty) {
           return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.history_rounded,
-                    size: 48, color: Colors.grey.shade400),
-                const SizedBox(height: 12),
-                const Text(
-                  'No stock changes recorded',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                ),
-                Text(
-                  'Stock updates will appear here',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                ),
-              ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.history_rounded,
+                      size: 48, color: Colors.grey.shade400),
+                  const SizedBox(height: 12),
+                  Text(
+                    rows.isEmpty
+                        ? 'No stock changes recorded'
+                        : 'No changes in this date range',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    rows.isEmpty
+                        ? 'Stock updates will appear here'
+                        : 'Try All time or another period',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                  ),
+                ],
+              ),
             ),
           );
         }
@@ -158,10 +175,13 @@ class _StockItemHistoryPanelState extends ConsumerState<StockItemHistoryPanel> {
             final timeLabel = at != null
                 ? DateFormat('d MMM · HH:mm').format(at.toLocal())
                 : '';
-            final reason = r['reason']?.toString() ??
-                r['adjustment_type']?.toString() ??
-                '';
-            final who = r['updated_by_name']?.toString() ?? '—';
+            final reason = (r['reason']?.toString().trim().isNotEmpty == true)
+                ? r['reason'].toString().trim()
+                : (r['adjustment_type']?.toString().trim().isNotEmpty == true
+                    ? r['adjustment_type'].toString().trim()
+                    : 'Stock update');
+            final whoRaw = r['updated_by_name']?.toString().trim() ?? '';
+            final who = whoRaw.isNotEmpty ? whoRaw : '—';
 
             return SizedBox(
               height: 52,

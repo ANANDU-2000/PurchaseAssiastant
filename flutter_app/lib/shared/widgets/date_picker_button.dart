@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/design_system/hexa_ds_tokens.dart';
+import '../../core/design_system/hexa_responsive.dart';
 import '../../core/theme/hexa_colors.dart';
 
 /// A reusable premium date picker button that resolves keyboard overlay issues.
@@ -33,40 +34,53 @@ class DatePickerButton extends StatelessWidget {
     final initialDate = value ?? now;
     final first = firstDate ?? DateTime(2020);
     final last = lastDate ?? now.add(const Duration(days: 365));
+    final clamped = initialDate.isAfter(last)
+        ? last
+        : (initialDate.isBefore(first) ? first : initialDate);
 
-    final picked = await Navigator.of(context).push<DateTime>(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (ctx) {
-          var selected = initialDate.isAfter(last)
-              ? last
-              : (initialDate.isBefore(first) ? first : initialDate);
-          return Scaffold(
-            appBar: AppBar(
-              title: Text(label),
-              leading: IconButton(
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => Navigator.pop(ctx),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, selected),
-                  child: const Text('Done'),
+    // Desktop: system dialog. Phone: fullscreen calendar (keyboard-safe).
+    final DateTime? picked;
+    if (HexaBreakpoints.isDesktop(context)) {
+      picked = await showDatePicker(
+        context: context,
+        initialDate: clamped,
+        firstDate: first,
+        lastDate: last,
+        helpText: label,
+      );
+    } else {
+      picked = await Navigator.of(context).push<DateTime>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (ctx) {
+            var selected = clamped;
+            return Scaffold(
+              appBar: AppBar(
+                title: Text(label),
+                leading: IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.pop(ctx),
                 ),
-              ],
-            ),
-            body: SafeArea(
-              child: CalendarDatePicker(
-                initialDate: selected,
-                firstDate: first,
-                lastDate: last,
-                onDateChanged: (d) => selected = d,
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, selected),
+                    child: const Text('Done'),
+                  ),
+                ],
               ),
-            ),
-          );
-        },
-      ),
-    );
+              body: SafeArea(
+                child: CalendarDatePicker(
+                  initialDate: selected,
+                  firstDate: first,
+                  lastDate: last,
+                  onDateChanged: (d) => selected = d,
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    }
 
     if (picked != null) {
       onChanged(picked);
@@ -103,7 +117,9 @@ class DatePickerButton extends StatelessWidget {
                   Icons.calendar_today_rounded,
                   size: 20,
                   color: enabled
-                      ? (hasValue ? HexaColors.brandPrimary : Colors.grey.shade500)
+                      ? (hasValue
+                          ? HexaColors.brandPrimary
+                          : Colors.grey.shade500)
                       : Colors.grey.shade400,
                 ),
                 const SizedBox(width: 12),
@@ -113,7 +129,9 @@ class DatePickerButton extends StatelessWidget {
                     style: HexaDsType.body(
                       15,
                       color: enabled
-                          ? (hasValue ? HexaDsColors.textPrimary : Colors.grey.shade500)
+                          ? (hasValue
+                              ? HexaDsColors.textPrimary
+                              : Colors.grey.shade500)
                           : Colors.grey.shade400,
                       weight: hasValue ? FontWeight.w600 : FontWeight.w500,
                     ),

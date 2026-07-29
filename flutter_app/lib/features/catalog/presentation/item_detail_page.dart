@@ -9,7 +9,11 @@ import '../../../core/providers/business_write_event.dart';
 import '../../../core/providers/deferred_invalidation.dart';
 import '../../../core/providers/item_detail_providers.dart';
 import '../../../core/providers/stock_list_exceptions.dart';
-import '../../../core/providers/stock_providers.dart' show stockItemDetailProvider;
+import '../../../core/providers/stock_providers.dart'
+    show
+        stockItemActivityProvider,
+        stockItemAuditProvider,
+        stockItemDetailProvider;
 import '../../../core/providers/trade_purchases_provider.dart'
     show tradePurchasesForItemProvider;
 import '../../../core/theme/hexa_colors.dart';
@@ -84,34 +88,34 @@ class ItemDetailPage extends ConsumerWidget {
 
       final Widget scrollBody;
       if (desktop) {
-        scrollBody = RefreshIndicator(
-          onRefresh: doRefresh,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 16),
-                    child: HexaResponsiveCenter(
-                      maxWidth: HexaResponsive.maxContentWidth,
-                      padding: EdgeInsets.zero,
-                      child: _DesktopItemLayout(
-                        itemId: itemId,
-                        name: name.isNotEmpty
-                            ? name
-                            : (code.isNotEmpty ? code : 'Item'),
-                        code: code.isNotEmpty ? code : null,
-                        categoryLabel: categoryLabel,
-                        onMore: () => _showMore(context, ref, item),
-                      ),
-                    ),
+        // Desktop: NEVER wrap Column+Expanded/TabBarView in SingleChildScrollView —
+        // unbounded height blanks the whole item page (and View Item Activity) on web.
+        scrollBody = LayoutBuilder(
+          builder: (context, constraints) {
+            final h = constraints.maxHeight.isFinite && constraints.maxHeight > 0
+                ? constraints.maxHeight
+                : MediaQuery.sizeOf(context).height;
+            return SizedBox(
+              height: h,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 16),
+                child: HexaResponsiveCenter(
+                  maxWidth: HexaResponsive.maxContentWidth,
+                  padding: EdgeInsets.zero,
+                  child: _DesktopItemLayout(
+                    itemId: itemId,
+                    name: name.isNotEmpty
+                        ? name
+                        : (code.isNotEmpty ? code : 'Item'),
+                    code: code.isNotEmpty ? code : null,
+                    categoryLabel: categoryLabel,
+                    onRefresh: doRefresh,
+                    onMore: () => _showMore(context, ref, item),
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         );
       } else {
         scrollBody = _ItemDetailMobileScroll(
@@ -216,7 +220,8 @@ class ItemDetailPage extends ConsumerWidget {
       case 'history':
         context.push('/catalog/item/$itemId/purchase-history');
       case 'activity':
-        context.push('/stock/intelligence/$itemId');
+        // Deep-link Activity tab (desktop + mobile item detail).
+        context.push('/catalog/item/$itemId?tab=activity');
       case 'copy':
         await Clipboard.setData(ClipboardData(text: itemName));
         if (!context.mounted) return;
@@ -319,6 +324,7 @@ class _DesktopItemLayout extends ConsumerWidget {
     required this.code,
     required this.categoryLabel,
     required this.onMore,
+    required this.onRefresh,
   });
 
   final String itemId;
@@ -326,6 +332,7 @@ class _DesktopItemLayout extends ConsumerWidget {
   final String? code;
   final String categoryLabel;
   final VoidCallback onMore;
+  final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -333,35 +340,64 @@ class _DesktopItemLayout extends ConsumerWidget {
     final isStaff = session != null && sessionIsStaff(session);
     final tab = _ItemDetailMobileScrollState._tabQuery(context);
     final initialIndex = switch (tab) {
-      'purchases' || 'history' || 'purchase' => 1,
+      'purchases' || 'purchase' => 1,
       'analytics' || 'price' => 2,
+      'history' || 'activity' || 'stock-history' => 3,
       _ => 0,
     };
     if (isStaff) {
-      return SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ItemDetailHeader(
-              itemName: name,
-              categoryLabel: categoryLabel,
-              snapshot: null,
-              onEdit: () => context.push('/catalog/item/$itemId/edit'),
-              onMore: onMore,
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ItemDetailHeader(
+            itemName: name,
+            categoryLabel: categoryLabel,
+            snapshot: null,
+            onEdit: () => context.push('/catalog/item/$itemId/edit'),
+            onMore: onMore,
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => onRefresh(),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Refresh'),
             ),
-            const SizedBox(height: 8),
-            _ItemDetailGroupedLoadBanner(itemId: itemId),
-            ItemStockSnapshotCard(itemId: itemId, suppressInlineError: true),
-            const SizedBox(height: 8),
-            ItemPhysicalVerificationCard(itemId: itemId),
-          ],
-        ),
+          ),
+          const SizedBox(height: 4),
+          _ItemDetailGroupedLoadBanner(itemId: itemId),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.only(bottom: 24),
+              children: [
+                ItemStockSnapshotCard(itemId: itemId, suppressInlineError: true),
+                const SizedBox(height: 8),
+                ItemPhysicalVerificationCard(itemId: itemId),
+                const SizedBox(height: 12),
+                Text(
+                  'Stock change history',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 360,
+                  child: StockItemHistoryPanel(
+                    itemId: itemId,
+                    compact: true,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       );
     }
     return DefaultTabController(
-      length: 3,
-      initialIndex: initialIndex,
+      key: ValueKey('desktop-item-tabs-$itemId-$initialIndex'),
+      length: 4,
+      initialIndex: initialIndex.clamp(0, 3),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -372,7 +408,15 @@ class _DesktopItemLayout extends ConsumerWidget {
             onEdit: () => context.push('/catalog/item/$itemId/edit'),
             onMore: onMore,
           ),
-          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => onRefresh(),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Refresh'),
+            ),
+          ),
+          const SizedBox(height: 4),
           _ItemDetailGroupedLoadBanner(
             itemId: itemId,
             includePurchases: true,
@@ -386,59 +430,168 @@ class _DesktopItemLayout extends ConsumerWidget {
             itemCode: code,
           ),
           const SizedBox(height: 8),
-          ItemPhysicalVerificationCard(itemId: itemId),
-          const SizedBox(height: 8),
-          ItemSupplierIntelligenceSection(
-            itemId: itemId,
-            itemName: name,
-            suppressInlineError: true,
-          ),
-          const SizedBox(height: 8),
           const TabBar(
             isScrollable: true,
             tabs: [
               Tab(text: 'Ledger'),
               Tab(text: 'Purchases'),
               Tab(text: 'Analytics'),
+              Tab(text: 'Activity'),
             ],
           ),
           const SizedBox(height: 8),
           Expanded(
-            child: TabBarView(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 280),
+              child: TabBarView(
               children: [
-                SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 24),
-                  child: ItemLedgerSection(itemId: itemId),
-                ),
-                SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 24),
-                  child: ItemPurchaseHistorySection(
-                    itemId: itemId,
-                    itemName: name,
+                RefreshIndicator(
+                  onRefresh: onRefresh,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.only(bottom: 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ItemPhysicalVerificationCard(itemId: itemId),
+                        const SizedBox(height: 8),
+                        ItemLedgerSection(itemId: itemId),
+                      ],
+                    ),
                   ),
                 ),
-                SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: ItemAnalyticsSection(
-                            itemId: itemId,
-                            loadIntelligence: true,
-                            suppressInlineError: true,
-                          ),
+                RefreshIndicator(
+                  onRefresh: onRefresh,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.only(bottom: 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ItemSupplierIntelligenceSection(
+                          itemId: itemId,
+                          itemName: name,
+                          suppressInlineError: true,
+                        ),
+                        const SizedBox(height: 8),
+                        ItemPurchaseHistorySection(
+                          itemId: itemId,
+                          itemName: name,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                RefreshIndicator(
+                  onRefresh: onRefresh,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.only(bottom: 24),
+                    child: Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: ItemAnalyticsSection(
+                          itemId: itemId,
+                          loadIntelligence: true,
+                          suppressInlineError: true,
                         ),
                       ),
-                    ],
+                    ),
                   ),
+                ),
+                _DesktopActivityTab(
+                  itemId: itemId,
+                  onRefresh: onRefresh,
                 ),
               ],
             ),
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Desktop Activity tab — history + movement timeline (never blank).
+class _DesktopActivityTab extends ConsumerWidget {
+  const _DesktopActivityTab({
+    required this.itemId,
+    required this.onRefresh,
+  });
+
+  final String itemId;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(sessionProvider);
+    final warehouse =
+        session?.primaryBusiness.effectiveDisplayTitle.trim() ?? '';
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(stockItemAuditProvider(itemId));
+        ref.invalidate(stockItemActivityProvider(itemId));
+        await onRefresh();
+      },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final h = constraints.maxHeight.isFinite && constraints.maxHeight > 0
+              ? constraints.maxHeight
+              : 420.0;
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 24),
+            children: [
+              if (warehouse.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Warehouse: $warehouse',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Stock change history',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () =>
+                        context.push('/catalog/item/$itemId/ledger'),
+                    child: const Text('Export / statement'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: (h * 0.55).clamp(280.0, 480.0),
+                child: Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                    child: StockItemHistoryPanel(
+                      itemId: itemId,
+                      compact: true,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ItemTimelineSection(itemId: itemId),
+            ],
+          );
+        },
       ),
     );
   }
@@ -499,6 +652,23 @@ class _ItemDetailMobileScrollState extends ConsumerState<_ItemDetailMobileScroll
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final session = ref.read(sessionProvider);
+    final isStaff = session != null && sessionIsStaff(session);
+    final desired = _initialTabIndex(isStaff).clamp(0, _tabController.length - 1);
+    if (_tabController.index != desired) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_tabController.index == desired) return;
+        _loadedTabIndexes.add(desired);
+        _tabController.animateTo(desired);
+        setState(() {});
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
@@ -525,7 +695,9 @@ class _ItemDetailMobileScrollState extends ConsumerState<_ItemDetailMobileScroll
         tab == 'price') {
       return 1;
     }
-    if (tab == 'history' || tab == 'stock-history') return 2;
+    if (tab == 'history' || tab == 'stock-history' || tab == 'activity') {
+      return 2;
+    }
     return 0;
   }
 
@@ -611,40 +783,66 @@ class _ItemDetailMobileScrollState extends ConsumerState<_ItemDetailMobileScroll
     if (!_tabReady(tabIndex)) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2));
     }
+    final session = ref.watch(sessionProvider);
+    final warehouse =
+        session?.primaryBusiness.effectiveDisplayTitle.trim() ?? '';
     return _scrollTab(
       ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 88),
         children: [
-        _paddedSection(
-          Card(
-            margin: EdgeInsets.zero,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Stock change history',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
+          if (warehouse.isNotEmpty)
+            _paddedSection(
+              Text(
+                'Warehouse: $warehouse',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+            ),
+          _paddedSection(
+            Card(
+              margin: EdgeInsets.zero,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Stock change history',
+                            style:
+                                Theme.of(context).textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                          ),
                         ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 360,
-                    child: StockItemHistoryPanel(
-                      itemId: widget.itemId,
-                      compact: true,
+                        TextButton(
+                          onPressed: () => context
+                              .push('/catalog/item/${widget.itemId}/ledger'),
+                          child: const Text('Export'),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 360,
+                      child: StockItemHistoryPanel(
+                        itemId: widget.itemId,
+                        compact: true,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-        _paddedSection(ItemTimelineSection(itemId: widget.itemId)),
-      ],
+          _paddedSection(ItemTimelineSection(itemId: widget.itemId)),
+        ],
       ),
     );
   }

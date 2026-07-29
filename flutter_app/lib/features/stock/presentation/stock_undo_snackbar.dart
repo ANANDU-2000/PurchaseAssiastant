@@ -6,13 +6,17 @@ import '../../../core/providers/business_aggregates_invalidation.dart';
 
 /// One-shot undo after a quick stock patch (server validates 15 min / same user).
 void showStockUndoSnackBar({
-  required BuildContext context,
+  BuildContext? context,
+  ScaffoldMessengerState? messenger,
   required WidgetRef ref,
   required String itemId,
   required String itemName,
 }) {
-  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-  ScaffoldMessenger.of(context).showSnackBar(
+  final m = messenger ??
+      (context != null ? ScaffoldMessenger.maybeOf(context) : null);
+  if (m == null) return;
+  m.hideCurrentSnackBar();
+  m.showSnackBar(
     SnackBar(
       content: Text('Stock updated — $itemName'),
       action: SnackBarAction(
@@ -31,19 +35,15 @@ void showStockUndoSnackBar({
               immediateListReconcile: true,
               refreshItemDetail: true,
             );
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Change undone')),
-              );
-            }
+            m.showSnackBar(
+              const SnackBar(content: Text('Change undone')),
+            );
           } catch (_) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Could not undo — change may be too old'),
-                ),
-              );
-            }
+            m.showSnackBar(
+              const SnackBar(
+                content: Text('Could not undo — change may be too old'),
+              ),
+            );
           }
         },
       ),

@@ -126,7 +126,7 @@ Future<void> showStockRowActions({
             Navigator.pop(context);
             if (!context.mounted) return;
             onBeforeNavigate?.call();
-            await context.push('/catalog/item/$id');
+            await context.push('/catalog/item/$id?tab=activity');
             onAfterNavigateReturn?.call();
           },
         ),

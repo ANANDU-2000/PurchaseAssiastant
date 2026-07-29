@@ -479,6 +479,8 @@ void invalidateStockRowSaveSurfaces(
     deferInvalidateDelayed(ref, stockItemDetailProvider(itemId));
     deferInvalidateDelayed(ref, stockItemActivityProvider(itemId));
   }
+  // Activity / audit history (Stock Updates tab) — same as React Query cache bust.
+  _invalidateStockAuditFeeds(ref);
   ref.invalidate(stockStatusCountsProvider);
   ref.invalidate(stockFilteredStatusCountsProvider);
   ref.invalidate(stockDeliveryIndicatorCountsProvider);

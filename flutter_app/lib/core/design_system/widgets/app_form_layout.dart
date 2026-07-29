@@ -11,13 +11,15 @@ class AppFormLayout extends StatelessWidget {
     /// Gap as multiples of 8px (default `2` → 16px).
     this.gapUnits = 2,
     this.crossAxisAlignment = CrossAxisAlignment.stretch,
-    this.scrollable = true,
+    this.scrollable = false,
     this.padding = EdgeInsets.zero,
   });
 
   final List<Widget> children;
   final int gapUnits;
   final CrossAxisAlignment crossAxisAlignment;
+  /// When true wraps in [SingleChildScrollView]. Prefer false when nested under
+  /// [KeyboardSafeFormViewport] / sheet hosts (outer scroll owns scrolling).
   final bool scrollable;
   final EdgeInsetsGeometry padding;
 

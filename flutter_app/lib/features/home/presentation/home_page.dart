@@ -63,12 +63,16 @@ import 'widgets/home_sticky_period_header.dart';
 
 /// True when the Home IndexedStack tab is the active shell branch.
 bool _homeShellTabVisible(WidgetRef ref, BuildContext context) {
-  final branch = ref.watch(shellCurrentBranchProvider);
-  if (branch == ShellBranch.home) return true;
+  // IndexedStack visibility truth is the shell index — prefer it over the
+  // branch provider so a lagged provider cannot blank the visible Home tab.
   try {
     final shell = StatefulNavigationShell.maybeOf(context);
-    if (shell?.currentIndex == ShellBranch.home) return true;
+    if (shell != null) {
+      return shell.currentIndex == ShellBranch.home;
+    }
   } catch (_) {}
+  final branch = ref.watch(shellCurrentBranchProvider);
+  if (branch == ShellBranch.home) return true;
   final path = GoRouter.maybeOf(context)?.state.uri.path ?? '';
   return path == '/home' || path.startsWith('/home/');
 }
@@ -478,26 +482,6 @@ class _HomePageState extends ConsumerState<HomePage>
     });
 
     if (!_homeShellTabVisible(ref, context)) {
-      // #region agent log
-      final branch = ref.read(shellCurrentBranchProvider);
-      final path = GoRouter.maybeOf(context)?.state.uri.path ?? '';
-      int? shellIdx;
-      try {
-        shellIdx = StatefulNavigationShell.maybeOf(context)?.currentIndex;
-      } catch (_) {}
-      agentDebugLog(
-        hypothesisId: 'H1',
-        location: 'home_page.dart:shrink',
-        message: 'Home returned SizedBox.shrink (tab not visible)',
-        data: {
-          'branch': branch,
-          'path': path,
-          'shellIdx': shellIdx,
-          'mqW': MediaQuery.sizeOf(context).width,
-          'mqH': MediaQuery.sizeOf(context).height,
-        },
-      );
-      // #endregion
       // IndexedStack keeps this widget mounted off-tab — avoid painting when another tab is active.
       return const SizedBox.shrink();
     }

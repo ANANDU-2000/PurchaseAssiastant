@@ -27,6 +27,7 @@ import '../../../core/design_system/hexa_web_page_frame.dart';
 import '../../../core/router/post_auth_route.dart';
 import '../../../core/router/shell_navigation.dart';
 import '../../../features/shell/shell_branch_provider.dart';
+import '../../../features/staff/staff_shell_branch_provider.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../../core/widgets/list_skeleton.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
@@ -272,6 +273,9 @@ class _StockPageState extends ConsumerState<StockPage>
     ref.read(stockChangesTabActiveProvider.notifier).state = active;
     if (active) {
       ref.invalidate(stockChangesFeedProvider);
+      if (_searchExpanded) {
+        setState(() => _searchExpanded = false);
+      }
     }
   }
 
@@ -663,9 +667,15 @@ class _StockPageState extends ConsumerState<StockPage>
           ),
         ),
       if (items.isNotEmpty) ...[
-        SliverToBoxAdapter(
-          child: const StockWarehouseTableHeader(),
-        ),
+        if (desktop)
+          const SliverPersistentHeader(
+            pinned: true,
+            delegate: _StockWarehouseTableHeaderDelegate(),
+          )
+        else
+          const SliverToBoxAdapter(
+            child: StockWarehouseTableHeader(),
+          ),
         SliverList(
           delegate: SliverChildBuilderDelegate(
             (ctx, i) {
@@ -701,6 +711,8 @@ class _StockPageState extends ConsumerState<StockPage>
               );
             },
             childCount: items.length,
+            // Desktop scroll: avoid keepAlive of every offscreen row.
+            addAutomaticKeepAlives: !desktop,
           ),
         ),
         if (items.length < total || _loadingMore)
@@ -813,12 +825,13 @@ class _StockPageState extends ConsumerState<StockPage>
           flex: 4,
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final w = constraints.maxWidth < HexaResponsive.maxFormWidth
-                  ? constraints.maxWidth
-                  : HexaResponsive.maxFormWidth;
+              final windowW = MediaQuery.sizeOf(context).width;
+              final cap = HexaResponsive.desktopDetailContentMax(windowW);
+              final w = constraints.maxWidth < cap ? constraints.maxWidth : cap;
               // Bind height — Align + maxWidth-only blanks ListView on web.
+              // Desktop: topLeft so detail sits flush with the list/sidebar.
               return Align(
-                alignment: Alignment.topCenter,
+                alignment: Alignment.topLeft,
                 child: SizedBox(
                   width: w,
                   height: constraints.maxHeight,
@@ -834,6 +847,14 @@ class _StockPageState extends ConsumerState<StockPage>
 
   @override
   Widget build(BuildContext context) {
+    // IndexedStack keeps Stock mounted off-tab — skip paint + heavy watches.
+    final onStockTab = _isStaffMode
+        ? ref.watch(staffShellCurrentBranchProvider) == StaffShellBranch.stock
+        : ref.watch(shellCurrentBranchProvider) == ShellBranch.stock;
+    if (!onStockTab) {
+      return const SizedBox.shrink();
+    }
+
     // Register patch dependency on every build path (not only inside _prepareItems).
     ref.watch(stockListRowPatchProvider);
     // Desktop detail pane must rebuild when row selection changes (not only on patch).
@@ -1010,14 +1031,14 @@ class _StockPageState extends ConsumerState<StockPage>
       );
     } else if (showInitialSkeleton &&
         (listAsync.isLoading || listAsync.isRefreshing)) {
-      body = const ListSkeleton(rowCount: 12);
+      body = const ListSkeleton(rowCount: 12, rowHeight: 72);
     } else if (listAsync.hasError && data == null) {
       final err = listAsync.error;
       final transient = err is ProviderFetchAborted ||
           isStockListTransientBlock(err);
       if (transient && _transientListRetryCount < _maxTransientListRetries) {
         _scheduleTransientStockListRetry();
-        body = const ListSkeleton(rowCount: 12);
+        body = const ListSkeleton(rowCount: 12, rowHeight: 72);
       } else if (transient) {
         body = FriendlyLoadError(
           message: 'Stock list is still loading',
@@ -1085,7 +1106,7 @@ class _StockPageState extends ConsumerState<StockPage>
       if (_transientListRetryCount < _maxTransientListRetries) {
         _scheduleTransientStockListRetry();
       }
-      body = const ListSkeleton(rowCount: 12);
+      body = const ListSkeleton(rowCount: 12, rowHeight: 72);
     }
 
     final listTab = Column(
@@ -1190,4 +1211,32 @@ class _StockPeriodSheet extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Desktop-only pinned warehouse column header (ITEM | SYS | PHYS | DIFF).
+class _StockWarehouseTableHeaderDelegate extends SliverPersistentHeaderDelegate {
+  const _StockWarehouseTableHeaderDelegate();
+
+  static const double _height = 40;
+
+  @override
+  double get minExtent => _height;
+
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return const ColoredBox(
+      color: Color(0xFFF5F3EE),
+      child: StockWarehouseTableHeader(),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _StockWarehouseTableHeaderDelegate old) => false;
 }

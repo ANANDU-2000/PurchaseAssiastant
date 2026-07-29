@@ -47,6 +47,19 @@ class StockOperationalTopBar extends StatelessWidget implements PreferredSizeWid
 
   @override
   Widget build(BuildContext context) {
+    final tabs = tabController;
+    // Rebuild actions when Stock ↔ Activity changes (filters/search apply to list only).
+    if (tabs == null) {
+      return _buildAppBar(context, activityTab: false);
+    }
+    return AnimatedBuilder(
+      animation: tabs,
+      builder: (context, _) =>
+          _buildAppBar(context, activityTab: tabs.index == 1),
+    );
+  }
+
+  Widget _buildAppBar(BuildContext context, {required bool activityTab}) {
     return AppBar(
       toolbarHeight: _height,
       backgroundColor: const Color(0xFFF5F3EE),
@@ -57,9 +70,9 @@ class StockOperationalTopBar extends StatelessWidget implements PreferredSizeWid
         tooltip: 'Home',
         onPressed: () => context.go(isStaffMode ? '/staff/home' : '/home'),
       ),
-      title: const Text(
-        'Stock',
-        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+      title: Text(
+        activityTab ? 'Stock activity' : 'Stock',
+        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
       ),
       titleSpacing: 0,
       bottom: PreferredSize(
@@ -102,23 +115,25 @@ class StockOperationalTopBar extends StatelessWidget implements PreferredSizeWid
           tooltip: 'Filter by period',
           onPressed: onOpenPeriod,
         ),
-        IconButton(
-          icon: Badge(
-            isLabelVisible: filterCount > 0,
-            label: Text('$filterCount'),
-            child: const Icon(Icons.tune_rounded, size: 22),
+        if (!activityTab) ...[
+          IconButton(
+            icon: Badge(
+              isLabelVisible: filterCount > 0,
+              label: Text('$filterCount'),
+              child: const Icon(Icons.tune_rounded, size: 22),
+            ),
+            tooltip: 'Filters',
+            onPressed: onOpenFilters,
           ),
-          tooltip: 'Filters',
-          onPressed: onOpenFilters,
-        ),
-        IconButton(
-          icon: Icon(
-            searchExpanded ? Icons.search_off_rounded : Icons.search_rounded,
-            size: 22,
+          IconButton(
+            icon: Icon(
+              searchExpanded ? Icons.search_off_rounded : Icons.search_rounded,
+              size: 22,
+            ),
+            tooltip: searchExpanded ? 'Hide search' : 'Search',
+            onPressed: onToggleSearch,
           ),
-          tooltip: searchExpanded ? 'Hide search' : 'Search',
-          onPressed: onToggleSearch,
-        ),
+        ],
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert_rounded, size: 22),
           onSelected: (v) {

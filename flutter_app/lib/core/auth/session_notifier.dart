@@ -755,6 +755,17 @@ class SessionNotifier extends Notifier<Session?> {
     await store.write(access: tokens.access, refresh: tokens.refresh);
     api.setAuthToken(tokens.access);
     var businesses = await api.meBusinesses();
+    // Mirror restore(): never set a session with zero businesses — primaryBusiness
+    // (.first) would throw and blank the desktop shell after login.
+    if (businesses.isEmpty) {
+      await store.clear();
+      api.setAuthToken(null);
+      state = null;
+      authRefresh.value++;
+      throw StateError(
+        'No warehouse workspace is linked to this account. Ask your owner to invite you.',
+      );
+    }
     final isSa = await _readIsSuperAdmin(api);
     var session = Session(
         accessToken: tokens.access,
@@ -805,6 +816,15 @@ class SessionNotifier extends Notifier<Session?> {
     await store.write(access: tokens.access, refresh: tokens.refresh);
     api.setAuthToken(tokens.access);
     var businesses = await api.meBusinesses();
+    if (businesses.isEmpty) {
+      await store.clear();
+      api.setAuthToken(null);
+      state = null;
+      authRefresh.value++;
+      throw StateError(
+        'Account created but no warehouse workspace is linked yet. Contact support.',
+      );
+    }
     final isSa = await _readIsSuperAdmin(api);
     var session = Session(
         accessToken: tokens.access,
@@ -813,6 +833,7 @@ class SessionNotifier extends Notifier<Session?> {
         isSuperAdmin: isSa);
     state = session;
     await _persistSession(session);
+    _clearAuthFailureFlags();
     authRefresh.value++;
     invalidateStaffHomeCaches(ref);
     _scheduleWorkspaceBootstrap();
@@ -829,6 +850,7 @@ class SessionNotifier extends Notifier<Session?> {
     if (cur == null) return;
     final api = ref.read(hexaApiProvider);
     final businesses = await api.meBusinesses();
+    if (businesses.isEmpty) return;
     state = Session(
       accessToken: cur.accessToken,
       refreshToken: cur.refreshToken,

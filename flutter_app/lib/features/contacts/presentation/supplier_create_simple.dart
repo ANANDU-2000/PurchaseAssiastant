@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/providers/suppliers_list_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -63,7 +64,11 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
       body: LayoutBuilder(
         builder: (context, c) {
           final minFields = math.max(220.0, c.maxHeight - 260);
-          return KeyboardSafeFormViewport(
+          final windowW = MediaQuery.sizeOf(context).width;
+          return HexaResponsiveCenter(
+            maxWidth: HexaResponsive.desktopFormMax(windowW),
+            padding: EdgeInsets.zero,
+            child: KeyboardSafeFormViewport(
             dismissKeyboardOnTap: true,
             horizontalPadding: 16,
             topPadding: 16,
@@ -326,6 +331,7 @@ class _SupplierCreateSimpleState extends ConsumerState<SupplierCreateSimple> {
                     )
                   : const Text('Save Supplier'),
             ),
+          ),
           );
         },
       ),

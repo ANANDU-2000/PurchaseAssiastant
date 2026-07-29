@@ -68,6 +68,11 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
   String? _nameError;
   String? _phoneError;
   String? _commissionError;
+  String? _paymentDaysError;
+  String? _discountError;
+  String? _deliveredError;
+  String? _billtyError;
+  bool _saving = false;
 
   List<Map<String, dynamic>> _brokerRows = [];
   String? _dupHint;
@@ -271,6 +276,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     if (!_validateStep0()) {
       setState(() => _step = 0);
       return;
@@ -282,12 +288,10 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
     final dupExact = _blockingDuplicateBrokerName(_name.text);
     if (dupExact != null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Broker "$dupExact" already exists. Use a different name.'),
-        ),
-      );
-      setState(() => _step = 0);
+      setState(() {
+        _step = 0;
+        _nameError = 'Broker "$dupExact" already exists. Use a different name.';
+      });
       return;
     }
     if (widget.brokerId == null && _dupHint != null && mounted) {
@@ -312,36 +316,31 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
     final disc = double.tryParse(_discount.text.trim());
     final del = double.tryParse(_delivered.text.trim());
     final bill = double.tryParse(_billty.text.trim());
+    String? payErr;
+    String? discErr;
+    String? delErr;
+    String? billErr;
     if (_paymentDays.text.trim().isNotEmpty && payDays == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid payment days number.')),
-      );
-      setState(() => _step = 1);
-      return;
+      payErr = 'Enter a valid payment days number.';
     }
     if (_discount.text.trim().isNotEmpty && disc == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid discount %.')),
-      );
-      setState(() => _step = 1);
-      return;
+      discErr = 'Enter a valid discount %.';
     }
     if (_delivered.text.trim().isNotEmpty && del == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid delivered rate.')),
-      );
-      setState(() => _step = 1);
-      return;
+      delErr = 'Enter a valid delivered rate.';
     }
     if (_billty.text.trim().isNotEmpty && bill == null) {
+      billErr = 'Enter a valid billty rate.';
+    }
+    if (payErr != null || discErr != null || delErr != null || billErr != null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid billty rate.')),
-      );
-      setState(() => _step = 1);
+      setState(() {
+        _step = 1;
+        _paymentDaysError = payErr;
+        _discountError = discErr;
+        _deliveredError = delErr;
+        _billtyError = billErr;
+      });
       return;
     }
     final prefs = <String, dynamic>{
@@ -349,6 +348,13 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
       'type_ids': _typeIds.toList(),
       'item_ids': _itemIds.toList(),
     };
+    setState(() {
+      _saving = true;
+      _paymentDaysError = null;
+      _discountError = null;
+      _deliveredError = null;
+      _billtyError = null;
+    });
     try {
       Map<String, dynamic> out;
       if (widget.brokerId != null && widget.brokerId!.isNotEmpty) {
@@ -427,12 +433,14 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
       if (!mounted) return;
       if (widget.selectionReturnOnSave) {
         final rid = brokerId ?? widget.brokerId ?? '';
+        if (mounted) setState(() => _saving = false);
         context.pop(<String, dynamic>{
           if (rid.isNotEmpty) 'id': rid,
           'name': _name.text.trim(),
         });
         return;
       }
+      if (mounted) setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(widget.brokerId == null ? 'Broker created' : 'Broker updated'),
@@ -441,12 +449,13 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
       context.pop();
     } on DioException catch (e) {
       if (!mounted) return;
+      setState(() => _saving = false);
       final code = e.response?.statusCode;
       if (code == 409) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('A broker with this name already exists.')),
-        );
-        setState(() => _step = 0);
+        setState(() {
+          _step = 0;
+          _nameError = 'A broker with this name already exists.';
+        });
         return;
       }
       showRetryableErrorSnackBar(context, e, onRetry: () {
@@ -454,6 +463,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
       });
     } catch (e) {
       if (!mounted) return;
+      setState(() => _saving = false);
       showRetryableErrorSnackBar(context, e, onRetry: () {
         if (context.mounted) unawaited(_save());
       });
@@ -582,14 +592,26 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
               focusNode: _brkPaymentDaysFocus,
               keyboardType: TextInputType.number,
               label: 'Payment days (optional)',
-              onChanged: (_) => _markDirty(),
+              errorText: _paymentDaysError,
+              onChanged: (_) {
+                if (_paymentDaysError != null) {
+                  setState(() => _paymentDaysError = null);
+                }
+                _markDirty();
+              },
             ),
             AppTextField(
               controller: _discount,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
               label: 'Header discount % (optional)',
-              onChanged: (_) => _markDirty(),
+              errorText: _discountError,
+              onChanged: (_) {
+                if (_discountError != null) {
+                  setState(() => _discountError = null);
+                }
+                _markDirty();
+              },
             ),
           ],
         ),
@@ -601,14 +623,26 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
               label: 'Default delivered rate ₹ (optional)',
-              onChanged: (_) => _markDirty(),
+              errorText: _deliveredError,
+              onChanged: (_) {
+                if (_deliveredError != null) {
+                  setState(() => _deliveredError = null);
+                }
+                _markDirty();
+              },
             ),
             AppTextField(
               controller: _billty,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
               label: 'Default billty rate ₹ (optional)',
-              onChanged: (_) => _markDirty(),
+              errorText: _billtyError,
+              onChanged: (_) {
+                if (_billtyError != null) {
+                  setState(() => _billtyError = null);
+                }
+                _markDirty();
+              },
             ),
           ],
         ),
@@ -845,7 +879,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
       child: Row(
         children: [
           TextButton(
-            onPressed: _exit,
+            onPressed: _saving ? null : _exit,
             child: const Text('Cancel'),
           ),
           const Spacer(),
@@ -853,8 +887,10 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
             width: 160,
             child: AppPrimaryButton(
               label: finalStep ? 'Save Broker' : 'Next',
+              loading: _saving,
+              enabled: !_saving,
               onPressed: finalStep
-                  ? _save
+                  ? () => unawaited(_save())
                   : () {
                       if (!_validateStep0()) return;
                       setState(() {

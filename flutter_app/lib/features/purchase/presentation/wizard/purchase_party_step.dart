@@ -147,6 +147,24 @@ class PurchasePartyStep extends ConsumerWidget {
           },
           label: 'Select Purchase Date',
         ),
+        const SizedBox(height: 8),
+        Builder(
+          builder: (ctx) {
+            final session = ref.watch(sessionProvider);
+            final warehouse =
+                session?.primaryBusiness.effectiveDisplayTitle.trim() ?? '';
+            return Text(
+              warehouse.isEmpty
+                  ? 'Warehouse: —'
+                  : 'Warehouse: $warehouse',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: sub,
+              ),
+            );
+          },
+        ),
       ],
     );
   }
@@ -498,7 +516,31 @@ class PurchasePartyStep extends ConsumerWidget {
             fullRaw: full,
           );
         }
-        return const LinearProgressIndicator(minHeight: 2);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const LinearProgressIndicator(minHeight: 2),
+            const SizedBox(height: 8),
+            InputDecorator(
+              decoration: InputDecoration(
+                isDense: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(Icons.store_rounded),
+              ),
+              child: const Text(
+                'Loading suppliers…',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF94A3B8),
+                ),
+              ),
+            ),
+          ],
+        );
       },
     );
 
@@ -698,7 +740,31 @@ class PurchasePartyStep extends ConsumerWidget {
                     ],
                   );
                 }
-                return const LinearProgressIndicator(minHeight: 2);
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const LinearProgressIndicator(minHeight: 2),
+                    const SizedBox(height: 8),
+                    InputDecorator(
+                      decoration: InputDecoration(
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        prefixIcon: const Icon(Icons.person_outline_rounded),
+                      ),
+                      child: const Text(
+                        'Loading brokers…',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
               },
             );
       },

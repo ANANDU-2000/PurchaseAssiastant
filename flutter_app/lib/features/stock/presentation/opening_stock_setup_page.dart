@@ -11,6 +11,7 @@ import '../../../core/json_coerce.dart';
 import '../../../core/providers/stock_providers.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/design_system/hexa_responsive.dart';
+import '../../../shared/widgets/hexa_empty_state.dart';
 import 'widgets/stock_pagination_bar.dart';
 
 import 'widgets/opening_stock_sheets.dart';
@@ -291,13 +292,23 @@ class _OpeningStockSetupPageState
                   ),
                 ],
                 if (items.isEmpty)
-                  const SliverFillRemaining(
+                  SliverFillRemaining(
                     hasScrollBody: false,
                     child: Center(
-                      child: Text(
-                        'No opening stock items match filters.',
-                        style: TextStyle(fontSize: 13, color: Colors.black54),
-                      ),
+                      child: desktop
+                          ? const HexaEmptyState(
+                              icon: Icons.inventory_2_outlined,
+                              title: 'No opening stock items',
+                              subtitle:
+                                  'No items match the current filters or search.',
+                            )
+                          : const Text(
+                              'No opening stock items match filters.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.black54,
+                              ),
+                            ),
                     ),
                   ),
               ],
@@ -308,12 +319,26 @@ class _OpeningStockSetupPageState
               ref.invalidate(openingStockSetupProvider);
               await ref.read(openingStockSetupProvider.future);
             },
+            // Desktop: bind width+height — Center + maxWidth-only left the
+            // CustomScrollView unbounded on Flutter web (blank page ≥1024).
             child: desktop
-                ? Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1280),
-                      child: scroll,
-                    ),
+                ? LayoutBuilder(
+                    builder: (context, constraints) {
+                      final w = constraints.maxWidth < 1280
+                          ? constraints.maxWidth
+                          : 1280.0;
+                      final h = constraints.hasBoundedHeight
+                          ? constraints.maxHeight
+                          : MediaQuery.sizeOf(context).height;
+                      return Align(
+                        alignment: Alignment.topCenter,
+                        child: SizedBox(
+                          width: w,
+                          height: h,
+                          child: scroll,
+                        ),
+                      );
+                    },
                   )
                 : scroll,
           );
@@ -505,6 +530,8 @@ class _BulkOpeningSetSheetBodyState
   final _notesCtrl = TextEditingController();
   final _reasonCtrl = TextEditingController();
   bool _saving = false;
+  String? _qtyError;
+  String? _reasonError;
 
   @override
   void dispose() {
@@ -518,9 +545,10 @@ class _BulkOpeningSetSheetBodyState
     if (_saving) return;
     final parsed = double.tryParse(_qtyCtrl.text.trim().replaceAll(',', ''));
     if (parsed == null || !parsed.isFinite || parsed < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid opening stock quantity')),
-      );
+      setState(() {
+        _qtyError = 'Enter a valid opening stock quantity';
+        _reasonError = null;
+      });
       return;
     }
 
@@ -541,13 +569,18 @@ class _BulkOpeningSetSheetBodyState
     }
 
     if (requireAnyReason && reason.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Reason is required for locked edits')),
-      );
+      setState(() {
+        _qtyError = null;
+        _reasonError = 'Reason is required for locked edits';
+      });
       return;
     }
 
-    setState(() => _saving = true);
+    setState(() {
+      _qtyError = null;
+      _reasonError = null;
+      _saving = true;
+    });
     try {
       final api = ref.read(hexaApiProvider);
       final total = widget.items.length;
@@ -600,6 +633,8 @@ class _BulkOpeningSetSheetBodyState
   @override
   Widget build(BuildContext context) {
     return HexaResponsiveSheetViewport(
+      // Outer showHexaBottomSheet already scrolls on desktop — avoid nested Align+scroll blank.
+      compact: true,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -612,18 +647,21 @@ class _BulkOpeningSetSheetBodyState
           const SizedBox(height: 10),
           TextField(
             controller: _qtyCtrl,
+            enabled: !_saving,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
             ],
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Qty',
-              border: OutlineInputBorder(),
+              border: const OutlineInputBorder(),
+              errorText: _qtyError,
             ),
           ),
           const SizedBox(height: 10),
           TextField(
             controller: _notesCtrl,
+            enabled: !_saving,
             maxLines: 2,
             decoration: const InputDecoration(
               labelText: 'Notes (optional)',
@@ -634,10 +672,12 @@ class _BulkOpeningSetSheetBodyState
             const SizedBox(height: 10),
             TextField(
               controller: _reasonCtrl,
+              enabled: !_saving,
               maxLines: 2,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Reason (required if locked value changes)',
-                border: OutlineInputBorder(),
+                border: const OutlineInputBorder(),
+                errorText: _reasonError,
               ),
             ),
           ],

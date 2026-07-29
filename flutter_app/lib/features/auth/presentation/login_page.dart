@@ -349,21 +349,6 @@ class _LoginPageState extends ConsumerState<LoginPage>
     }
   }
 
-  Widget _err(String? m) {
-    if (m == null) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
-      child: Text(
-        m,
-        style: TextStyle(
-          color: Colors.red.shade700,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
-  }
-
   // ─────────────────────────────────────────────────────────────────────────────
   // Build — responsive: mobile gets full-width frosted layout, desktop unchanged
   // ─────────────────────────────────────────────────────────────────────────────
@@ -456,9 +441,9 @@ class _LoginPageState extends ConsumerState<LoginPage>
                     'Email',
                     icon: Icons.email_outlined,
                     err: eErr != null,
+                    errorText: eErr,
                   ),
                 ),
-                _err(eErr),
                 TextField(
                   controller: _loginPass,
                   focusNode: _passFocus,
@@ -476,6 +461,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                     'Password',
                     icon: Icons.key_rounded,
                     err: pErr != null,
+                    errorText: pErr,
                     suffix: IconButton(
                       tooltip: _obscure ? 'Show password' : 'Hide password',
                       onPressed: () => setState(() => _obscure = !_obscure),
@@ -489,7 +475,6 @@ class _LoginPageState extends ConsumerState<LoginPage>
                     ),
                   ),
                 ),
-                _err(pErr),
                 if (_inlineAuthError != null) ...[
                   const SizedBox(height: 4),
                   Text(
