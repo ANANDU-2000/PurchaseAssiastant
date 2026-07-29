@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/auth_failure_policy.dart';
 import '../api/api_warmup.dart';
 import '../auth/session_notifier.dart' show hexaApiProvider, sessionProvider;
+import '../providers/api_degraded_provider.dart';
 import '../providers/business_aggregates_invalidation.dart';
 import '../providers/business_write_revision.dart'
     show markWarehouseGlobalInvalidated, warehouseGlobalInvalidateRecently;
@@ -33,6 +34,8 @@ class _AppForegroundListenerState extends ConsumerState<AppForegroundListener>
     with WidgetsBindingObserver {
   Timer? _resumeDebounce;
   bool _foreground = true;
+  /// Blocks overlapping resume work (pingHealth can outlast the 120ms debounce).
+  bool _refreshing = false;
   DateTime? _lastForegroundRefreshAt;
   DateTime? _lastWarehouseInvalidateAt;
 
@@ -87,6 +90,8 @@ class _AppForegroundListenerState extends ConsumerState<AppForegroundListener>
   }
 
   Future<void> _onReturnedToForeground() async {
+    if (_refreshing) return;
+    _refreshing = true;
     try {
       final session = ref.read(sessionProvider);
       if (session == null) {
@@ -104,9 +109,21 @@ class _AppForegroundListenerState extends ConsumerState<AppForegroundListener>
       } catch (_) {}
       // Warm API before invalidation storm (Render cold-start mitigation).
       try {
-        await ApiWarmupService.pingHealth(ref.read(hexaApiProvider));
+        await ApiWarmupService.pingHealth(
+          ref.read(hexaApiProvider),
+          onSlow: () {
+            if (!mounted) return;
+            ref.read(apiDegradedProvider.notifier).notifyDegraded(
+                  'Reconnecting… waking server if needed',
+                );
+          },
+        );
+        if (mounted) {
+          ref.read(apiDegradedProvider.notifier).clear();
+        }
       } catch (_) {}
       if (!mounted) return;
+      // Fresh wall-clock — not a value captured before awaits above.
       final now = DateTime.now();
       if (_lastForegroundRefreshAt != null &&
           now.difference(_lastForegroundRefreshAt!) <
@@ -137,6 +154,7 @@ class _AppForegroundListenerState extends ConsumerState<AppForegroundListener>
       ref.invalidate(realtimeInvalidationProvider);
       unawaited(maybeRunDailyAutoBackup(ref));
     } finally {
+      _refreshing = false;
       if (mounted) {
         ref.read(authResumeGateProvider.notifier).state = false;
         ref.read(authRefreshInFlightProvider.notifier).state = false;

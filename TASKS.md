@@ -53,4 +53,14 @@ Spec: `docs/ai/12_UID_006_008_SPEC.md`
 | UID-007 | done | Verify patch fields + harden alias/fallback |
 | UID-008 | done | AppFormRow on stock sheet + 3 wizard steps |
 
+## UID-009…010
+
+Spec: `docs/ai/14_UID_009_010_SPEC.md`  
+Report: `docs/ai/15_diagnostic_report_slowness_refresh.md`
+
+| ID | Status | Notes |
+|----|--------|-------|
+| UID-009 | done | In-flight guard + reloadHexaApp kept (ErrorWidget) |
+| UID-010 | done | Foreground reconnecting via apiDegraded; Task C skipped |
+
 Do not invent parallel status docs.
