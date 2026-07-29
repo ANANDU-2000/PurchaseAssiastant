@@ -753,12 +753,14 @@ void applyStockListRowPatch(
   if (itemId.isEmpty || patch.isEmpty) return;
   final seq = ++_globalPatchSeq;
   _itemPatchSeq[itemId] = seq;
-  ref.read(stockListRowPatchProvider.notifier).update((current) {
-    return {
-      ...current,
-      itemId: {...?current[itemId], ...patch},
-    };
-  });
+  ref.read(stockListRowPatchProvider.notifier).update(
+    (Map<String, Map<String, dynamic>> current) {
+      return <String, Map<String, dynamic>>{
+        ...current,
+        itemId: <String, dynamic>{...?current[itemId], ...patch},
+      };
+    },
+  );
   _patchStockListSnapshot(ref, itemId, patch);
   if (kDebugMode) {
     debugPrint(
@@ -768,20 +770,78 @@ void applyStockListRowPatch(
 }
 
 /// Clear row overlays after `/stock/list` returns authoritative server rows.
+///
+/// Only drops a patch when the server row already reflects it (or is newer via
+/// [stock_version]). Blind-clearing every id on the page wiped optimistic
+/// SYS/PHYS/DIFF cells when a deferred list refetch returned stale payload.
 void reconcileStockListRowPatches(
   dynamic ref,
   Iterable<Map<String, dynamic>> serverRows,
 ) {
   final patches = ref.read(stockListRowPatchProvider);
   if (patches.isEmpty) return;
-  final serverIds = <String>{};
+  final byId = <String, Map<String, dynamic>>{};
   for (final row in serverRows) {
     final id = row['id']?.toString();
-    if (id != null && id.isNotEmpty) serverIds.add(id);
+    if (id == null || id.isEmpty) continue;
+    byId[id] = row;
   }
-  if (serverIds.isNotEmpty) {
-    clearStockListRowPatchesForIds(ref, serverIds);
+  if (byId.isEmpty) return;
+
+  final clearIds = <String>[];
+  for (final entry in patches.entries) {
+    final server = byId[entry.key];
+    if (server == null) continue;
+    if (_shouldClearStockListRowPatch(server, entry.value)) {
+      clearIds.add(entry.key);
+    }
   }
+  if (clearIds.isNotEmpty) {
+    clearStockListRowPatchesForIds(ref, clearIds);
+  }
+}
+
+bool _shouldClearStockListRowPatch(
+  Map<String, dynamic> server,
+  Map<String, dynamic> patch,
+) {
+  if (patch.isEmpty) return true;
+  final serverVersion = coerceToDoubleNullable(server['stock_version']);
+  final patchVersion = coerceToDoubleNullable(patch['stock_version']);
+  // Authoritative list row is strictly newer than the overlay.
+  if (serverVersion != null &&
+      patchVersion != null &&
+      serverVersion > patchVersion) {
+    return true;
+  }
+  return _serverRowReflectsStockListPatch(server, patch);
+}
+
+bool _serverRowReflectsStockListPatch(
+  Map<String, dynamic> server,
+  Map<String, dynamic> patch,
+) {
+  const keys = <String>[
+    'current_stock',
+    'physical_stock_qty',
+    'physical_stock_difference_qty',
+    'stock_status',
+    'stock_version',
+  ];
+  for (final key in keys) {
+    if (!patch.containsKey(key)) continue;
+    final p = patch[key];
+    final s = server[key];
+    if (p is num || s is num) {
+      final pn = coerceToDoubleNullable(p);
+      final sn = coerceToDoubleNullable(s);
+      if (pn == null || sn == null) return false;
+      if ((pn - sn).abs() > 0.001) return false;
+      continue;
+    }
+    if ('$p' != '$s') return false;
+  }
+  return true;
 }
 void clearStockListRowPatchesForIds(
   dynamic ref,
@@ -789,13 +849,15 @@ void clearStockListRowPatchesForIds(
 ) {
   final ids = itemIds.where((id) => id.isNotEmpty).toSet();
   if (ids.isEmpty) return;
-  ref.read(stockListRowPatchProvider.notifier).update((current) {
-    final next = Map<String, Map<String, dynamic>>.from(current);
-    for (final id in ids) {
-      next.remove(id);
-    }
-    return next;
-  });
+  ref.read(stockListRowPatchProvider.notifier).update(
+    (Map<String, Map<String, dynamic>> current) {
+      final next = Map<String, Map<String, dynamic>>.from(current);
+      for (final id in ids) {
+        next.remove(id);
+      }
+      return next;
+    },
+  );
 }
 
 Map<String, int> _stockStatusCountsFromAlertsSummary(

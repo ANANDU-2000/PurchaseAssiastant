@@ -79,9 +79,17 @@ Report: `docs/ai/15_diagnostic_report_slowness_refresh.md`
 | Home gray / Today-Week sticky void | **not fixed** | Out of UID scope — need UX sprint |
 | Stock tall rows / detail gray void | **not fixed** | Out of UID scope — need UX sprint |
 
-**Owner action (required for typo URLs to stop 404/blank):**  
-Vercel → project `purchase-assiastant` → Domains → add  
-`purchase-assistant.vercel.app` and `purchase-assiatant.vercel.app`  
-(remove them from any other Vercel project first).
+## Stock blank / stale cells (2026-07-29)
+
+| Fix | Status | Notes |
+|-----|--------|-------|
+| Chain-sheet race (actions → physical/system) | done | `stock_row_actions` + `low_stock_item_detail_sheet` pop-with-result, open next after await |
+| `/stock` white `SizedBox.shrink` | done | `_stockShellTabVisible` mirrors home (shell index + path) |
+| Optimistic SYS/PHYS cells wiped | done | `reconcileStockListRowPatches` only clears when server matches or newer `stock_version` |
+| Tests | done | `stock_list_row_patch_test` + `stock_row_actions_test` |
+
+| Owner action (required for typo URLs to stop 404/blank):**  
+~~Vercel Domains alias~~ — **paused**: wrong Hobby project still holds `purchase-assistant.vercel.app`.  
+**Done via MCP (2026-07-29):** Render `CORS_ORIGINS`/`ADMIN_URL` updated for `purchase-assiastant` + typo hosts; Vercel prod = `4925d8b` on `prj_ubxhNkOxAG2tM7o00u7ZBEjZ0VMM`.
 
 Do not invent parallel status docs.

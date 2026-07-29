@@ -15,6 +15,17 @@ import 'stock_update_mode_toggle.dart';
 
 import '../../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../../core/theme/hexa_colors.dart';
+
+/// Follow-up after the actions dialog fully closes (avoids Flutter web
+/// blank dialogs when chaining `showDialog` immediately after `pop`).
+enum _StockRowNextAction {
+  physical,
+  system,
+  deliveryDetails,
+  purchase,
+  activity,
+}
+
 Future<void> showStockRowActions({
   required BuildContext context,
   required WidgetRef ref,
@@ -33,7 +44,7 @@ Future<void> showStockRowActions({
   final delivered =
       StockRowMetrics.deliveryIndicator(item) == StockDeliveryIndicator.delivered;
 
-  await showHexaBottomSheet<void>(
+  final next = await showHexaBottomSheet<_StockRowNextAction>(
     context: context,
     compact: true,
     padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -69,75 +80,75 @@ Future<void> showStockRowActions({
         _StockActionTile(
           icon: Icons.inventory_2_outlined,
           label: 'Update physical stock',
-          onTap: () async {
-            Navigator.pop(context);
-            if (!context.mounted) return;
-            await showQuickStockActionSheet(
-              context: context,
-              ref: ref,
-              item: item,
-              initialMode: StockUpdateMode.physical,
-              skipInitialRefresh: true,
-            );
-          },
+          onTap: () =>
+              Navigator.pop(context, _StockRowNextAction.physical),
         ),
         if (!staff)
           _StockActionTile(
             icon: Icons.memory_outlined,
             label: 'Update system stock',
-            onTap: () async {
-              Navigator.pop(context);
-              if (!context.mounted) return;
-              await showQuickStockActionSheet(
-                context: context,
-                ref: ref,
-                item: item,
-                initialMode: StockUpdateMode.system,
-                skipInitialRefresh: true,
-              );
-            },
+            onTap: () =>
+                Navigator.pop(context, _StockRowNextAction.system),
           ),
         if (staff && delivered)
           _StockActionTile(
             icon: Icons.local_shipping_rounded,
             label: 'Delivery details',
-            onTap: () async {
-              Navigator.pop(context);
-              if (!context.mounted) return;
-              await showStaffDeliveredDetailSheet(
-                context: context,
-                ref: ref,
-                item: item,
-              );
-            },
+            onTap: () =>
+                Navigator.pop(context, _StockRowNextAction.deliveryDetails),
           ),
         _StockActionTile(
           icon: Icons.add_shopping_cart_outlined,
           label: 'Add purchase quantity',
-          onTap: () async {
-            Navigator.pop(context);
-            if (!context.mounted) return;
-            await showStockQuickPurchaseSheet(
-              context: context,
-              ref: ref,
-              item: item,
-            );
-          },
+          onTap: () =>
+              Navigator.pop(context, _StockRowNextAction.purchase),
         ),
         _StockActionTile(
           icon: Icons.info_outline_rounded,
           label: 'View item activity',
-          onTap: () async {
-            Navigator.pop(context);
-            if (!context.mounted) return;
-            onBeforeNavigate?.call();
-            await context.push('/catalog/item/$id?tab=activity');
-            onAfterNavigateReturn?.call();
-          },
+          onTap: () =>
+              Navigator.pop(context, _StockRowNextAction.activity),
         ),
       ],
     ),
   );
+
+  if (!context.mounted || next == null) return;
+
+  switch (next) {
+    case _StockRowNextAction.physical:
+      await showQuickStockActionSheet(
+        context: context,
+        ref: ref,
+        item: item,
+        initialMode: StockUpdateMode.physical,
+        skipInitialRefresh: true,
+      );
+    case _StockRowNextAction.system:
+      await showQuickStockActionSheet(
+        context: context,
+        ref: ref,
+        item: item,
+        initialMode: StockUpdateMode.system,
+        skipInitialRefresh: true,
+      );
+    case _StockRowNextAction.deliveryDetails:
+      await showStaffDeliveredDetailSheet(
+        context: context,
+        ref: ref,
+        item: item,
+      );
+    case _StockRowNextAction.purchase:
+      await showStockQuickPurchaseSheet(
+        context: context,
+        ref: ref,
+        item: item,
+      );
+    case _StockRowNextAction.activity:
+      onBeforeNavigate?.call();
+      await context.push('/catalog/item/$id?tab=activity');
+      onAfterNavigateReturn?.call();
+  }
 }
 
 class _StockActionTile extends StatelessWidget {

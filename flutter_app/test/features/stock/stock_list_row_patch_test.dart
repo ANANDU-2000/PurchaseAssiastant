@@ -1,4 +1,6 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:harisree_warehouse/core/providers/stock_list_providers.dart';
 import 'package:harisree_warehouse/features/stock/stock_list_row_patch.dart';
 
 void main() {
@@ -66,5 +68,78 @@ void main() {
     final row = {'id': 'x', 'current_stock': 10};
     final patches = <String, Map<String, dynamic>>{};
     expect(mergeStockListRowMap(row, patches), row);
+  });
+
+  test('reconcile keeps overlay when server row is stale', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    applyStockListRowPatch(
+      container,
+      itemId: 'a',
+      patch: {
+        'current_stock': 120,
+        'physical_stock_qty': 115,
+        'physical_stock_difference_qty': -5,
+        'stock_version': 2,
+      },
+    );
+    reconcileStockListRowPatches(container, [
+      {
+        'id': 'a',
+        'current_stock': 110,
+        'physical_stock_qty': 105,
+        'physical_stock_difference_qty': -5,
+        'stock_version': 1,
+      },
+    ]);
+    final patches = container.read(stockListRowPatchProvider);
+    expect(patches['a']?['current_stock'], 120);
+    expect(patches['a']?['physical_stock_qty'], 115);
+  });
+
+  test('reconcile clears overlay when server matches patch', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    applyStockListRowPatch(
+      container,
+      itemId: 'a',
+      patch: {
+        'current_stock': 120,
+        'physical_stock_qty': 115,
+        'physical_stock_difference_qty': -5,
+        'stock_version': 2,
+      },
+    );
+    reconcileStockListRowPatches(container, [
+      {
+        'id': 'a',
+        'current_stock': 120,
+        'physical_stock_qty': 115,
+        'physical_stock_difference_qty': -5,
+        'stock_version': 2,
+      },
+    ]);
+    expect(container.read(stockListRowPatchProvider).containsKey('a'), isFalse);
+  });
+
+  test('reconcile clears overlay when server stock_version is newer', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    applyStockListRowPatch(
+      container,
+      itemId: 'a',
+      patch: {
+        'current_stock': 100,
+        'stock_version': 1,
+      },
+    );
+    reconcileStockListRowPatches(container, [
+      {
+        'id': 'a',
+        'current_stock': 130,
+        'stock_version': 3,
+      },
+    ]);
+    expect(container.read(stockListRowPatchProvider).containsKey('a'), isFalse);
   });
 }

@@ -54,6 +54,33 @@ import 'widgets/stock_row_metrics.dart';
 import '../../../core/theme/hexa_colors.dart';
 enum StockPageMode { auto, staff, owner }
 
+/// IndexedStack visibility for Stock — prefer shell index over lagged
+/// [shellCurrentBranchProvider] so `/stock` cannot paint blank white.
+bool _stockShellTabVisible(
+  WidgetRef ref,
+  BuildContext context, {
+  required bool staffMode,
+}) {
+  try {
+    final shell = StatefulNavigationShell.maybeOf(context);
+    if (shell != null) {
+      return staffMode
+          ? shell.currentIndex == StaffShellBranch.stock
+          : shell.currentIndex == ShellBranch.stock;
+    }
+  } catch (_) {}
+  if (staffMode) {
+    if (ref.watch(staffShellCurrentBranchProvider) == StaffShellBranch.stock) {
+      return true;
+    }
+    final path = GoRouter.maybeOf(context)?.state.uri.path ?? '';
+    return path == '/staff/stock' || path.startsWith('/staff/stock/');
+  }
+  if (ref.watch(shellCurrentBranchProvider) == ShellBranch.stock) return true;
+  final path = GoRouter.maybeOf(context)?.state.uri.path ?? '';
+  return path == '/stock';
+}
+
 /// Desktop split-pane selection from the visible (filtered) [items] list.
 /// Falls back to the first visible row when [selectedId] is null/empty/missing.
 Map<String, dynamic>? selectStockDesktopDetailItem(
@@ -849,10 +876,8 @@ class _StockPageState extends ConsumerState<StockPage>
   @override
   Widget build(BuildContext context) {
     // IndexedStack keeps Stock mounted off-tab — skip paint + heavy watches.
-    final onStockTab = _isStaffMode
-        ? ref.watch(staffShellCurrentBranchProvider) == StaffShellBranch.stock
-        : ref.watch(shellCurrentBranchProvider) == ShellBranch.stock;
-    if (!onStockTab) {
+    // Prefer shell index + route path so a lagged branch provider cannot blank /stock.
+    if (!_stockShellTabVisible(ref, context, staffMode: _isStaffMode)) {
       return const SizedBox.shrink();
     }
 
