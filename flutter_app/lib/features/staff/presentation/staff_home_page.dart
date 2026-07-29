@@ -408,7 +408,7 @@ class StaffHomePage extends ConsumerWidget {
                     title: 'Stock mismatch',
                     subtitle: 'Physical count differs from system',
                     count: mismatchCount,
-                    accent: const Color(0xFFA32D2D),
+                    accent: HexaColors.dangerDeep,
                     onTap: () => context.go('/reports'),
                   ),
               ],
@@ -454,7 +454,7 @@ class _QuickActionTile extends StatelessWidget {
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: HexaColors.slateBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

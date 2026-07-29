@@ -80,10 +80,10 @@ class _PublicItemScanPageState extends State<PublicItemScanPage> {
           final isLow = rawStatus == 'low_stock';
           final isOut = rawStatus == 'out_of_stock';
           final statusColor = isOut
-              ? const Color(0xFF6B7280)
+              ? HexaColors.gray500
               : isLow
-                  ? const Color(0xFFD97706)
-                  : const Color(0xFF059669);
+                  ? HexaDsWarehouse.warningAmber
+                  : HexaDsColors.success;
           final system = coerceToDouble(data['current_stock']);
           final unit = data['unit']?.toString() ?? data['stock_unit']?.toString() ?? '';
 
@@ -128,7 +128,7 @@ class _PublicItemScanPageState extends State<PublicItemScanPage> {
                       style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF0E4F46),
+                        color: HexaColors.brandPrimary,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -138,7 +138,7 @@ class _PublicItemScanPageState extends State<PublicItemScanPage> {
                       style: const TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF0E4F46),
+                        color: HexaColors.brandPrimary,
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -174,7 +174,7 @@ class _PublicItemScanPageState extends State<PublicItemScanPage> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF7ED),
+                    color: HexaColors.accentOrangeSoft,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: const Color(0xFFFED7AA)),
                   ),

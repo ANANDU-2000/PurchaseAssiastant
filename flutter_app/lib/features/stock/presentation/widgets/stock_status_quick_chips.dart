@@ -5,6 +5,7 @@ import '../../../../core/providers/stock_providers.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import 'stock_warehouse_filter_sheet.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
 /// All / Low / Out quick filters above the stock search bar.
 class StockStatusQuickChips extends ConsumerWidget {
   const StockStatusQuickChips({
@@ -61,7 +62,7 @@ class StockStatusQuickChips extends ConsumerWidget {
                 label: 'Low',
                 count: countFor('low', lowSelected),
                 icon: Icons.warning_amber_rounded,
-                color: const Color(0xFFE65100),
+                color: HexaColors.accentOrange,
                 selected: lowSelected,
                 onTap: () => onSelected('shortage'),
               ),
@@ -69,7 +70,7 @@ class StockStatusQuickChips extends ConsumerWidget {
                 label: 'Out',
                 count: countFor('out', selectedStatus == 'out'),
                 icon: Icons.remove_shopping_cart_outlined,
-                color: const Color(0xFFDC2626),
+                color: HexaDsColors.error,
                 selected: selectedStatus == 'out',
                 onTap: () => onSelected('out'),
               ),

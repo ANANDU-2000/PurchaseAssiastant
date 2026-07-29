@@ -52,7 +52,7 @@ class _HomeAnalyticsComparisonStripState
             deltaLabel('vs prior', purchasePct),
             purchasePct != null && purchasePct < 0
                 ? HexaColors.loss
-                : const Color(0xFF2E7D32),
+                : HexaColors.materialGreen,
           ),
         ),
         const SizedBox(width: 8),
@@ -64,7 +64,7 @@ class _HomeAnalyticsComparisonStripState
             deltaLabel('vs prior', profitPct),
             profitPct != null && profitPct < 0
                 ? HexaColors.loss
-                : const Color(0xFF2E7D32),
+                : HexaColors.materialGreen,
           ),
         ),
       ],
@@ -81,9 +81,9 @@ class _HomeAnalyticsComparisonStripState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
+        color: HexaColors.slate100,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: HexaColors.slateBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -43,7 +43,7 @@ class StaffWarehouseTotalsCard extends ConsumerWidget {
         Widget unitTile(String label, double value, Color color) {
           return Expanded(
             child: Material(
-              color: const Color(0xFFF8FAFC),
+              color: HexaColors.slate50,
               borderRadius: BorderRadius.circular(10),
               child: InkWell(
                 onTap: () => context.push('/staff/stock'),
@@ -86,11 +86,11 @@ class StaffWarehouseTotalsCard extends ConsumerWidget {
               children: [
                 unitTile('Bags', bags, HexaColors.brandPrimary),
                 const SizedBox(width: 6),
-                unitTile('KG', kg, const Color(0xFF1565C0)),
+                unitTile('KG', kg, HexaColors.materialBlue),
                 const SizedBox(width: 6),
                 unitTile('Boxes', boxes, const Color(0xFF6A1B9A)),
                 const SizedBox(width: 6),
-                unitTile('Tins', tins, const Color(0xFFE65100)),
+                unitTile('Tins', tins, HexaColors.accentOrange),
               ],
             ),
           ),

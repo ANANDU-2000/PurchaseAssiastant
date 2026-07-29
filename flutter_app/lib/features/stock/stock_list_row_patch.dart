@@ -83,7 +83,9 @@ Map<String, dynamic> stockListPatchFromStockDetail(
   num? fallbackQty,
 }) {
   final patch = <String, dynamic>{};
-  final qty = coerceToDoubleNullable(detail['current_stock']) ?? fallbackQty;
+  final qty = coerceToDoubleNullable(detail['current_stock']) ??
+      coerceToDoubleNullable(detail['system_qty']) ??
+      fallbackQty;
   if (qty != null && qty.isFinite) {
     patch['current_stock'] = qty;
     final phys = coerceToDoubleNullable(detail['physical_stock_qty']);
@@ -108,8 +110,10 @@ Map<String, dynamic> stockListPatchFromStockDetail(
   final physQty = coerceToDoubleNullable(detail['physical_stock_qty']);
   if (physQty != null && physQty.isFinite) {
     patch['physical_stock_qty'] = physQty;
-    final sys = qty ?? coerceToDouble(detail['current_stock']);
-    if (sys.isFinite) {
+    final sys = qty?.toDouble() ??
+        coerceToDoubleNullable(detail['current_stock']) ??
+        coerceToDoubleNullable(detail['system_qty']);
+    if (sys != null && sys.isFinite) {
       patch['physical_stock_difference_qty'] = physQty - sys;
     }
   }

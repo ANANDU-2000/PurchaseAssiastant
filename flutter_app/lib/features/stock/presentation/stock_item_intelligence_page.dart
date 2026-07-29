@@ -16,6 +16,7 @@ import '../../../core/widgets/list_skeleton.dart';
 import '../../../shared/widgets/unit_engine_summary_card.dart';
 import '../../../core/widgets/warehouse_compact_card.dart';
 
+import '../../../core/theme/hexa_colors.dart';
 /// Per-item warehouse detail: stock, purchases, adjustments.
 class StockItemIntelligencePage extends ConsumerWidget {
   const StockItemIntelligencePage({
@@ -56,7 +57,7 @@ class StockItemIntelligencePage extends ConsumerWidget {
 
     if (embedded) {
       return ColoredBox(
-        color: const Color(0xFFF5F3EE),
+        color: HexaColors.scaffoldWarm,
         child: body,
       );
     }
@@ -151,11 +152,11 @@ class _DetailBody extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 22,
-                    backgroundColor: const Color(0xFFE8F5E0),
+                    backgroundColor: HexaColors.statusActiveBg,
                     child: Text(
                       name.isEmpty ? '?' : name.characters.first,
                       style: const TextStyle(
-                        color: Color(0xFF3B6D11),
+                        color: HexaColors.statusActiveFg,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -175,7 +176,7 @@ class _DetailBody extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 12,
                             color: code == null || code.isEmpty
-                                ? const Color(0xFFA32D2D)
+                                ? HexaColors.dangerDeep
                                 : Colors.black54,
                             fontWeight: code == null || code.isEmpty
                                 ? FontWeight.w700
@@ -232,7 +233,7 @@ class _DetailBody extends StatelessWidget {
                   child: Text(
                     'Dead stock: review movement before reordering',
                     style: TextStyle(
-                      color: Color(0xFFA32D2D),
+                      color: HexaColors.dangerDeep,
                       fontWeight: FontWeight.w700,
                       fontSize: 12,
                     ),
@@ -244,7 +245,7 @@ class _DetailBody extends StatelessWidget {
                   child: Text(
                     'Needs verification',
                     style: TextStyle(
-                      color: Color(0xFFE65100),
+                      color: HexaColors.accentOrange,
                       fontWeight: FontWeight.w800,
                       fontSize: 12,
                     ),
@@ -294,9 +295,9 @@ class _DetailBody extends StatelessWidget {
       width: 132,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F5EF),
+        color: HexaColors.panelWarmAlt,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE0DDD8)),
+        border: Border.all(color: HexaColors.chipWarmBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -382,17 +383,17 @@ class _DetailBody extends StatelessWidget {
   }
 
   Widget _statusChip(String label) {
-    Color bg = const Color(0xFFE8F5E0);
-    Color fg = const Color(0xFF3B6D11);
+    Color bg = HexaColors.statusActiveBg;
+    Color fg = HexaColors.statusActiveFg;
     if (label == 'Pending') {
-      bg = const Color(0xFFFFF3E0);
-      fg = const Color(0xFFBA7517);
+      bg = HexaColors.statusVerySlowBg;
+      fg = HexaColors.statusSlowFg;
     } else if (label == 'Delayed') {
-      bg = const Color(0xFFFFEBEE);
-      fg = const Color(0xFFA32D2D);
+      bg = HexaColors.statusDeadBg;
+      fg = HexaColors.dangerDeep;
     } else if (label == 'Arriving') {
-      bg = const Color(0xFFE3F2FD);
-      fg = const Color(0xFF1565C0);
+      bg = HexaColors.statusFastBg;
+      fg = HexaColors.materialBlue;
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
@@ -474,7 +475,7 @@ class _BarcodeSectionState extends ConsumerState<_BarcodeSection> {
                 const Text(
                   'Missing',
                   style: TextStyle(
-                    color: Color(0xFFA32D2D),
+                    color: HexaColors.dangerDeep,
                     fontWeight: FontWeight.w800,
                     fontSize: 12,
                   ),
@@ -487,9 +488,9 @@ class _BarcodeSectionState extends ConsumerState<_BarcodeSection> {
             width: double.infinity,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: missing ? const Color(0xFFFFEBEE) : Colors.white,
+              color: missing ? HexaColors.statusDeadBg : Colors.white,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFE0DDD8)),
+              border: Border.all(color: HexaColors.chipWarmBorder),
             ),
             child: missing
                 ? const Text('No barcode label generated')

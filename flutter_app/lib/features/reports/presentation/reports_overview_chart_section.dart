@@ -139,7 +139,7 @@ class ReportsOverviewChartSection extends ConsumerWidget {
                 diameter: chartSize * 0.85,
                 strokeWidth: 7,
                 values: const [1],
-                colors: const [Color(0xFFE2E8F0)],
+                colors: const [HexaColors.slateBorder],
                 centerChild: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -381,7 +381,7 @@ class _CategoryPieCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 9,
-                            color: Color(0xFF64748B),
+                            color: HexaColors.neutral,
                           ),
                         ),
                       ],
@@ -474,7 +474,7 @@ class _SupplierDonutCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 9,
-                      color: Color(0xFF64748B),
+                      color: HexaColors.neutral,
                     ),
                   ),
                 ],
@@ -566,7 +566,7 @@ class _RankedSpendListCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: HexaDsType.bodySm(context).copyWith(
                               fontSize: 10,
-                              color: const Color(0xFF64748B),
+                              color: HexaColors.neutral,
                             ),
                           ),
                       ],

@@ -198,4 +198,55 @@ void main() {
     expect(find.byType(SizedBox), findsWidgets);
     expect(find.text('Alpha'), findsOneWidget);
   });
+
+  testWidgets(
+      'phone reports filter sheet uses Hexa host not DraggableScrollableSheet',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(size: Size(390, 844)),
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) {
+              return Scaffold(
+                body: Center(
+                  child: FilledButton(
+                    onPressed: () {
+                      showHexaBottomSheet<void>(
+                        context: context,
+                        compact: false,
+                        padding: EdgeInsets.zero,
+                        child: SizedBox(
+                          height:
+                              HexaResponsive.adaptiveSheetMaxHeight(context) *
+                                  0.88,
+                          child: const Column(
+                            children: [
+                              Text('Filters'),
+                              Expanded(child: Center(child: Text('Units'))),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text('Filters'),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Filters'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DraggableScrollableSheet), findsNothing);
+    expect(find.text('Units'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

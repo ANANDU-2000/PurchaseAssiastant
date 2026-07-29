@@ -469,7 +469,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                         _obscure
                             ? Icons.visibility_outlined
                             : Icons.visibility_off_outlined,
-                        color: const Color(0xFF6B7280),
+                        color: HexaColors.gray500,
                         size: 22,
                       ),
                     ),
@@ -515,7 +515,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF6B7280),
+                        color: HexaColors.gray500,
                       ),
                     ),
                   ],
@@ -532,8 +532,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
                             : () => setState(() => _showValidation = true)),
                     style: FilledButton.styleFrom(
                       backgroundColor: HexaColors.brandPrimary,
-                      disabledBackgroundColor: const Color(0xFFE5E7EB),
-                      disabledForegroundColor: const Color(0xFF6B7280),
+                      disabledBackgroundColor: HexaColors.inputBorderGrey,
+                      disabledForegroundColor: HexaColors.gray500,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -763,7 +763,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF6B7280),
+                        color: HexaColors.gray500,
                       ),
                     ),
                   ],
@@ -931,7 +931,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                 borderSide: BorderSide(
                   color: error != null
                       ? Colors.red.shade500
-                      : const Color(0xFFE5E7EB),
+                      : HexaColors.inputBorderGrey,
                   width: error != null ? 1.5 : 1,
                 ),
               ),
@@ -976,7 +976,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
           _obscure
               ? Icons.visibility_outlined
               : Icons.visibility_off_outlined,
-          color: const Color(0xFF6B7280),
+          color: HexaColors.gray500,
           size: 22,
         ),
       ),
@@ -1020,8 +1020,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
                 : () => setState(() => _showValidation = true)),
         style: FilledButton.styleFrom(
           backgroundColor: HexaColors.brandPrimary,
-          disabledBackgroundColor: const Color(0xFFE5E7EB),
-          disabledForegroundColor: const Color(0xFF6B7280),
+          disabledBackgroundColor: HexaColors.inputBorderGrey,
+          disabledForegroundColor: HexaColors.gray500,
           foregroundColor: Colors.white,
           elevation: 2,
           shadowColor: HexaColors.brandPrimary.withValues(alpha: 0.3),

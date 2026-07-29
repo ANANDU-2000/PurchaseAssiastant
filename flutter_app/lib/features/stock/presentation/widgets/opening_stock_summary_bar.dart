@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'stock_status_badge.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Compact operational summary bar for Opening Stock Setup.
 class OpeningStockSummaryBar extends StatelessWidget {
   const OpeningStockSummaryBar({
@@ -28,7 +29,7 @@ class OpeningStockSummaryBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
+          color: HexaColors.slate50,
           border: Border.all(color: const Color(0xFFD8D5D0)),
           borderRadius: BorderRadius.circular(10),
         ),
@@ -53,7 +54,7 @@ class OpeningStockSummaryBar extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFFE65100),
+                      color: HexaColors.accentOrange,
                     ),
                   ),
                 ),
@@ -63,7 +64,7 @@ class OpeningStockSummaryBar extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF16A34A),
+                      color: HexaColors.profit,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -89,7 +90,7 @@ class OpeningStockSummaryBar extends StatelessWidget {
                     .isEmpty)) ...[
               Text(
                 'Last updated by $lastUpdatedBy',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                style: const TextStyle(fontSize: 12, color: HexaColors.neutral),
               ),
             ],
             if (lastUpdatedBy != null &&
@@ -97,7 +98,7 @@ class OpeningStockSummaryBar extends StatelessWidget {
                 rel.trim().isNotEmpty) ...[
               Text(
                 'Last: $lastUpdatedBy${rel.isNotEmpty ? ' · $rel' : ''}',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                style: const TextStyle(fontSize: 12, color: HexaColors.neutral),
               ),
             ],
           ],

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/pricing/tax_mode.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Landing + selling rate row for [PurchaseItemEntrySheet] (isolated rebuild scope).
 class PurchaseItemEntryRateSection extends StatelessWidget {
   const PurchaseItemEntryRateSection({
@@ -196,7 +197,7 @@ class PurchaseItemEntryKeyboardTotals extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w900,
-                color: Color(0xFF0F172A),
+                color: HexaColors.textOnLightSurface,
               ),
             ),
             Text(
@@ -204,7 +205,7 @@ class PurchaseItemEntryKeyboardTotals extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 9,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF64748B),
+                color: HexaColors.neutral,
               ),
             ),
             Text(
@@ -212,7 +213,7 @@ class PurchaseItemEntryKeyboardTotals extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 9,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF64748B),
+                color: HexaColors.neutral,
               ),
             ),
           ],
@@ -226,7 +227,7 @@ class PurchaseItemEntryKeyboardTotals extends StatelessWidget {
             style: const TextStyle(
               fontSize: 9,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
+              color: HexaColors.neutral,
             ),
           ),
         ),

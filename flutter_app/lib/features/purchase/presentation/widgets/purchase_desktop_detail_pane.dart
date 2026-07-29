@@ -12,6 +12,7 @@ import '../../providers/trade_purchase_detail_provider.dart'
         tradePurchaseDeliveryOptimisticProvider;
 import '../purchase_detail_page.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Desktop purchase history right pane — embeds [PurchaseDetailBody].
 class PurchaseDesktopDetailPane extends ConsumerWidget {
   const PurchaseDesktopDetailPane({
@@ -27,11 +28,11 @@ class PurchaseDesktopDetailPane extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (purchaseId == null || purchaseId!.isEmpty) {
       return const ColoredBox(
-        color: Color(0xFFFAFAF8),
+        color: HexaColors.panelWarm,
         child: Center(
           child: Text(
             'Select a purchase',
-            style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+            style: TextStyle(color: HexaColors.neutral, fontSize: 13),
           ),
         ),
       );
@@ -47,7 +48,7 @@ class PurchaseDesktopDetailPane extends ConsumerWidget {
     );
 
     return ColoredBox(
-      color: const Color(0xFFFAFAF8),
+      color: HexaColors.panelWarm,
       child: async.when(
         skipLoadingOnReload: true,
         skipLoadingOnRefresh: true,

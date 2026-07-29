@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/design_system/hexa_responsive.dart';
 import '../../../../core/theme/hexa_colors.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
 /// Compact 2×3 quick actions (warehouse operational density).
 class HomeQuickActionsGrid extends StatelessWidget {
   const HomeQuickActionsGrid({
@@ -38,14 +39,14 @@ class HomeQuickActionsGrid extends StatelessWidget {
       _QuickActionSpec(
         label: 'Stock',
         icon: Icons.inventory_2_rounded,
-        color: const Color(0xFF1565C0),
+        color: HexaColors.materialBlue,
         onTap: onStock,
       ),
       if (isOwner && onAddItem != null)
         _QuickActionSpec(
           label: 'Add item',
           icon: Icons.add_box_rounded,
-          color: const Color(0xFF7C3AED),
+          color: HexaDsColors.violet,
           onTap: onAddItem!,
         ),
       _QuickActionSpec(
@@ -57,7 +58,7 @@ class HomeQuickActionsGrid extends StatelessWidget {
       _QuickActionSpec(
         label: 'Reports',
         icon: Icons.bar_chart_rounded,
-        color: const Color(0xFF0D9488),
+        color: HexaColors.brandTealBright,
         onTap: onReports,
       ),
       _QuickActionSpec(
@@ -155,7 +156,7 @@ class _CompactCircularAction extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF334155),
+                color: HexaColors.slate700,
               ),
             ),
           ],

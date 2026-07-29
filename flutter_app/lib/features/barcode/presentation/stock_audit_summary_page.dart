@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/json_coerce.dart';
 
+import '../../../core/theme/hexa_colors.dart';
 /// Post-audit summary (matched vs discrepant lines).
 class StockAuditSummaryPage extends ConsumerStatefulWidget {
   const StockAuditSummaryPage({super.key});
@@ -88,13 +89,13 @@ class _StockAuditSummaryPageState extends ConsumerState<StockAuditSummaryPage> {
                   ),
                   const SizedBox(height: 12),
                   _row('Items scanned', '${lines.length}'),
-                  _row('Matching', '${matched.length}', color: const Color(0xFF2E7D32)),
+                  _row('Matching', '${matched.length}', color: HexaColors.materialGreen),
                   _row(
                     'Discrepancies',
                     '${discrepant.length}',
                     color: discrepant.isEmpty
                         ? null
-                        : const Color(0xFFC62828),
+                        : HexaColors.materialRed,
                   ),
                 ],
               ),

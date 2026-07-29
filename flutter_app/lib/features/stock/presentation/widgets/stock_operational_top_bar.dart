@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/router/navigation_ext.dart';
 import '../../../../core/providers/home_dashboard_provider.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Compact warehouse stock top bar: Back, Stock, Period, Filters, Search, More.
 class StockOperationalTopBar extends StatelessWidget implements PreferredSizeWidget {
   const StockOperationalTopBar({
@@ -62,8 +63,8 @@ class StockOperationalTopBar extends StatelessWidget implements PreferredSizeWid
   Widget _buildAppBar(BuildContext context, {required bool activityTab}) {
     return AppBar(
       toolbarHeight: _height,
-      backgroundColor: const Color(0xFFF5F3EE),
-      foregroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: HexaColors.scaffoldWarm,
+      foregroundColor: HexaColors.textOnLightSurface,
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_rounded, size: 22),

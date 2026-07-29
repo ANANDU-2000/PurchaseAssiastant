@@ -9,6 +9,7 @@ import '../../../../core/widgets/section_inline_error.dart';
 import '../../../../core/router/navigation_ext.dart';
 import '../../../../shared/widgets/operational_ui.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Dense low-stock table with status colors and reorder CTA.
 class HomeLowStockSection extends ConsumerStatefulWidget {
   const HomeLowStockSection({super.key, this.embedded = false, this.dense = false});
@@ -33,10 +34,10 @@ class _HomeLowStockSectionState extends ConsumerState<HomeLowStockSection> {
   Color _statusColor(String? status) {
     final s = (status ?? '').toLowerCase();
     if (s.contains('critical') || s.contains('out')) {
-      return const Color(0xFFC62828);
+      return HexaColors.materialRed;
     }
-    if (s.contains('low')) return const Color(0xFFE65100);
-    return const Color(0xFF2E7D32);
+    if (s.contains('low')) return HexaColors.accentOrange;
+    return HexaColors.materialGreen;
   }
 
   @override

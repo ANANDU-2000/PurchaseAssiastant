@@ -8,6 +8,7 @@ import '../../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../../core/providers/stock_providers.dart';
 import '../../../../core/widgets/friendly_load_error.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 enum _TimelineKindFilter {
   all,
   purchase,
@@ -117,7 +118,7 @@ class _ItemTimelineSectionState extends ConsumerState<ItemTimelineSection> {
                 style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF64748B),
+                  color: HexaColors.neutral,
                 ),
               ),
             ],
@@ -279,7 +280,7 @@ class _TimelineRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Icon(Icons.circle, size: 10, color: Color(0xFF94A3B8)),
+        const Icon(Icons.circle, size: 10, color: HexaColors.cost),
         const SizedBox(width: 10),
         Expanded(
           child: Column(
@@ -301,7 +302,7 @@ class _TimelineRow extends StatelessWidget {
                 ].join(' • '),
                 style: const TextStyle(
                   fontSize: 11,
-                  color: Color(0xFF64748B),
+                  color: HexaColors.neutral,
                   fontWeight: FontWeight.w700,
                 ),
               ),

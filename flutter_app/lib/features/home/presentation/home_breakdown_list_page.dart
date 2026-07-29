@@ -15,6 +15,7 @@ import '../../../core/utils/line_display.dart';
 import '../../../core/widgets/focused_search_chrome.dart';
 import '../home_pack_unit_word.dart';
 
+import '../../../core/design_system/hexa_ds_tokens.dart';
 String _inr(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
         .format(n);
@@ -147,14 +148,14 @@ class _HomeBreakdownListPageState extends ConsumerState<HomeBreakdownListPage> {
   final _breakdownSearchFocus = FocusNode();
 
   static const _dotColors = <Color>[
-    Color(0xFF0D9488),
-    Color(0xFF6366F1),
-    Color(0xFFEA580C),
-    Color(0xFF7C3AED),
+    HexaColors.brandTealBright,
+    HexaDsColors.indigo,
+    HexaColors.accentOrangeMid,
+    HexaDsColors.violet,
     Color(0xFF0EA5E9),
     Color(0xFFDB2777),
     Color(0xFFCA8A04),
-    Color(0xFF16A34A),
+    HexaColors.profit,
   ];
 
   @override
@@ -328,7 +329,7 @@ class _HomeBreakdownListPageState extends ConsumerState<HomeBreakdownListPage> {
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
-                color: Color(0xFF0F172A),
+                color: HexaColors.textOnLightSurface,
               ),
             ),
             const SizedBox(width: 10),
@@ -341,7 +342,7 @@ class _HomeBreakdownListPageState extends ConsumerState<HomeBreakdownListPage> {
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
+                  color: HexaColors.textOnLightSurface,
                 ),
               ),
             ),
@@ -583,7 +584,7 @@ class _HomeBreakdownListPageState extends ConsumerState<HomeBreakdownListPage> {
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 15,
-                        color: Color(0xFF0F172A),
+                        color: HexaColors.textOnLightSurface,
                       ),
                     ),
                   ),
@@ -592,7 +593,7 @@ class _HomeBreakdownListPageState extends ConsumerState<HomeBreakdownListPage> {
                     style: const TextStyle(
                       fontWeight: FontWeight.w800,
                       fontSize: 15,
-                      color: Color(0xFF0F172A),
+                      color: HexaColors.textOnLightSurface,
                     ),
                   ),
                 ],
@@ -608,7 +609,7 @@ class _HomeBreakdownListPageState extends ConsumerState<HomeBreakdownListPage> {
                         text: boldLine2,
                         style: const TextStyle(
                           fontWeight: FontWeight.w900,
-                          color: Color(0xFF0F172A),
+                          color: HexaColors.textOnLightSurface,
                         ),
                       ),
                       if (tail.isNotEmpty)
@@ -616,7 +617,7 @@ class _HomeBreakdownListPageState extends ConsumerState<HomeBreakdownListPage> {
                           text: ' · $tail',
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF64748B),
+                            color: HexaColors.neutral,
                           ),
                         ),
                     ],

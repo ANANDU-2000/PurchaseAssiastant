@@ -16,6 +16,7 @@ import '../../../../core/providers/stock_providers.dart'
         stockChangesFeedProvider;
 import '../../../../core/utils/unit_utils.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Shows compact bottom sheet to set opening stock.
 Future<bool> showOpeningStockSetSheet({
   required BuildContext context,
@@ -195,12 +196,12 @@ class _OpeningStockSetBodyState extends ConsumerState<_OpeningStockSetBody> {
           if ((widget.item['subcategory_name']?.toString().trim() ?? '').isNotEmpty)
             Text(
               widget.item['subcategory_name'].toString(),
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: HexaColors.neutral),
             ),
           const SizedBox(height: 8),
           Text(
             'Current opening: $displayCurrent ${_unit.isNotEmpty ? _unit : ''}'.trim(),
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: HexaColors.neutral),
           ),
           const SizedBox(height: 14),
           TextField(

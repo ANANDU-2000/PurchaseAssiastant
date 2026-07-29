@@ -405,6 +405,10 @@ Future<T?> showHexaBottomSheet<T>({
   EdgeInsetsGeometry? padding,
   double maxWidth = HexaResponsive.maxSheetWidth,
   ShapeBorder? shape,
+  /// Desktop only: align dialog (e.g. [Alignment.centerLeft] for master-detail).
+  AlignmentGeometry? desktopAlignment,
+  /// Desktop dialog barrier — default Material darkens covered controls (UID-004).
+  Color? barrierColor,
 }) {
   if (HexaBreakpoints.isDesktop(context)) {
     // Desktop uses a dialog (not a bottom sheet).
@@ -413,6 +417,7 @@ Future<T?> showHexaBottomSheet<T>({
     return showDialog<T>(
       context: context,
       barrierDismissible: true,
+      barrierColor: barrierColor ?? Colors.black54,
       builder: (ctx) {
         final mq = MediaQuery.sizeOf(ctx);
         final windowW = mq.width;
@@ -443,8 +448,15 @@ Future<T?> showHexaBottomSheet<T>({
           body = padded;
         }
 
-        return Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        final dialog = Dialog(
+          insetPadding: desktopAlignment == Alignment.centerLeft
+              ? EdgeInsets.fromLTRB(
+                  24,
+                  24,
+                  math.max(24, mq.width * 0.36),
+                  24,
+                )
+              : const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
           shape: shape ??
               RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -481,6 +493,12 @@ Future<T?> showHexaBottomSheet<T>({
                     ),
                   ),
           ),
+        );
+
+        if (desktopAlignment == null) return dialog;
+        return Align(
+          alignment: desktopAlignment,
+          child: dialog,
         );
       },
     );

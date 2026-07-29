@@ -34,7 +34,7 @@ class HomeLiveStatusBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (!isOwner) return const SizedBox.shrink();
 
-    final syncColor = offline ? const Color(0xFFC62828) : HexaColors.profit;
+    final syncColor = offline ? HexaColors.materialRed : HexaColors.profit;
     final syncLabel = offline ? 'Offline' : 'Synced';
 
     return Container(
@@ -42,7 +42,7 @@ class HomeLiveStatusBar extends ConsumerWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: HexaColors.slateBorder),
       ),
       child: Material(
         color: Colors.transparent,
@@ -71,7 +71,7 @@ class HomeLiveStatusBar extends ConsumerWidget {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF64748B),
+                    color: HexaColors.neutral,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -160,29 +160,29 @@ class _HomeStockStatusSheet extends ConsumerWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Counts match Low stock page and delivery pipeline',
+              'Need attention = below reorder + out of stock',
               style: HexaDsType.label(11, color: HexaDsColors.textMuted),
             ),
             const SizedBox(height: 12),
             _HealthTile(
               icon: Icons.warning_amber_rounded,
-              label: 'Low stock · need attention',
+              label: 'Need attention',
               count: attention,
-              color: const Color(0xFFDC2626),
+              color: HexaDsColors.error,
               route: '/stock/low-stock',
             ),
             _HealthTile(
               icon: Icons.campaign_outlined,
               label: 'Staff reorder requests',
               count: reorderN,
-              color: const Color(0xFF7C3AED),
+              color: HexaDsColors.violet,
               route: '/notifications',
             ),
             _HealthTile(
               icon: Icons.local_shipping_outlined,
               label: 'Pending delivery',
               count: pendingDel,
-              color: const Color(0xFFEA580C),
+              color: HexaColors.accentOrangeMid,
               route: '/purchase?filter=pending_delivery',
               useTruck: true,
             ),
@@ -190,14 +190,14 @@ class _HomeStockStatusSheet extends ConsumerWidget {
               icon: Icons.qr_code_2_rounded,
               label: 'Missing barcode labels',
               count: missingBarcode,
-              color: const Color(0xFF1565C0),
+              color: HexaColors.materialBlue,
               route: '/stock/missing-barcodes',
             ),
             _HealthTile(
               icon: Icons.compare_arrows_rounded,
               label: 'Stock mismatch',
               count: mismatchN,
-              color: const Color(0xFFB91C1C),
+              color: HexaDsColors.error,
               route: '/reports',
             ),
           ],
@@ -225,7 +225,7 @@ class _HealthTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = count > 0;
-    final accent = active ? color : const Color(0xFF94A3B8);
+    final accent = active ? color : HexaColors.cost;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -243,7 +243,7 @@ class _HealthTile extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: active ? accent.withValues(alpha: 0.35) : const Color(0xFFE2E8F0),
+                color: active ? accent.withValues(alpha: 0.35) : HexaColors.slateBorder,
               ),
             ),
             child: Row(
@@ -272,8 +272,8 @@ class _HealthTile extends StatelessWidget {
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
                       color: active
-                          ? const Color(0xFF0F172A)
-                          : const Color(0xFF64748B),
+                          ? HexaColors.textOnLightSurface
+                          : HexaColors.neutral,
                     ),
                   ),
                 ),

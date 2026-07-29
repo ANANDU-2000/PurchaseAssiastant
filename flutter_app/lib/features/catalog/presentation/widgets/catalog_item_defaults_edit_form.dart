@@ -15,6 +15,7 @@ import '../../../../core/widgets/form_field_scroll.dart';
 import '../../../../shared/widgets/bag_default_unit_hint.dart';
 import '../../../../shared/widgets/search_picker_sheet.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Full-screen / sheet body for editing catalog item defaults (name, unit, costs).
 class CatalogItemDefaultsEditForm extends StatefulWidget {
   const CatalogItemDefaultsEditForm({
@@ -279,9 +280,9 @@ class CatalogItemDefaultsEditFormState
             width: double.infinity,
             padding: const EdgeInsets.all(HexaDsSpace.s2),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
+              color: HexaColors.slate50,
               borderRadius: BorderRadius.circular(HexaDsRadii.md),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+              border: Border.all(color: HexaColors.slateBorder),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,

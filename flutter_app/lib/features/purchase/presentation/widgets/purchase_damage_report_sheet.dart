@@ -6,6 +6,7 @@ import '../../../../core/auth/auth_error_messages.dart';
 import '../../../../core/auth/session_notifier.dart';
 import '../../../../core/design_system/hexa_responsive.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
 const _damageTypes = <String, String>{
   'damaged': 'Damaged',
   'short': 'Short delivery',
@@ -165,7 +166,7 @@ class _PurchaseDamageReportSheetState
             const SizedBox(height: 8),
             Text(
               _error!,
-              style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 12),
+              style: const TextStyle(color: HexaDsColors.error, fontSize: 12),
             ),
           ],
           const SizedBox(height: 16),

@@ -54,7 +54,7 @@ class HomeAnalyticsRing extends ConsumerWidget {
             style: HexaDsType.labelCaps(context).copyWith(
               fontSize: 10,
               fontWeight: FontWeight.w800,
-              color: const Color(0xFF64748B),
+              color: HexaColors.neutral,
             ),
           ),
           const SizedBox(height: 2),
@@ -79,8 +79,8 @@ class HomeAnalyticsRing extends ConsumerWidget {
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
                 color: (pct ?? 0) >= 0
-                    ? const Color(0xFF16A34A)
-                    : const Color(0xFFDC2626),
+                    ? HexaColors.profit
+                    : HexaDsColors.error,
               ),
             ),
           ],
@@ -101,7 +101,7 @@ class HomeAnalyticsRing extends ConsumerWidget {
             style: HexaDsType.bodySm(context).copyWith(
               fontWeight: FontWeight.w600,
               fontSize: 11,
-              color: const Color(0xFF64748B),
+              color: HexaColors.neutral,
             ),
           ),
       ],
@@ -131,7 +131,7 @@ class HomeAnalyticsRing extends ConsumerWidget {
           diameter: diameter,
           strokeWidth: stroke,
           values: const [1],
-          colors: const [Color(0xFFE2E8F0)],
+          colors: const [HexaColors.slateBorder],
           centerChild: _ringCenter(
             context,
             showPeriodTotals: showPeriodTotals,

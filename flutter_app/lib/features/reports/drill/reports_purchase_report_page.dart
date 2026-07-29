@@ -135,7 +135,7 @@ class _PurchaseReportBody extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   '${df.format(p.purchaseDate)} · ${p.lines.length} lines',
-                  style: const TextStyle(color: Color(0xFF64748B)),
+                  style: const TextStyle(color: HexaColors.neutral),
                 ),
                 const SizedBox(height: 8),
                 Text(

@@ -211,7 +211,7 @@ class _ItemPhysicalVerificationCardState
           Expanded(
             child: Text(
               k,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: HexaColors.neutral),
             ),
           ),
           Text(

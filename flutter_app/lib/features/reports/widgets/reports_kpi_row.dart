@@ -110,7 +110,7 @@ class _KpiCell extends StatelessWidget {
             style: const TextStyle(
               fontSize: 9,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF64748B),
+              color: HexaColors.neutral,
               letterSpacing: 0.2,
             ),
           ),
@@ -136,7 +136,7 @@ class _KpiCell extends StatelessWidget {
             style: const TextStyle(
               fontSize: 9,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF94A3B8),
+              color: HexaColors.cost,
             ),
           ),
         ],

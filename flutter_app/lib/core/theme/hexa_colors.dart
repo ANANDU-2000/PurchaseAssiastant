@@ -58,12 +58,68 @@ abstract final class HexaColors {
   static const primaryNavy      = Color(0xFF0F172A);
   static const textPrimary      = Color(0xFFF0F4FF);
   static const textSecondary    = Color(0xFF5C6578);
+  /// Slate-700 — dense list secondary labels (warehouse rows).
+  static const slate700         = Color(0xFF334155);
+  /// Soft warm panel behind desktop stock detail.
+  static const panelWarm        = Color(0xFFFAFAF8);
+  /// Operational stock scaffold canvas (slightly warmer than brandBackground).
+  static const scaffoldWarm     = Color(0xFFF5F3EE);
+  /// Deep teal used for physical-stock emphasis (between primary and accent).
+  static const brandTealDeep    = Color(0xFF0D6B5E);
+  static const brandTealMid     = Color(0xFF0F766E);
+  /// Brighter interactive teal (Tailwind teal-600).
+  static const brandTealBright  = Color(0xFF0D9488);
+  static const brandTealSoft    = Color(0xFF17A8A7);
+  /// Slate border / chip outline.
+  static const slateBorder      = Color(0xFFE2E8F0);
+  static const slate50          = Color(0xFFF8FAFC);
+  static const slate100         = Color(0xFFF1F5F9);
+  static const slate800         = Color(0xFF1E293B);
+  static const gray500          = Color(0xFF6B7280);
+  /// Orange / amber operational accents (pending, warnings chips).
+  static const accentOrange     = Color(0xFFE65100);
+  static const accentOrangeMid  = Color(0xFFEA580C);
+  static const accentOrangeDeep = Color(0xFF9A3412);
+  static const accentOrangeSoft = Color(0xFFFFF7ED);
+  static const materialBlue     = Color(0xFF1565C0);
+  static const materialGreen    = Color(0xFF2E7D32);
+  static const materialRed      = Color(0xFFC62828);
+  static const dangerDeep       = Color(0xFFA32D2D);
 
   // ── SEMANTIC ───────────────────────────────────────────────────────────────
   static const profit  = Color(0xFF16A34A);
   static const loss    = Color(0xFFE53935);
   static const warning = Color(0xFFF0A500);
   static const accentAmber = Color(0xFFF59E0B);
+
+  // ── STOCK / REPORTS MOVEMENT STATUS ────────────────────────────────────────
+  static const statusActiveBg = Color(0xFFE8F5E0);
+  static const statusActiveFg = Color(0xFF3B6D11);
+  static const statusActiveBorder = Color(0xFF4CAF50);
+  static const statusSlowBg = Color(0xFFFFF8E1);
+  static const statusSlowFg = Color(0xFFBA7517);
+  static const statusSlowBorder = Color(0xFFFBC02D);
+  static const statusVerySlowBg = Color(0xFFFFF3E0);
+  static const statusVerySlowBorder = Color(0xFFFF9800);
+  static const statusDeadBg = Color(0xFFFFEBEE);
+  static const statusFastBg = Color(0xFFE3F2FD);
+  static const statusFastBorder = Color(0xFF2196F3);
+  static const slate300 = Color(0xFFCBD5E1);
+  static const slate400 = Color(0xFF9CA3AF);
+  static const inkNearBlack = Color(0xFF111827);
+  static const chipWarmBorder = Color(0xFFE0DDD8);
+  static const panelWarmAlt = Color(0xFFF7F5EF);
+  static const skySoft = Color(0xFFE0F2FE);
+  static const skyDeep = Color(0xFF0369A1);
+  static const successSoft = Color(0xFFE8F5E9);
+  static const successTeal = Color(0xFF1A7A6A);
+  static const successEmerald = Color(0xFF10B981);
+  static const dangerBright = Color(0xFFEF4444);
+  static const tealWash = Color(0xFFF1F8F4);
+  static const tealBorderSoft = Color(0xFF99F6E4);
+  static const tealWashAlt = Color(0xFFEFFAF9);
+  static const brandMintWash = Color(0xFFE8F4F2);
+  static const amberBorder = Color(0xFFFDBA74);
 
   // ── GRADIENTS ──────────────────────────────────────────────────────────────
   static const primaryLight = Color(0xFFE8F5F2);

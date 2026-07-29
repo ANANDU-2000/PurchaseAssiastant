@@ -12,6 +12,7 @@ import '../../../../core/widgets/friendly_load_error.dart';
 import '../../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../../core/utils/unit_utils.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 enum ItemPurchaseRange { d7, d30, d90, d365, all }
 
 class ItemPurchaseHistorySection extends ConsumerStatefulWidget {
@@ -88,7 +89,7 @@ class _ItemPurchaseHistorySectionState
                     padding: EdgeInsets.fromLTRB(12, 14, 12, 14),
                     child: Text(
                       'No purchases found in this range.',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      style: TextStyle(fontSize: 12, color: HexaColors.neutral),
                     ),
                   );
                 }
@@ -107,9 +108,9 @@ class _ItemPurchaseHistorySectionState
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: HexaColors.slate50,
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          border: Border.all(color: HexaColors.slateBorder),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -119,7 +120,7 @@ class _ItemPurchaseHistorySectionState
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF334155),
+                                color: HexaColors.slate700,
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -130,7 +131,7 @@ class _ItemPurchaseHistorySectionState
                               style: const TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFF64748B),
+                                color: HexaColors.neutral,
                               ),
                             ),
                           ],
@@ -230,7 +231,7 @@ class _PurchaseCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: HexaColors.slateBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -245,7 +246,7 @@ class _PurchaseCard extends StatelessWidget {
                         child: Icon(
                           Icons.inventory_2_outlined,
                           size: 14,
-                          color: const Color(0xFF16A34A),
+                          color: HexaColors.profit,
                         ),
                       ),
                     )
@@ -255,7 +256,7 @@ class _PurchaseCard extends StatelessWidget {
                       child: Icon(
                         Icons.local_shipping_outlined,
                         size: 14,
-                        color: const Color(0xFFEA580C),
+                        color: HexaColors.accentOrangeMid,
                       ),
                     ),
                   Expanded(
@@ -273,7 +274,7 @@ class _PurchaseCard extends StatelessWidget {
                     df.format(row.purchaseDate),
                     style: const TextStyle(
                       fontSize: 10,
-                      color: Color(0xFF64748B),
+                      color: HexaColors.neutral,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -289,7 +290,7 @@ class _PurchaseCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontSize: 10,
-                  color: Color(0xFF64748B),
+                  color: HexaColors.neutral,
                   fontWeight: FontWeight.w600,
                 ),
               ),

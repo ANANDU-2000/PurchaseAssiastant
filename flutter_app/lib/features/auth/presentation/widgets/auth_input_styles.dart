@@ -39,7 +39,7 @@ InputDecoration authFilledDecoration(
       borderRadius: BorderRadius.circular(10),
       borderSide: hasErr
           ? errSide
-          : const BorderSide(color: Color(0xFFE5E7EB), width: 1),
+          : const BorderSide(color: HexaColors.inputBorderGrey, width: 1),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),

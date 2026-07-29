@@ -12,6 +12,8 @@ import 'home_bold_metrics_line.dart';
 import 'home_formatters.dart';
 import 'home_recent_changes_section.dart' show HomeSectionSkeleton;
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/theme/hexa_colors.dart';
 /// On-hand warehouse units + operational counts (quantity-first).
 class HomeWarehouseSnapshotCard extends ConsumerWidget {
   const HomeWarehouseSnapshotCard({super.key});
@@ -89,7 +91,7 @@ class HomeWarehouseSnapshotCard extends ConsumerWidget {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
-                      color: const Color(0xFF0F172A),
+                      color: HexaColors.textOnLightSurface,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -106,7 +108,7 @@ class HomeWarehouseSnapshotCard extends ConsumerWidget {
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFFDC2626),
+                        color: HexaDsColors.error,
                       ),
                     ),
                   ],

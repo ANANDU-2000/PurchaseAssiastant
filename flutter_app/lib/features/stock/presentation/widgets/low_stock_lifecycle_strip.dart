@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/hexa_ds_tokens.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Horizontal lifecycle chips for a low-stock operations row.
 class LowStockLifecycleStrip extends StatelessWidget {
   const LowStockLifecycleStrip({
@@ -32,14 +33,14 @@ class LowStockLifecycleStrip extends StatelessWidget {
 
   Color _colorForStage(String s) {
     return switch (s) {
-      'out' => const Color(0xFFDC2626),
+      'out' => HexaDsColors.error,
       'delayed' => const Color(0xFFBA7517),
-      'disputed' => const Color(0xFFA32D2D),
+      'disputed' => HexaColors.dangerDeep,
       'verification' => const Color(0xFF0EA5E9),
-      'ordered' => const Color(0xFF0F766E),
-      'reorder_requested' => const Color(0xFFE65100),
-      'reorder_done' => const Color(0xFF6366F1),
-      'low' => const Color(0xFFE65100),
+      'ordered' => HexaColors.brandTealMid,
+      'reorder_requested' => HexaColors.accentOrange,
+      'reorder_done' => HexaDsColors.indigo,
+      'low' => HexaColors.accentOrange,
       _ => HexaDsColors.textMuted,
     };
   }
@@ -57,7 +58,7 @@ class LowStockLifecycleStrip extends StatelessWidget {
       chips.add(
         _Chip(
           label: 'Reorder: ${reorderStatus!.toUpperCase()}',
-          color: const Color(0xFF6366F1),
+          color: HexaDsColors.indigo,
         ),
       );
     }
@@ -65,7 +66,7 @@ class LowStockLifecycleStrip extends StatelessWidget {
       chips.add(
         _Chip(
           label: '${pendingDays}d pending',
-          color: const Color(0xFF0F766E),
+          color: HexaColors.brandTealMid,
         ),
       );
     }

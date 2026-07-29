@@ -100,7 +100,7 @@ class ReportsItemDetailPage extends ConsumerWidget {
                       qtyLine,
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                             fontWeight: FontWeight.w800,
-                            color: const Color(0xFF1A1A1A),
+                            color: HexaColors.textOnLightSurface,
                           ),
                     ),
                   const SizedBox(height: 4),
@@ -108,7 +108,7 @@ class ReportsItemDetailPage extends ConsumerWidget {
                     _inr0(sumAmt.round()),
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.w900,
-                          color: const Color(0xFF1A1A1A),
+                          color: HexaColors.textOnLightSurface,
                         ),
                   ),
                 ],
@@ -142,7 +142,7 @@ class ReportsItemDetailPage extends ConsumerWidget {
                     RichText(
                       text: TextSpan(
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: const Color(0xFF1A1A1A),
+                              color: HexaColors.textOnLightSurface,
                             ),
                         children: [
                           TextSpan(

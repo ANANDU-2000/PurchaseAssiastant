@@ -205,9 +205,10 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
     if (!mounted) return;
     String? targetCat;
     String? targetType;
+    // Intrinsic form — compact shrink-wrap (BLANK-002); avoid unbounded Expanded.
     await showHexaBottomSheet<void>(
       context: context,
-      compact: false,
+      compact: true,
       padding: EdgeInsets.zero,
       child: StatefulBuilder(
             builder: (ctx, setSt) {
@@ -237,6 +238,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
                     child: SingleChildScrollView(
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(

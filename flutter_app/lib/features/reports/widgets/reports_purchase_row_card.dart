@@ -66,7 +66,7 @@ class ReportsPurchaseRowCard extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
+                          color: HexaColors.neutral,
                         ),
                       ),
                     ],
@@ -80,7 +80,7 @@ class ReportsPurchaseRowCard extends StatelessWidget {
                     color: HexaColors.brandPrimary,
                   ),
                 ),
-                const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+                const Icon(Icons.chevron_right_rounded, color: HexaColors.cost),
               ],
             ),
           ),

@@ -4,7 +4,11 @@ import 'dart:html' as html;
 bool _removed = false;
 
 /// Hides the static `#boot` / `#splash` overlays from [web/index.html] once Flutter
-/// has painted bootstrap UI (not on the engine's empty first frame).
+/// has painted bootstrap UI (spinner, error, or HexaApp) — not on an empty first frame.
+///
+/// Callers must schedule this only after a real loading/error/app widget is in the tree
+/// (see `_HexaBootstrapState._scheduleBootOverlayRelease`). Double-RAF still waits for
+/// that frame to hit the canvas before removing HTML chrome (UID-001).
 void removeBootOverlayIfPresent({bool force = false}) {
   if (_removed && !force) return;
   void hide() {

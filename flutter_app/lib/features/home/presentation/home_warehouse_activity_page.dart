@@ -109,7 +109,7 @@ class _HomeWarehouseActivityPageState
                       padding: EdgeInsets.fromLTRB(16, 2, 16, 0),
                       child: Text(
                         'Applies to purchase center and warehouse activity',
-                        style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                        style: TextStyle(fontSize: 11, color: HexaColors.neutral),
                       ),
                     ),
                     if (showRefreshBanner)
@@ -268,7 +268,7 @@ class _ActivityTableHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
+        color: HexaColors.slate100,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(

@@ -5,6 +5,8 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/business_aggregates_invalidation.dart';
 
 /// One-shot undo after a quick stock patch (server validates 15 min / same user).
+///
+/// UID-006: floating + explicit System tone so acknowledgment matches Physical saves.
 void showStockUndoSnackBar({
   BuildContext? context,
   ScaffoldMessengerState? messenger,
@@ -18,7 +20,8 @@ void showStockUndoSnackBar({
   m.hideCurrentSnackBar();
   m.showSnackBar(
     SnackBar(
-      content: Text('Stock updated — $itemName'),
+      content: Text('System stock updated — $itemName'),
+      behavior: SnackBarBehavior.floating,
       action: SnackBarAction(
         label: 'Undo',
         onPressed: () async {
@@ -36,17 +39,22 @@ void showStockUndoSnackBar({
               refreshItemDetail: true,
             );
             m.showSnackBar(
-              const SnackBar(content: Text('Change undone')),
+              const SnackBar(
+                content: Text('Change undone'),
+                behavior: SnackBarBehavior.floating,
+              ),
             );
           } catch (_) {
             m.showSnackBar(
               const SnackBar(
                 content: Text('Could not undo — change may be too old'),
+                behavior: SnackBarBehavior.floating,
               ),
             );
           }
         },
       ),
+      // Undo window (server allows ~15 min); keep snackbar long enough to act.
       duration: const Duration(seconds: 12),
     ),
   );

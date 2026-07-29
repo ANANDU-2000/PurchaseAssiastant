@@ -247,7 +247,7 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
                       style: FilledButton.styleFrom(
                         backgroundColor: HexaColors.brandPrimary,
                         foregroundColor: Colors.white,
-                        disabledBackgroundColor: const Color(0xFFE5E7EB),
+                        disabledBackgroundColor: HexaColors.inputBorderGrey,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),

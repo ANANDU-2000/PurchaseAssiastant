@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/providers/analytics_breakdown_providers.dart';
 import '../../../core/providers/reports_filtered_provider.dart';
 import '../../../core/theme/hexa_colors.dart';
@@ -9,12 +10,12 @@ import '../filters/reports_filter_state.dart';
 import '../reports_bi_tab.dart';
 import '../../../core/providers/reports_shell_providers.dart';
 
-/// Open filter drawer (mobile end-drawer or desktop panel).
+/// Open filter drawer (mobile sheet or desktop side panel).
 Future<void> showReportsFilterPanel({
   required BuildContext context,
   required WidgetRef ref,
 }) {
-  final wide = MediaQuery.sizeOf(context).width >= 1024;
+  final wide = MediaQuery.sizeOf(context).width >= kDesktopMin;
   if (wide) {
     return showGeneralDialog(
       context: context,
@@ -33,18 +34,15 @@ Future<void> showReportsFilterPanel({
       ),
     );
   }
-  return showModalBottomSheet<void>(
+  // Mobile: use Hexa sheet host (BLANK-002) — never ad-hoc DraggableScrollableSheet.
+  return showHexaBottomSheet<void>(
     context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (ctx) => DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.88,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      builder: (_, scroll) => ReportsFilterPanelBody(
-        scrollController: scroll,
-        onClose: () => Navigator.pop(ctx),
+    compact: false,
+    padding: EdgeInsets.zero,
+    child: SizedBox(
+      height: HexaResponsive.adaptiveSheetMaxHeight(context) * 0.88,
+      child: ReportsFilterPanelBody(
+        onClose: () => Navigator.pop(context),
       ),
     ),
   );
@@ -301,7 +299,7 @@ class _ReportsFilterPanelBodyState extends ConsumerState<ReportsFilterPanelBody>
     if (items.isEmpty) {
       return const Text(
         'No options in this period.',
-        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+        style: TextStyle(fontSize: 12, color: HexaColors.neutral),
       );
     }
     return Wrap(
@@ -346,7 +344,7 @@ class ReportsFilterDrawer extends ConsumerWidget {
           const SizedBox(height: 8),
           Text(
             '${filters.activeCount} active',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+            style: const TextStyle(fontSize: 12, color: HexaColors.neutral),
           ),
           const SizedBox(height: 16),
           FilledButton.tonal(

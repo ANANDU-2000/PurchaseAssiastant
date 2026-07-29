@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/auth/session_notifier.dart';
 import '../../../../core/design_system/hexa_ds_tokens.dart';
-import '../../../../core/design_system/hexa_responsive.dart';
+import '../../../../core/design_system/hexa_responsive.dart'
+    show showHexaBottomSheet;
 import '../../../../core/errors/user_facing_errors.dart';
 import '../../../../core/json_coerce.dart';
 import '../../../../core/providers/low_stock_providers.dart';
@@ -98,201 +99,201 @@ class _LowStockApprovalSheetBodyState
 
   @override
   Widget build(BuildContext context) {
-    return HexaResponsiveSheetViewport(
-      compact: true,
-      child: FutureBuilder(
-        future: _future,
-        builder: (ctx, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (snap.hasError) {
-            return FriendlyLoadError(
-              message: 'Could not load pending approvals',
-              onRetry: () {
-                if (!mounted) return;
-                setState(() {
-                  _future = _load();
-                });
-              },
-            );
-          }
-
-          final data = snap.data;
-          final lines = data?.lines ?? const <Map<String, dynamic>>[];
-          final kpis = data?.kpis ?? const <String, dynamic>{};
-          final pendingApprovalCount =
-              coerceToInt(kpis['pending_approval_count']);
-
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Owner approval',
-                        style: HexaDsType.heading(16,
-                            color: HexaColors.textPrimary)
-                            .copyWith(fontWeight: FontWeight.w900),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  widget.itemName,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F766E),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                if (pendingApprovalCount > 0)
-                  Text(
-                    '$pendingApprovalCount pending approvals overall',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF64748B),
-                    ),
-                  ),
-                const SizedBox(height: 12),
-                if (lines.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 18),
-                    child: Text(
-                      'No pending approvals for this item right now.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  )
-                else
-                  Flexible(
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: lines.length,
-                      separatorBuilder: (_, __) =>
-                          const Divider(height: 1, thickness: 1),
-                      itemBuilder: (ctx, idx) {
-                        final ln = lines[idx];
-                        final lineId = ln['id']?.toString() ?? '';
-                        final auditId = ln['audit_id']?.toString() ?? '';
-                        final auditDateRaw = ln['audit_date'];
-                        final auditDate =
-                            auditDateRaw is String ? DateTime.tryParse(auditDateRaw) : null;
-                        final auditLabel = auditDate != null
-                            ? '${auditDate.day} ${_monthLabel(auditDate.month)} ${auditDate.year}'
-                            : 'Audit';
-
-                        final systemQty = coerceToDouble(ln['system_qty']);
-                        final countedQty = coerceToDouble(ln['counted_qty']);
-                        final diffQty = coerceToDouble(ln['difference_qty']);
-                        final reason = (ln['reason']?.toString() ?? '').trim();
-
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 10, horizontal: 2),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text(
-                                'Audit: $auditLabel',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0F766E),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'System: ${systemQty.isFinite ? formatStockQtyNumber(systemQty) : '—'} • Counted: ${countedQty.isFinite ? formatStockQtyNumber(countedQty) : '—'}',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF111827),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Difference: ${diffQty.isFinite ? formatStockQtyNumber(diffQty.abs()) : '—'} ${diffQty.isFinite && diffQty < 0 ? '(system < counted)' : ''}',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: HexaColors.loss,
-                                ),
-                              ),
-                              if (reason.isNotEmpty) ...[
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Reason: $reason',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF64748B),
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 10),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: FilledButton(
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor:
-                                            HexaColors.brandPrimary,
-                                        foregroundColor: Colors.white,
-                                      ),
-                                      onPressed:
-                                          lineId.isEmpty || auditId.isEmpty
-                                              ? null
-                                              : () async {
-                                                  try {
-                                                    await _approveLine(
-                                                      lineId: lineId,
-                                                      auditId: auditId,
-                                                    );
-                                                  } catch (e) {
-                                                    if (!context.mounted) return;
-                                                    ScaffoldMessenger.of(context)
-                                                        .showSnackBar(
-                                                      SnackBar(
-                                                        content: Text(
-                                                          userFacingError(e),
-                                                        ),
-                                                      ),
-                                                    );
-                                                  }
-                                                },
-                                      child: const Text('Approve'),
-                                    ),
-                                  ),
-                                ],
-                              )
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            ),
+    // Outer showHexaBottomSheet already hosts scroll/padding — do not nest
+    // HexaResponsiveSheetViewport (BLANK-003).
+    return FutureBuilder(
+      future: _future,
+      builder: (ctx, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 32),
+            child: Center(child: CircularProgressIndicator()),
           );
-        },
-      ),
+        }
+
+        if (snap.hasError) {
+          return FriendlyLoadError(
+            message: 'Could not load pending approvals',
+            onRetry: () {
+              if (!mounted) return;
+              setState(() {
+                _future = _load();
+              });
+            },
+          );
+        }
+
+        final data = snap.data;
+        final lines = data?.lines ?? const <Map<String, dynamic>>[];
+        final kpis = data?.kpis ?? const <String, dynamic>{};
+        final pendingApprovalCount =
+            coerceToInt(kpis['pending_approval_count']);
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Owner approval',
+                      style: HexaDsType.heading(16,
+                              color: HexaColors.textPrimary)
+                          .copyWith(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                widget.itemName,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: HexaColors.brandTealMid,
+                ),
+              ),
+              const SizedBox(height: 10),
+              if (pendingApprovalCount > 0)
+                Text(
+                  '$pendingApprovalCount pending approvals overall',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: HexaColors.neutral,
+                  ),
+                ),
+              const SizedBox(height: 12),
+              if (lines.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 18),
+                  child: Text(
+                    'No pending approvals for this item right now.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: HexaColors.neutral,
+                    ),
+                  ),
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: lines.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, thickness: 1),
+                  itemBuilder: (ctx, idx) {
+                    final ln = lines[idx];
+                    final lineId = ln['id']?.toString() ?? '';
+                    final auditId = ln['audit_id']?.toString() ?? '';
+                    final auditDateRaw = ln['audit_date'];
+                    final auditDate = auditDateRaw is String
+                        ? DateTime.tryParse(auditDateRaw)
+                        : null;
+                    final auditLabel = auditDate != null
+                        ? '${auditDate.day} ${_monthLabel(auditDate.month)} ${auditDate.year}'
+                        : 'Audit';
+
+                    final systemQty = coerceToDouble(ln['system_qty']);
+                    final countedQty = coerceToDouble(ln['counted_qty']);
+                    final diffQty = coerceToDouble(ln['difference_qty']);
+                    final reason = (ln['reason']?.toString() ?? '').trim();
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 10, horizontal: 2),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            'Audit: $auditLabel',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: HexaColors.brandTealMid,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'System: ${systemQty.isFinite ? formatStockQtyNumber(systemQty) : '—'} • Counted: ${countedQty.isFinite ? formatStockQtyNumber(countedQty) : '—'}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: HexaColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Difference: ${diffQty.isFinite ? formatStockQtyNumber(diffQty.abs()) : '—'} ${diffQty.isFinite && diffQty < 0 ? '(system < counted)' : ''}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: HexaColors.loss,
+                            ),
+                          ),
+                          if (reason.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'Reason: $reason',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: HexaColors.neutral,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: FilledButton(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: HexaColors.brandPrimary,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                  onPressed: lineId.isEmpty || auditId.isEmpty
+                                      ? null
+                                      : () async {
+                                          try {
+                                            await _approveLine(
+                                              lineId: lineId,
+                                              auditId: auditId,
+                                            );
+                                          } catch (e) {
+                                            if (!context.mounted) return;
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  userFacingError(e),
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                  child: const Text('Approve'),
+                                ),
+                              ),
+                            ],
+                          )
+                        ],
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 

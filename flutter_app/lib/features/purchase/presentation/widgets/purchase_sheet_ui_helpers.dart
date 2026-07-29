@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 class SheetWarningPill extends StatelessWidget {
   const SheetWarningPill({super.key, required this.message});
   final String message;
@@ -9,13 +10,13 @@ class SheetWarningPill extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF7ED),
+        color: HexaColors.accentOrangeSoft,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFFFFEDD5)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.warning_amber_rounded, size: 16, color: Color(0xFF9A3412)),
+          const Icon(Icons.warning_amber_rounded, size: 16, color: HexaColors.accentOrangeDeep),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -23,7 +24,7 @@ class SheetWarningPill extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF9A3412),
+                color: HexaColors.accentOrangeDeep,
               ),
             ),
           ),
@@ -61,7 +62,7 @@ class SheetSummaryPill extends StatelessWidget {
             style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A))),
+                color: HexaColors.textOnLightSurface)),
         if (subtitle != null)
           Text(subtitle!,
               style: TextStyle(
@@ -93,7 +94,7 @@ class SheetMetric extends StatelessWidget {
                 fontSize: 9,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0.5,
-                color: const Color(0xFF64748B).withValues(alpha: 0.7))),
+                color: HexaColors.neutral.withValues(alpha: 0.7))),
         const SizedBox(height: 2),
         Text(value,
             style: TextStyle(

@@ -8,6 +8,7 @@ import '../../../../shared/widgets/operational_ui.dart';
 import 'home_recent_changes_section.dart' show HomeSectionSkeleton;
 import 'home_warehouse_activity_row.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Unified warehouse activity — collapsible on home (max 15 rows).
 class HomeWarehouseActivityFeed extends ConsumerStatefulWidget {
   const HomeWarehouseActivityFeed({
@@ -70,7 +71,7 @@ class _HomeWarehouseActivityFeedState
             elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
-              side: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+              side: const BorderSide(color: HexaColors.slateBorder, width: 1),
             ),
             child: Padding(
               padding: const EdgeInsets.all(20), // Card padding: 20
@@ -82,7 +83,7 @@ class _HomeWarehouseActivityFeedState
                     style: const TextStyle(
                       fontSize: 18, // Section Titles: 18 Bold
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF0F172A),
+                      color: HexaColors.textOnLightSurface,
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -93,7 +94,7 @@ class _HomeWarehouseActivityFeedState
                         Icon(
                           Icons.history_rounded,
                           size: 40,
-                          color: const Color(0xFF94A3B8).withValues(alpha: 0.5),
+                          color: HexaColors.cost.withValues(alpha: 0.5),
                         ),
                         const SizedBox(height: 12),
                         const Text(
@@ -101,7 +102,7 @@ class _HomeWarehouseActivityFeedState
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF475569),
+                            color: HexaColors.textBody,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -110,7 +111,7 @@ class _HomeWarehouseActivityFeedState
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF94A3B8),
+                            color: HexaColors.cost,
                           ),
                         ),
                       ],
@@ -131,7 +132,7 @@ class _HomeWarehouseActivityFeedState
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+            side: const BorderSide(color: HexaColors.slateBorder, width: 1),
           ),
           child: Padding(
             padding: const EdgeInsets.all(20), // Card padding: 20
@@ -152,7 +153,7 @@ class _HomeWarehouseActivityFeedState
                             style: const TextStyle(
                               fontSize: 18, // Section Titles: 18 Bold
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF0F172A),
+                              color: HexaColors.textOnLightSurface,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -160,7 +161,7 @@ class _HomeWarehouseActivityFeedState
                             '${items.length} events in period',
                             style: const TextStyle(
                               fontSize: 12, // Subtitle: 12
-                              color: Color(0xFF94A3B8),
+                              color: HexaColors.cost,
                             ),
                           ),
                         ],
@@ -195,7 +196,7 @@ class _HomeWarehouseActivityFeedState
                   WarehouseActivityCompactRow(item: visible[i]),
                   if (i < visible.length - 1) ...[
                     const SizedBox(height: 8),
-                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    const Divider(height: 1, color: HexaColors.slate100),
                     const SizedBox(height: 8),
                   ],
                 ],

@@ -10,6 +10,7 @@ import '../../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../../core/utils/unit_utils.dart';
 import '../../../../core/widgets/friendly_load_error.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 class ItemSupplierIntelligenceSection extends ConsumerWidget {
   const ItemSupplierIntelligenceSection({
     super.key,
@@ -62,7 +63,7 @@ class ItemSupplierIntelligenceSection extends ConsumerWidget {
                     padding: EdgeInsets.fromLTRB(12, 14, 12, 14),
                     child: Text(
                       'No purchases recorded yet.',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      style: TextStyle(fontSize: 12, color: HexaColors.neutral),
                     ),
                   );
                 }
@@ -110,14 +111,14 @@ class ItemSupplierIntelligenceSection extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F766E).withValues(alpha: 0.08),
+        color: HexaColors.brandTealMid.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF0F766E).withValues(alpha: 0.25)),
+        border: Border.all(color: HexaColors.brandTealMid.withValues(alpha: 0.25)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Color(0xFF0F766E))),
+          Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: HexaColors.brandTealMid)),
           const SizedBox(height: 2),
           Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
         ],
@@ -180,7 +181,7 @@ class _SupplierRow extends StatelessWidget {
             ),
             Text(
               last,
-              style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w700),
+              style: const TextStyle(fontSize: 11, color: HexaColors.neutral, fontWeight: FontWeight.w700),
             ),
           ],
         ),

@@ -4,6 +4,8 @@ import '../../../../core/json_coerce.dart';
 import '../../../../core/utils/unit_utils.dart';
 import '../../../stock/presentation/widgets/stock_row_metrics.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/theme/hexa_colors.dart';
 /// Compact SYS / PHYS / PEND / DELIV / DIFF chips for item surfaces.
 class ItemStockMetricStrip extends StatelessWidget {
   const ItemStockMetricStrip({
@@ -28,19 +30,19 @@ class ItemStockMetricStrip extends StatelessWidget {
       _MetricCell(
         'System',
         StockRowMetrics.systemCellLabel(stock),
-        const Color(0xFF2563EB),
+        HexaDsColors.blue,
         tooltip: 'ERP digital on-hand',
       ),
       _MetricCell(
         'Physical',
         StockRowMetrics.physicalCellLabel(stock),
-        const Color(0xFF0F766E),
+        HexaColors.brandTealMid,
         tooltip: 'Last warehouse count',
       ),
       _MetricCell(
         'Pending',
         qtyOrDash(pending),
-        const Color(0xFFEA580C),
+        HexaColors.accentOrangeMid,
         tooltip: 'On order — not in system stock yet',
       ),
       _MetricCell(

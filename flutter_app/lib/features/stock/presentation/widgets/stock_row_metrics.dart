@@ -6,6 +6,8 @@ import '../../../../core/utils/unit_utils.dart';
 import '../../../../shared/widgets/stock_number_display.dart';
 import '../../../../shared/widgets/stock_summary_widget.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/theme/hexa_colors.dart';
 /// Warehouse table metrics: **System** = ERP ledger (`current_stock`);
 /// **Physical** = floor count; **Diff** = physical − system.
 ///
@@ -140,7 +142,7 @@ abstract final class StockRowMetrics {
             color: cell.color,
           ),
           if (cell.primary != '•' && cell.primary != '✓') ...[
-            const SizedBox(width: 3),
+            SizedBox(width: HexaDsSpace.xs),
             Text(
               cell.primary,
               style: TextStyle(
@@ -151,11 +153,21 @@ abstract final class StockRowMetrics {
               ),
             ),
           ] else if (cell.primary == '✓') ...[
-            const SizedBox(width: 2),
+            SizedBox(width: HexaDsSpace.xs),
             Icon(Icons.check_rounded, size: 11, color: cell.color),
           ],
           if (cell.secondary != null) ...[
-            const SizedBox(width: 3),
+            SizedBox(width: HexaDsSpace.xs),
+            Text(
+              '·',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                color: cell.color,
+                height: 1,
+              ),
+            ),
+            SizedBox(width: HexaDsSpace.xs),
             Text(
               cell.secondary!,
               style: TextStyle(
@@ -206,8 +218,8 @@ abstract final class StockRowMetrics {
   static ({String primary, String? secondary, Color color}) pendingCellDisplay(
     Map<String, dynamic> item,
   ) {
-    const pendingColor = Color(0xFFEA580C);
-    const muted = Color(0xFF94A3B8);
+    const pendingColor = HexaColors.accentOrangeMid;
+    const muted = HexaColors.cost;
     final u = unit(item);
     final pending = pendingDeliveryQty(item) ?? 0;
     final days = (item['pending_order_days'] as num?)?.toInt();
@@ -368,9 +380,9 @@ abstract final class StockRowMetrics {
 
   static Color diffColor(double diff) {
     if (!diff.isFinite || diff.abs() < 0.001) {
-      return const Color(0xFF64748B);
+      return HexaColors.neutral;
     }
-    return diff > 0 ? const Color(0xFF16A34A) : const Color(0xFFDC2626);
+    return diff > 0 ? HexaColors.profit : HexaDsColors.error;
   }
 
   static String inlineStatusLabel(Map<String, dynamic> item) {

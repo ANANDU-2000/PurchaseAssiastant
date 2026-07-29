@@ -1297,7 +1297,7 @@ class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
             SizedBox(
               height: cameraH,
               child: ColoredBox(
-                color: const Color(0xFFF1F5F9),
+                color: HexaColors.slate100,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -1641,7 +1641,7 @@ class ScannerReticlePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = confirmed ? const Color(0xFF16A34A) : color
+      ..color = confirmed ? HexaColors.profit : color
       ..style = PaintingStyle.stroke
       ..strokeWidth = confirmed ? 4.0 : 3.0;
 

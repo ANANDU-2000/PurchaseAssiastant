@@ -340,7 +340,7 @@ class _DateHeader extends StatelessWidget {
         style: const TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w900,
-          color: Color(0xFF64748B),
+          color: HexaColors.neutral,
         ),
       ),
     );
@@ -370,7 +370,7 @@ class _StaffLowStockRow extends StatelessWidget {
             children: [
               Icon(
                 critical ? Icons.error_outline : Icons.warning_amber_rounded,
-                color: critical ? const Color(0xFFDC2626) : HexaColors.warning,
+                color: critical ? HexaDsColors.error : HexaColors.warning,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -386,7 +386,7 @@ class _StaffLowStockRow extends StatelessWidget {
                       '${formatStockQtyNumber(reorder)} $unit',
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF64748B),
+                        color: HexaColors.neutral,
                       ),
                     ),
                   ],

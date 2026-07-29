@@ -448,7 +448,7 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
                             Icons.tune_rounded,
                             color: _filtersActive
                                 ? HexaColors.brandPrimary
-                                : const Color(0xFF64748B),
+                                : HexaColors.neutral,
                           ),
                           style: IconButton.styleFrom(
                             backgroundColor: _filtersActive
@@ -710,7 +710,7 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
                       children: [
                         FilledButton(
                           style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF065F46),
+                            backgroundColor: HexaDsColors.successForeground,
                             minimumSize: const Size.fromHeight(48),
                           ),
                           onPressed: () {
@@ -813,9 +813,9 @@ class _Segment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = selected ? Colors.white : const Color(0xFF334155);
+    final fg = selected ? Colors.white : HexaColors.slate700;
     return Material(
-      color: selected ? const Color(0xFF065F46) : const Color(0xFFF1F5F4),
+      color: selected ? HexaDsColors.successForeground : const Color(0xFFF1F5F4),
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,

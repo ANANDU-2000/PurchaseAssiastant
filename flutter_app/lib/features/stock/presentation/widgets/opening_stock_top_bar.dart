@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/router/navigation_ext.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Compact top bar for Opening Stock Setup.
 class OpeningStockTopBar extends StatelessWidget
     implements PreferredSizeWidget {
@@ -26,8 +27,8 @@ class OpeningStockTopBar extends StatelessWidget
   Widget build(BuildContext context) {
     return AppBar(
       toolbarHeight: _height,
-      backgroundColor: const Color(0xFFF5F3EE),
-      foregroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: HexaColors.scaffoldWarm,
+      foregroundColor: HexaColors.textOnLightSurface,
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_rounded, size: 22),

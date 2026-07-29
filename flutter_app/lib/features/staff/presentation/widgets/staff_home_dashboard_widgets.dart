@@ -88,7 +88,7 @@ class StaffHomeFloorKpiRow extends ConsumerWidget {
             label: 'Pending',
             value: '${k.pending}',
             icon: Icons.local_shipping_outlined,
-            accent: const Color(0xFFE65100),
+            accent: HexaColors.accentOrange,
             onTap: () => context.go('/staff/deliveries'),
           ),
         ),
@@ -98,7 +98,7 @@ class StaffHomeFloorKpiRow extends ConsumerWidget {
             label: 'Delivered',
             value: '${k.delivered}',
             icon: Icons.check_circle_outline,
-            accent: const Color(0xFF0F766E),
+            accent: HexaColors.brandTealMid,
             onTap: () => context.go('/staff/deliveries'),
           ),
         ),
@@ -108,7 +108,7 @@ class StaffHomeFloorKpiRow extends ConsumerWidget {
             label: 'Low stock',
             value: '${k.lowStock}',
             icon: Icons.warning_amber_rounded,
-            accent: const Color(0xFFDC2626),
+            accent: HexaDsColors.error,
             onTap: () => context.push('/staff/low-stock'),
           ),
         ),
@@ -181,7 +181,7 @@ class _StaffKpiRowSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Shimmer.fromColors(
       baseColor: const Color(0xFFE8ECEF),
-      highlightColor: const Color(0xFFF8FAFC),
+      highlightColor: HexaColors.slate50,
       child: Row(
         children: List.generate(
           3,
@@ -333,14 +333,14 @@ class StaffHomeWarehousePurchaseStats extends ConsumerWidget {
         Row(
           children: [
             cell(bagLabel, bags, HexaColors.brandPrimary),
-            cell(kgLabel, kg, const Color(0xFF1565C0)),
+            cell(kgLabel, kg, HexaColors.materialBlue),
           ],
         ),
         const SizedBox(height: 8),
         Row(
           children: [
             cell(boxLabel, boxes, const Color(0xFF6A1B9A)),
-            cell(tinLabel, tins, const Color(0xFFE65100)),
+            cell(tinLabel, tins, HexaColors.accentOrange),
           ],
         ),
       ],
@@ -545,7 +545,7 @@ class StaffHomeShiftSnapshotSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Shimmer.fromColors(
       baseColor: const Color(0xFFE8ECEF),
-      highlightColor: const Color(0xFFF8FAFC),
+      highlightColor: HexaColors.slate50,
       child: const StaffHomeShiftSnapshotRow(
         scans: '–',
         stock: '–',
@@ -864,7 +864,7 @@ class StaffHomeActionRow extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
               ],
-              const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+              const Icon(Icons.chevron_right_rounded, color: HexaColors.cost),
             ],
           ),
         ),
@@ -924,7 +924,7 @@ class StaffHomeToolsGrid extends ConsumerWidget {
       _ToolSpec(
         'Gallery',
         Icons.grid_view_rounded,
-        const Color(0xFF7C3AED),
+        HexaDsColors.violet,
         () => context.push('/staff/items'),
       ),
       _ToolSpec(
@@ -936,7 +936,7 @@ class StaffHomeToolsGrid extends ConsumerWidget {
       _ToolSpec(
         'Stock',
         Icons.inventory_2_outlined,
-        const Color(0xFF1565C0),
+        HexaColors.materialBlue,
         () => context.go('/staff/stock'),
       ),
       if (staffHomeShowsBarcodeTools(focus))
@@ -949,7 +949,7 @@ class StaffHomeToolsGrid extends ConsumerWidget {
       _ToolSpec(
         'Purchases',
         Icons.receipt_long_outlined,
-        const Color(0xFF0D9488),
+        HexaColors.brandTealBright,
         () => context.push('/staff/purchase-history'),
       ),
       _ToolSpec(
@@ -962,7 +962,7 @@ class StaffHomeToolsGrid extends ConsumerWidget {
       _ToolSpec(
         'Daily log',
         Icons.history_rounded,
-        const Color(0xFF0D9488),
+        HexaColors.brandTealBright,
         () => context.push('/staff/activity'),
       ),
     ];
@@ -1082,14 +1082,14 @@ class StaffHomeQuickLinksRow extends StatelessWidget {
         tile(
           icon: Icons.receipt_long_outlined,
           label: 'Purchase\nhistory',
-          color: const Color(0xFF0D9488),
+          color: HexaColors.brandTealBright,
           onTap: () => context.push('/staff/purchase-history'),
         ),
         const SizedBox(width: 10),
         tile(
           icon: Icons.warning_amber_rounded,
           label: 'Low stock\n& inform owner',
-          color: lowCount > 0 ? HexaColors.warning : const Color(0xFF64748B),
+          color: lowCount > 0 ? HexaColors.warning : HexaColors.neutral,
           badge: lowCount,
           onTap: () => context.push('/staff/low-stock'),
         ),

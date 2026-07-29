@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/calc_engine.dart';
+import '../../../../core/design_system/widgets/app_form_layout.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/units/dynamic_unit_label_engine.dart' as unit_lbl;
 import '../../../../core/utils/unit_utils.dart';
@@ -246,47 +247,33 @@ class PurchaseReviewTallyStep extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
+                  AppFormRow(
                     children: [
-                      Flexible(
-                        child: _ReviewStat(label: 'QTY', value: qtyLine),
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: _ReviewStat(
-                          label: 'GRAND TOTAL',
-                          value: _inr(bd.grand),
-                          isPrimary: true,
-                        ),
+                      _ReviewStat(label: 'QTY', value: qtyLine),
+                      _ReviewStat(
+                        label: 'GRAND TOTAL',
+                        value: _inr(bd.grand),
+                        isPrimary: true,
                       ),
                     ],
                   ),
                   const Divider(height: 12),
-                  Row(
+                  AppFormRow(
                     children: [
-                      Flexible(
-                        child: _ReviewStat(
-                          label: 'TAX TOTAL',
-                          value: _inr(bd.taxTotal),
-                        ),
+                      _ReviewStat(
+                        label: 'TAX TOTAL',
+                        value: _inr(bd.taxTotal),
                       ),
-                      const _ReviewMetricSep(),
-                      Flexible(
-                        child: _ReviewStat(
-                          label: 'CHARGES',
-                          value: _inr(bd.commission + bd.freight),
-                        ),
+                      _ReviewStat(
+                        label: 'CHARGES',
+                        value: _inr(bd.commission + bd.freight),
                       ),
-                      if (hasRetail) ...[
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: _ReviewStat(
-                            label: 'EST. PROFIT',
-                            value: _inr(estRetail),
-                            isSuccess: true,
-                          ),
+                      if (hasRetail)
+                        _ReviewStat(
+                          label: 'EST. PROFIT',
+                          value: _inr(estRetail),
+                          isSuccess: true,
                         ),
-                      ],
                     ],
                   ),
                 ],
@@ -360,7 +347,7 @@ class _ReviewLineTile extends ConsumerWidget {
                 '$index. ${line.itemName}',
                 style: tt.titleSmall?.copyWith(
                   fontWeight: FontWeight.w900,
-                  color: const Color(0xFF0F172A),
+                  color: HexaColors.textOnLightSurface,
                 ),
               ),
               const SizedBox(height: 4),
@@ -368,7 +355,7 @@ class _ReviewLineTile extends ConsumerWidget {
                 _qtyHuman(line),
                 style: tt.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w800,
-                  color: const Color(0xFF0F172A),
+                  color: HexaColors.textOnLightSurface,
                 ),
               ),
               const SizedBox(height: 4),
@@ -384,7 +371,7 @@ class _ReviewLineTile extends ConsumerWidget {
                 _inr(buy),
                 style: tt.titleMedium?.copyWith(
                   fontWeight: FontWeight.w900,
-                  color: const Color(0xFF0F172A),
+                  color: HexaColors.textOnLightSurface,
                 ),
               ),
             ],
@@ -394,7 +381,7 @@ class _ReviewLineTile extends ConsumerWidget {
             style: TextStyle(
               fontWeight: FontWeight.w700,
               fontSize: 12,
-              color: Color(0xFF0D9488),
+              color: HexaColors.brandTealBright,
             ),
           ),
           children: [
@@ -485,7 +472,7 @@ class _ReviewStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    final primaryColor = const Color(0xFF0F172A);
+    final primaryColor = HexaColors.textOnLightSurface;
     final successColor = const Color(0xFF047857);
 
     return Column(
@@ -512,21 +499,6 @@ class _ReviewStat extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _ReviewMetricSep extends StatelessWidget {
-  const _ReviewMetricSep();
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Container(
-        height: 24,
-        width: 1,
-        color: Colors.grey.shade300,
-      ),
     );
   }
 }

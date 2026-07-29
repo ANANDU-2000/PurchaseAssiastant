@@ -16,6 +16,7 @@ import '../../../../core/utils/unit_utils.dart';
 import '../../../purchase/providers/trade_purchase_detail_provider.dart';
 import '../../../purchase/presentation/widgets/staff_verification_sheet.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Up to 3 actionable delivery cards with Mark arrived / Verify.
 class StaffHomePendingDeliveryCards extends ConsumerWidget {
   const StaffHomePendingDeliveryCards({super.key});
@@ -132,7 +133,7 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
             const SizedBox(height: 4),
             Text(
               '${formatStockQtyNumber(qty)}${unit.isNotEmpty ? ' $unit' : ''} · ${ds.label}',
-              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              style: const TextStyle(fontSize: 12, color: HexaColors.neutral),
             ),
             const SizedBox(height: 8),
             Row(

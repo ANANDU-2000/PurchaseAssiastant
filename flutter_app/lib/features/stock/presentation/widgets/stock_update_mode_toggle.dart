@@ -39,7 +39,7 @@ class StockUpdateModeToggle extends StatelessWidget {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF475569),
+            color: HexaColors.textBody,
           ),
         ),
         const SizedBox(height: 8),

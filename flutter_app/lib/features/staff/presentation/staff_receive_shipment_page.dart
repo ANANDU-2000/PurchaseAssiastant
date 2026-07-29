@@ -241,7 +241,7 @@ class _StaffReceiveShipmentPageState
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.check_circle, color: Color(0xFF16A34A), size: 48),
+                    const Icon(Icons.check_circle, color: HexaColors.profit, size: 48),
                     const SizedBox(height: 12),
                     Text(
                       'Stock already committed',
@@ -265,7 +265,7 @@ class _StaffReceiveShipmentPageState
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.hourglass_top_rounded,
-                        color: Color(0xFF7C3AED), size: 48),
+                        color: HexaDsColors.violet, size: 48),
                     const SizedBox(height: 12),
                     Text(
                       'Waiting for owner approval',
@@ -443,7 +443,7 @@ class _HeaderCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               df.format(purchase.purchaseDate),
-              style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+              style: const TextStyle(color: HexaColors.neutral, fontSize: 12),
             ),
           ],
         ),
@@ -482,7 +482,7 @@ class _LineReceiveTile extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'Ordered ${line.qty.toStringAsFixed(0)} ${line.unit}',
-              style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+              style: const TextStyle(color: HexaColors.neutral, fontSize: 12),
             ),
             const SizedBox(height: 10),
             Row(

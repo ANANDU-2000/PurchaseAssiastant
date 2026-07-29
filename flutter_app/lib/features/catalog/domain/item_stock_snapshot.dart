@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/json_coerce.dart';
 
+import '../../../core/theme/hexa_colors.dart';
 class ItemStockSnapshot {
   const ItemStockSnapshot({
     required this.unitLabel,
@@ -115,12 +116,12 @@ class ItemStockSnapshot {
   }
 
   Color statusColor() => switch (status) {
-        ItemStockStatus.healthy => const Color(0xFF2E7D32),
+        ItemStockStatus.healthy => HexaColors.materialGreen,
         ItemStockStatus.lowStock => const Color(0xFFB45309),
-        ItemStockStatus.outOfStock => const Color(0xFFC62828),
+        ItemStockStatus.outOfStock => HexaColors.materialRed,
         ItemStockStatus.negative => const Color(0xFF7F1D1D),
-        ItemStockStatus.mismatch => const Color(0xFFA32D2D),
-        ItemStockStatus.pendingVerification => const Color(0xFF1565C0),
+        ItemStockStatus.mismatch => HexaColors.dangerDeep,
+        ItemStockStatus.pendingVerification => HexaColors.materialBlue,
       };
 
   String statusChipLabel() => switch (status) {

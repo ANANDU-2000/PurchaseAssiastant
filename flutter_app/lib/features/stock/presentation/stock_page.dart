@@ -51,6 +51,7 @@ import 'widgets/stock_delivery_filter_chips.dart';
 import 'widgets/stock_status_quick_chips.dart';
 import 'widgets/stock_row_metrics.dart';
 
+import '../../../core/theme/hexa_colors.dart';
 enum StockPageMode { auto, staff, owner }
 
 /// Desktop split-pane selection from the visible (filtered) [items] list.
@@ -1123,7 +1124,7 @@ class _StockPageState extends ConsumerState<StockPage>
     final returnBranch = ref.watch(shellReturnBranchProvider);
 
     final scaffold = Scaffold(
-      backgroundColor: const Color(0xFFF5F3EE),
+      backgroundColor: HexaColors.scaffoldWarm,
       appBar: StockOperationalTopBar(
         isStaffMode: _isStaffMode,
         filterCount: filterCount,
@@ -1232,7 +1233,7 @@ class _StockWarehouseTableHeaderDelegate extends SliverPersistentHeaderDelegate 
     bool overlapsContent,
   ) {
     return const ColoredBox(
-      color: Color(0xFFF5F3EE),
+      color: HexaColors.scaffoldWarm,
       child: StockWarehouseTableHeader(),
     );
   }

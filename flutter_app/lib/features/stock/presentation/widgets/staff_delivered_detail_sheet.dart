@@ -8,6 +8,7 @@ import '../../../../core/models/trade_purchase_models.dart';
 import '../../../../core/utils/unit_utils.dart';
 import '../../../purchase/presentation/widgets/purchase_damage_report_sheet.dart';
 import '../../../purchase/providers/trade_purchase_detail_provider.dart';
+import '../../../../core/theme/hexa_colors.dart';
 /// Live delivery receipt for a stock row — always refetches purchase detail.
 Future<void> showStaffDeliveredDetailSheet({
   required BuildContext context,
@@ -113,7 +114,7 @@ class _StaffDeliveredDetailBody extends ConsumerWidget {
                 'Purchase #$refLabel',
                 style: const TextStyle(
                   fontSize: 12,
-                  color: Color(0xFF64748B),
+                  color: HexaColors.neutral,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -182,7 +183,7 @@ class _StaffDeliveredDetailBody extends ConsumerWidget {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF64748B),
+                color: HexaColors.neutral,
               ),
             ),
           ),

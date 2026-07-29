@@ -304,7 +304,7 @@ class _ReorderTab extends ConsumerWidget {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: switch (status) {
-                              'pending' => const Color(0xFFE65100),
+                              'pending' => HexaColors.accentOrange,
                               'ordered' => HexaColors.brandPrimary,
                               _ => Colors.grey,
                             },
@@ -324,7 +324,7 @@ class _ReorderTab extends ConsumerWidget {
                                   fontWeight: FontWeight.w800,
                                   color: status == 'done'
                                       ? Colors.grey.shade600
-                                      : const Color(0xFF0F172A),
+                                      : HexaColors.textOnLightSurface,
                                 ),
                               ),
                               Text(

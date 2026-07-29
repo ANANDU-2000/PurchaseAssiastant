@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Inline notice with [Retry] when the app cannot reach the server — not a SnackBar.
 class AuthNetworkErrorBanner extends StatelessWidget {
   const AuthNetworkErrorBanner({
@@ -20,7 +21,7 @@ class AuthNetworkErrorBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF7ED),
+        color: HexaColors.accentOrangeSoft,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFFFDBA74)),
       ),

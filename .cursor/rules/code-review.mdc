@@ -1,0 +1,17 @@
+---
+description: Trigger senior anti-slop code review before commits
+globs:
+  - flutter_app/lib/**/*.dart
+  - specs/**/*.md
+alwaysApply: false
+---
+
+# Code review
+
+When the user says `/codereview`, "review this", "check this diff", or "did the agent finish":
+
+1. Read `.cursor/skills/code-review/SKILL.md` and root `AGENTS.md`.
+2. Run `git diff` / `git diff --stat` (not the agent summary).
+3. If a related file exists under `specs/`, verify each ID against the diff.
+4. Report **Ready to commit** or ranked **Blocking issues**.
+5. Append new lesson classes to `AGENTS.md` when found.

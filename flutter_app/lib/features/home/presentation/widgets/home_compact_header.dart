@@ -38,7 +38,7 @@ class HomeCompactHeader extends ConsumerWidget {
     final role = session != null
         ? dashboardRoleLabel(session).toUpperCase()
         : 'OWNER';
-    final syncColor = offline ? const Color(0xFFC62828) : const Color(0xFF2E7D32);
+    final syncColor = offline ? HexaColors.materialRed : HexaColors.materialGreen;
     final syncLabel = offline ? 'Offline' : 'Synced';
     // Side rail already exposes notifications + settings — avoid duplicate badges.
     final showHeaderActions =

@@ -33,7 +33,7 @@ class ReportsPrimaryTabs extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                     color: selected == t
                         ? HexaColors.brandPrimary
-                        : const Color(0xFF64748B),
+                        : HexaColors.neutral,
                   ),
                 ),
                 selected: selected == t,

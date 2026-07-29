@@ -10,6 +10,7 @@ import '../../../../core/router/post_auth_route.dart' show sessionIsStaff;
 import '../../../../core/utils/unit_utils.dart';
 import '../../../stock/presentation/widgets/stock_row_metrics.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Pending vs delivered truck summary for item detail (no PO numbers).
 class ItemDeliveryStatusCard extends ConsumerWidget {
   const ItemDeliveryStatusCard({super.key, required this.itemId});
@@ -51,7 +52,7 @@ class ItemDeliveryStatusCard extends ConsumerWidget {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(
                   Icons.local_shipping_rounded,
-                  color: Color(0xFFEA580C),
+                  color: HexaColors.accentOrangeMid,
                 ),
                 title: const Text(
                   'Pending truck',
@@ -66,7 +67,7 @@ class ItemDeliveryStatusCard extends ConsumerWidget {
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFFEA580C),
+                    color: HexaColors.accentOrangeMid,
                   ),
                 ),
                 trailing: TextButton(
@@ -88,7 +89,7 @@ class ItemDeliveryStatusCard extends ConsumerWidget {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(
                   Icons.local_shipping_rounded,
-                  color: Color(0xFF16A34A),
+                  color: HexaColors.profit,
                 ),
                 title: const Text(
                   'Delivered to system stock',
@@ -104,7 +105,7 @@ class ItemDeliveryStatusCard extends ConsumerWidget {
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF16A34A),
+                    color: HexaColors.profit,
                   ),
                 ),
               ),

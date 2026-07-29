@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/design_system/hexa_responsive.dart';
 import 'stock_table_layout.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Opening stock table header: ITEM | UNIT | OPENING | STATUS.
 class OpeningStockTableHeader extends StatelessWidget {
   const OpeningStockTableHeader({super.key});
@@ -12,7 +13,7 @@ class OpeningStockTableHeader extends StatelessWidget {
     final hdr = const TextStyle(
       fontSize: 10,
       fontWeight: FontWeight.w800,
-      color: Color(0xFF475569),
+      color: HexaColors.textBody,
       letterSpacing: 0.3,
     );
 

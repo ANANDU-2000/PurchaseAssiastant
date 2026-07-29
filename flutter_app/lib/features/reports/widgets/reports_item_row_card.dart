@@ -92,7 +92,7 @@ class ReportsItemRowCard extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF64748B),
+                          color: HexaColors.neutral,
                         ),
                       ),
                       if (rateLine != null && rateLine!.isNotEmpty)
@@ -103,7 +103,7 @@ class ReportsItemRowCard extends StatelessWidget {
                           style: const TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF94A3B8),
+                            color: HexaColors.cost,
                           ),
                         ),
                     ],
@@ -127,13 +127,13 @@ class ReportsItemRowCard extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF94A3B8),
+                          color: HexaColors.cost,
                         ),
                       ),
                   ],
                 ),
                 const SizedBox(width: 4),
-                const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+                const Icon(Icons.chevron_right_rounded, color: HexaColors.cost),
               ],
             ),
           ),

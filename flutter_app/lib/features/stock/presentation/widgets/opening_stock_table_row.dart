@@ -6,6 +6,7 @@ import '../../../../core/json_coerce.dart';
 import '../../../../core/utils/unit_utils.dart';
 import 'stock_table_layout.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Opening stock row: ITEM | UNIT | OPENING | STATUS.
 class OpeningStockTableRow extends StatelessWidget {
   const OpeningStockTableRow({
@@ -50,8 +51,8 @@ class OpeningStockTableRow extends StatelessWidget {
         : formatStockQtyForUnit(unitRaw, coerceToDouble(openingQty));
 
     final statusBg = isCompleted
-        ? const Color(0xFF16A34A)
-        : const Color(0xFFE65100);
+        ? HexaColors.profit
+        : HexaColors.accentOrange;
     final statusFg = Colors.white;
     final desktop = HexaBreakpoints.isDesktop(context);
 
@@ -103,7 +104,7 @@ class OpeningStockTableRow extends StatelessWidget {
                           const Icon(
                             Icons.inventory_2_outlined,
                             size: 18,
-                            color: Color(0xFF475569),
+                            color: HexaColors.textBody,
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -138,7 +139,7 @@ class OpeningStockTableRow extends StatelessWidget {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: HexaDsType.label(11).copyWith(
-                                      color: const Color(0xFF64748B),
+                                      color: HexaColors.neutral,
                                     ),
                                   ),
                                 ],
@@ -190,8 +191,8 @@ class OpeningStockTableRow extends StatelessWidget {
                       style: HexaDsType.label(11).copyWith(
                         fontWeight: FontWeight.w900,
                         color: isCompleted
-                            ? const Color(0xFF1A1A1A)
-                            : const Color(0xFF64748B),
+                            ? HexaColors.textOnLightSurface
+                            : HexaColors.neutral,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

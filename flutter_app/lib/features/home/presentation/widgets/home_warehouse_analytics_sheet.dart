@@ -10,6 +10,7 @@ import 'home_analytics_ranked_list.dart';
 import 'home_analytics_ring.dart';
 import 'home_analytics_tabs.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 Future<void> showWarehouseAnalyticsSheet({
   required BuildContext context,
   required WidgetRef ref,
@@ -103,7 +104,7 @@ class _WarehouseAnalyticsBody extends StatelessWidget {
         const SizedBox(height: 8),
         const Text(
           'Tap a ring segment or row to open the matching report. Item drilldown opens from item rows where an item id is available.',
-          style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+          style: TextStyle(fontSize: 11, color: HexaColors.neutral),
         ),
       ],
     );

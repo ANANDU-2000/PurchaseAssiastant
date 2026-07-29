@@ -10,6 +10,8 @@ import '../../../catalog/presentation/widgets/item_stock_metric_strip.dart';
 import 'low_stock_category_tree.dart';
 import 'stock_row_metrics.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/theme/hexa_colors.dart';
 /// Full item context — opened from compact low-stock row (tap or overflow).
 Future<void> showLowStockItemDetailSheet({
   required BuildContext context,
@@ -65,9 +67,9 @@ class _LowStockItemDetailSheet extends StatelessWidget {
   final void Function(Map<String, dynamic> item)? onSystemStockUpdate;
   final void Function(Map<String, dynamic> item)? onReceive;
 
-  static const _critical = Color(0xFFDC2626);
-  static const _warn = Color(0xFFF59E0B);
-  static const _ok = Color(0xFF16A34A);
+  static const _critical = HexaDsColors.error;
+  static const _warn = HexaColors.accentAmber;
+  static const _ok = HexaColors.profit;
 
   @override
   Widget build(BuildContext context) {
@@ -112,11 +114,11 @@ class _LowStockItemDetailSheet extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          'Stock in hand · ${formatStockQtyDisplay(unit, system)}',
+          'System stock · ${formatStockQtyDisplay(unit, system)}',
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF2563EB),
+            color: HexaDsColors.blue,
           ),
         ),
         const SizedBox(height: 8),
@@ -130,7 +132,7 @@ class _LowStockItemDetailSheet extends StatelessWidget {
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
+              color: HexaColors.neutral,
             ),
           ),
         ],

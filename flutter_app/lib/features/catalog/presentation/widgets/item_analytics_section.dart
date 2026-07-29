@@ -12,6 +12,7 @@ import '../../../../core/providers/stock_providers.dart'
 import '../../../../core/utils/unit_utils.dart';
 import '../../../../core/widgets/friendly_load_error.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 class ItemAnalyticsSection extends ConsumerStatefulWidget {
   const ItemAnalyticsSection({
     super.key,
@@ -145,7 +146,7 @@ class _ItemAnalyticsSectionState extends ConsumerState<ItemAnalyticsSection> {
               const SizedBox(height: 10),
               const Text(
                 'No data yet — analytics will appear after first purchase.',
-                style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                style: TextStyle(color: HexaColors.neutral, fontSize: 13),
               ),
             ],
           ),
@@ -205,9 +206,9 @@ class _ItemAnalyticsSectionState extends ConsumerState<ItemAnalyticsSection> {
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                color: const Color(0xFF1565C0).withValues(alpha: 0.08),
+                color: HexaColors.materialBlue.withValues(alpha: 0.08),
                 border: Border.all(
-                  color: const Color(0xFF1565C0).withValues(alpha: 0.25),
+                  color: HexaColors.materialBlue.withValues(alpha: 0.25),
                 ),
               ),
               child: Text(

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/theme/hexa_colors.dart';
 /// Warehouse stock row status pill (OK / LOW / OUT / NO CODE / RECENT).
 enum StockRowStatusKind {
   ok,
@@ -43,17 +45,17 @@ class StockStatusBadge extends StatelessWidget {
         StockRowStatusKind.ok => (
             'OK',
             Colors.white,
-            const Color(0xFF16A34A),
+            HexaColors.profit,
           ),
         StockRowStatusKind.low => (
             'LOW',
             Colors.white,
-            const Color(0xFFDC2626),
+            HexaDsColors.error,
           ),
         StockRowStatusKind.out => (
             'OUT',
-            const Color(0xFF6B7280),
-            const Color(0xFFE5E7EB),
+            HexaColors.gray500,
+            HexaColors.inputBorderGrey,
           ),
         StockRowStatusKind.missingBarcode => (
             'NO CODE',
@@ -63,7 +65,7 @@ class StockStatusBadge extends StatelessWidget {
         StockRowStatusKind.recent => (
             'RECENT',
             Colors.white,
-            const Color(0xFF1565C0),
+            HexaColors.materialBlue,
           ),
       };
 

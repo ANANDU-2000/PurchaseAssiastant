@@ -13,6 +13,7 @@ import '../../../../core/widgets/list_skeleton.dart';
 import '../../../../shared/widgets/hexa_empty_state.dart';
 import '../quick_stock_action_sheet.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// **Activity** tab: merged stock changes + movement feed for selected period.
 class StockChangesTab extends ConsumerWidget {
   const StockChangesTab({
@@ -81,10 +82,10 @@ class StockChangesTab extends ConsumerWidget {
                   r['catalog_item_id']?.toString();
               final sign = isBill ? '' : (delta >= 0 ? '+' : '');
               final color = isBill
-                  ? const Color(0xFFE65100)
+                  ? HexaColors.accentOrange
                   : delta >= 0
-                      ? const Color(0xFF2E7D32)
-                      : const Color(0xFFC62828);
+                      ? HexaColors.materialGreen
+                      : HexaColors.materialRed;
 
               return Material(
                 color: Colors.white,

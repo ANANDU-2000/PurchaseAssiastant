@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'package:harisree_warehouse/core/design_system/design_system.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/theme/hexa_colors.dart';
 /// Visual password strength (client-side hint only).
 class PasswordStrengthMeter extends StatelessWidget {
   const PasswordStrengthMeter({super.key, required this.password});
@@ -24,12 +26,12 @@ class PasswordStrengthMeter extends StatelessWidget {
       return (score: score, label: 'Weak', color: HexaDsColors.error);
     }
     if (score <= 4) {
-      return (score: score, label: 'Fair', color: const Color(0xFFF59E0B));
+      return (score: score, label: 'Fair', color: HexaColors.accentAmber);
     }
     if (score <= 5) {
       return (score: score, label: 'Good', color: HexaDsColors.blue);
     }
-    return (score: score, label: 'Strong', color: const Color(0xFF059669));
+    return (score: score, label: 'Strong', color: HexaDsColors.success);
   }
 
   @override

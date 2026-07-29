@@ -142,8 +142,8 @@ class _DeliverySection extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: HexaDsType.heading(14).copyWith(
                   color: highlight && count > 0
-                      ? const Color(0xFFE65100)
-                      : const Color(0xFF0F172A),
+                      ? HexaColors.accentOrange
+                      : HexaColors.textOnLightSurface,
                 ),
               ),
             ),
@@ -240,7 +240,7 @@ class _PendingDeliveryTile extends StatelessWidget {
               style: const TextStyle(
                 fontWeight: FontWeight.w900,
                 fontSize: 11,
-                color: Color(0xFF64748B),
+                color: HexaColors.neutral,
               ),
             ),
             Text(

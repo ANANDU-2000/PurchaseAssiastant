@@ -4,6 +4,7 @@ import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/design_system/hexa_responsive.dart';
 import '../../../../core/widgets/hexa_count_badge.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
 /// Owner dashboard quick actions (dense icon grid).
 class HomeOwnerQuickActions extends StatelessWidget {
   const HomeOwnerQuickActions({
@@ -35,14 +36,14 @@ class HomeOwnerQuickActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final actions = [
       _Spec('Purchase', Icons.add_shopping_cart_rounded, HexaColors.brandPrimary, onPurchase),
-      _Spec('Stock', Icons.inventory_2_rounded, const Color(0xFF1565C0), onStock),
+      _Spec('Stock', Icons.inventory_2_rounded, HexaColors.materialBlue, onStock),
       _Spec('Low stock', Icons.warning_amber_rounded, HexaColors.warning, onLowStock, badge: lowStockCount),
-      _Spec('Deliveries', Icons.local_shipping_outlined, const Color(0xFFE65100), onDelivered),
-      _Spec('Reports', Icons.bar_chart_rounded, const Color(0xFF0D9488), onReports),
+      _Spec('Deliveries', Icons.local_shipping_outlined, HexaColors.accentOrange, onDelivered),
+      _Spec('Reports', Icons.bar_chart_rounded, HexaColors.brandTealBright, onReports),
       _Spec('Users', Icons.group_rounded, const Color(0xFF5D4037), onUsers),
       _Spec('Scan', Icons.qr_code_scanner_rounded, const Color(0xFF455A64), onBarcode),
-      _Spec('Reorder', Icons.autorenew_rounded, const Color(0xFF7C3AED), onReorder),
-      _Spec('Daily log', Icons.history_rounded, const Color(0xFF0D9488), onDailyLog),
+      _Spec('Reorder', Icons.autorenew_rounded, HexaDsColors.violet, onReorder),
+      _Spec('Daily log', Icons.history_rounded, HexaColors.brandTealBright, onDailyLog),
     ];
 
     return Column(
@@ -53,7 +54,7 @@ class HomeOwnerQuickActions extends StatelessWidget {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Color(0xFF0F172A),
+            color: HexaColors.textOnLightSurface,
           ),
         ),
         const SizedBox(height: 8),

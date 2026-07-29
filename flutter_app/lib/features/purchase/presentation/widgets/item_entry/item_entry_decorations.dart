@@ -14,7 +14,7 @@ InputDecoration itemEntryFieldDecoration(
       ? const EdgeInsets.symmetric(horizontal: 12, vertical: 14)
       : const EdgeInsets.symmetric(horizontal: 10, vertical: 12);
   const borderRadius = BorderRadius.all(Radius.circular(8));
-  const strongGrey = Color(0xFF475569); // slate-600
+  const strongGrey = HexaColors.textBody; // slate-600
   const focusWidth = 2.5;
 
   return InputDecoration(
@@ -22,7 +22,7 @@ InputDecoration itemEntryFieldDecoration(
     labelStyle: TextStyle(
       fontWeight: FontWeight.w800,
       fontSize: fullPage ? 14 : 13,
-      color: const Color(0xFF0F172A),
+      color: HexaColors.textOnLightSurface,
     ),
     prefixText: prefixText,
     errorText: errorText,

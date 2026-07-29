@@ -6,6 +6,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/design_system/hexa_operational_tokens.dart';
 import '../../../core/providers/stock_providers.dart';
+import '../../../core/theme/hexa_colors.dart';
 class BulkBarcodePrintPreviewPanel extends ConsumerWidget {
   const BulkBarcodePrintPreviewPanel({
     super.key,
@@ -42,7 +43,7 @@ class BulkBarcodePrintPreviewPanel extends ConsumerWidget {
     final name = item?['name']?.toString() ?? 'Select an item';
 
     return Material(
-      color: const Color(0xFFF5F3EE),
+      color: HexaColors.scaffoldWarm,
       child: Padding(
         padding: const EdgeInsets.all(HexaOp.pageGutter),
         child: Column(

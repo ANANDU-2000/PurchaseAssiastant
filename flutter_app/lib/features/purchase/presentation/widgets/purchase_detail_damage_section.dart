@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/auth/session_notifier.dart';
 import '../../../../core/providers/purchase_damage_reports_provider.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 class PurchaseDetailDamageSection extends ConsumerStatefulWidget {
   const PurchaseDetailDamageSection({
     super.key,
@@ -96,7 +97,7 @@ class _PurchaseDetailDamageSectionState
                   padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
                   child: Text(
                     'No damage or short-delivery reports for this purchase.',
-                    style: TextStyle(color: Color(0xFF64748B)),
+                    style: TextStyle(color: HexaColors.neutral),
                   ),
                 );
               }

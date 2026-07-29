@@ -79,7 +79,7 @@ class HomeDeliveryPipelineCard extends ConsumerWidget {
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 18, // Section Title: 18 Bold
-                            color: Color(0xFF0F172A),
+                            color: HexaColors.textOnLightSurface,
                           ),
                         ),
                       ),
@@ -126,7 +126,7 @@ class HomeDeliveryPipelineCard extends ConsumerWidget {
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF64748B),
+                        color: HexaColors.neutral,
                       ),
                     ),
                   ],
@@ -168,8 +168,8 @@ class HomeDeliveryPipelineCard extends ConsumerWidget {
                 icon,
                 size: 18,
                 color: highlight
-                    ? const Color(0xFFE65100)
-                    : const Color(0xFF64748B),
+                    ? HexaColors.accentOrange
+                    : HexaColors.neutral,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -179,8 +179,8 @@ class HomeDeliveryPipelineCard extends ConsumerWidget {
                     fontSize: 13,
                     fontWeight: highlight ? FontWeight.w900 : FontWeight.w700,
                     color: highlight
-                        ? const Color(0xFFE65100)
-                        : const Color(0xFF334155),
+                        ? HexaColors.accentOrange
+                        : HexaColors.slate700,
                   ),
                 ),
               ),

@@ -34,9 +34,12 @@ import '../../../core/providers/notification_center_provider.dart';
 import '../../../core/providers/server_notifications_provider.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../../../core/design_system/hexa_responsive.dart';
+import '../../../core/design_system/widgets/app_form_layout.dart';
 import 'widgets/stock_update_mode_toggle.dart';
 import 'stock_undo_snackbar.dart';
 
+import '../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../core/theme/hexa_colors.dart';
 const _kReasonChips = <(String label, String type)>[
   ('Physical count', 'verification'),
   ('Sale', 'sale'),
@@ -813,7 +816,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
             const SizedBox(height: 8),
             const Text(
               'Close and try again from the stock list.',
-              style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+              style: TextStyle(fontSize: 13, color: HexaColors.neutral),
             ),
             const SizedBox(height: 16),
             OutlinedButton(
@@ -870,7 +873,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
+              color: HexaColors.neutral,
             ),
           ),
         const SizedBox(height: 4),
@@ -879,7 +882,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF64748B),
+            color: HexaColors.neutral,
           ),
         ),
         if (_refreshing) ...[
@@ -903,7 +906,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
+              color: HexaColors.neutral,
             ),
             children: [
               TextSpan(
@@ -918,8 +921,8 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
                   color: _mode == StockUpdateMode.physical
-                      ? const Color(0xFF0F766E)
-                      : const Color(0xFF2563EB),
+                      ? HexaColors.brandTealMid
+                      : HexaDsColors.blue,
                   fontSize: 15,
                 ),
               ),
@@ -933,7 +936,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
+              color: HexaColors.neutral,
             ),
           ),
         ],
@@ -946,7 +949,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF0D6B5E),
+              color: HexaColors.brandTealDeep,
             ),
           ),
           if (physVsSystem != null) ...[
@@ -959,10 +962,10 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
                 color: physVsSystem.abs() < 0.001
-                    ? const Color(0xFF64748B)
+                    ? HexaColors.neutral
                     : physVsSystem > 0
                         ? const Color(0xFF15803D)
-                        : const Color(0xFFB91C1C),
+                        : HexaDsColors.error,
               ),
             ),
           ],
@@ -975,7 +978,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF0D6B5E),
+                color: HexaColors.brandTealDeep,
               ),
             ),
           ),
@@ -986,7 +989,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF64748B),
+              color: HexaColors.neutral,
             ),
           ),
         ],
@@ -997,7 +1000,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF475569),
+              color: HexaColors.textBody,
             ),
           ),
         ],
@@ -1007,45 +1010,68 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
           onChanged: _saving ? (_) {} : _onModeChanged,
         ),
         const Divider(height: 20),
-        Text(
-          _mode == StockUpdateMode.system
-              ? 'Entered system quantity'
-              : 'Entered physical quantity',
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _qtyCtrl,
-          autofocus: true,
-          enabled: !_saving,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          textInputAction: TextInputAction.done,
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+        AppFormRow(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  _mode == StockUpdateMode.system
+                      ? 'Entered system quantity'
+                      : 'Entered physical quantity',
+                  style:
+                      const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _qtyCtrl,
+                  autofocus: true,
+                  enabled: !_saving,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.done,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+                  ],
+                  decoration: InputDecoration(
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                    errorText: _qtyError,
+                    suffixText: _unitLabel,
+                  ),
+                  onSubmitted: (_) {
+                    if (canSave) _onSavePressed();
+                  },
+                ),
+              ],
+            ),
+            if (_mode == StockUpdateMode.physical)
+              _DifferenceBanner(
+                label: 'Difference',
+                emptyHint:
+                    'Difference: enter a quantity to compare with system stock',
+                entered: entered,
+                baselineQty: systemSafe,
+                diff: liveDiff,
+                unit: _unit,
+                unitLabel: _unitLabel,
+                baselineName: 'system',
+              )
+            else
+              _DifferenceBanner(
+                label: 'Variance',
+                emptyHint:
+                    'Variance: enter a quantity to see change vs current system stock',
+                entered: entered,
+                baselineQty: systemSafe,
+                diff: systemAdj,
+                unit: _unit,
+                unitLabel: _unitLabel,
+                baselineName: 'current',
+              ),
           ],
-          decoration: InputDecoration(
-            isDense: true,
-            border: const OutlineInputBorder(),
-            errorText: _qtyError,
-            suffixText: _unitLabel,
-          ),
-          onSubmitted: (_) {
-            if (canSave) _onSavePressed();
-          },
         ),
         if (_mode == StockUpdateMode.physical) ...[
-          const SizedBox(height: 10),
-          _DifferenceBanner(
-            label: 'Difference',
-            emptyHint:
-                'Difference: enter a quantity to compare with system stock',
-            entered: entered,
-            baselineQty: systemSafe,
-            diff: liveDiff,
-            unit: _unit,
-            unitLabel: _unitLabel,
-            baselineName: 'system',
-          ),
           const SizedBox(height: 10),
           const Text(
             'Reason',
@@ -1064,18 +1090,6 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
           ),
         ],
         if (_mode == StockUpdateMode.system) ...[
-          const SizedBox(height: 10),
-          _DifferenceBanner(
-            label: 'Variance',
-            emptyHint:
-                'Variance: enter a quantity to see change vs current system stock',
-            entered: entered,
-            baselineQty: systemSafe,
-            diff: systemAdj,
-            unit: _unit,
-            unitLabel: _unitLabel,
-            baselineName: 'current',
-          ),
           const SizedBox(height: 14),
           const Text(
             'Reason',
@@ -1108,7 +1122,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFFB91C1C),
+                color: HexaDsColors.error,
               ),
             ),
           ],
@@ -1215,16 +1229,16 @@ class _DifferenceBanner extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F9),
+          color: HexaColors.slate100,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(color: HexaColors.slateBorder),
         ),
         child: Text(
           emptyHint,
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF64748B),
+            color: HexaColors.neutral,
           ),
         ),
       );
@@ -1232,14 +1246,14 @@ class _DifferenceBanner extends StatelessWidget {
     final d = diff!;
     final sign = d > 0.001 ? '+' : '';
     final color = d.abs() < 0.001
-        ? const Color(0xFF334155)
+        ? HexaColors.slate700
         : d > 0
             ? const Color(0xFF15803D)
-            : const Color(0xFFB91C1C);
+            : HexaDsColors.error;
     final bg = d.abs() < 0.001
-        ? const Color(0xFFF1F5F9)
+        ? HexaColors.slate100
         : d > 0
-            ? const Color(0xFFECFDF5)
+            ? HexaDsColors.successSurface
             : const Color(0xFFFEF2F2);
     return Container(
       width: double.infinity,

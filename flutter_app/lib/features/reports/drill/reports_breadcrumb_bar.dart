@@ -26,7 +26,7 @@ class ReportsBreadcrumbBar extends StatelessWidget {
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 4),
                 child: Icon(Icons.chevron_right_rounded,
-                    size: 16, color: Color(0xFF94A3B8)),
+                    size: 16, color: HexaColors.cost),
               ),
             _Crumb(
               label: segments[i].$1,
@@ -68,7 +68,7 @@ class _Crumb extends StatelessWidget {
     final style = TextStyle(
       fontSize: 12,
       fontWeight: isLast ? FontWeight.w900 : FontWeight.w700,
-      color: isLast ? HexaColors.brandPrimary : const Color(0xFF64748B),
+      color: isLast ? HexaColors.brandPrimary : HexaColors.neutral,
     );
     if (onTap == null) {
       return Text(label, style: style);

@@ -8,9 +8,11 @@ import '../../../../core/providers/brokers_list_provider.dart';
 import '../../../../core/providers/suppliers_list_provider.dart';
 import '../../../../shared/widgets/inline_search_field.dart';
 import '../../../../shared/widgets/date_picker_button.dart';
+import '../../../../core/design_system/widgets/app_form_layout.dart';
 import '../../state/purchase_draft_provider.dart';
 import '../widgets/party_inline_suggest_field.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Party step — full-width supplier, then broker, stacked vertically.
 class PurchasePartyStep extends ConsumerWidget {
   const PurchasePartyStep({
@@ -113,39 +115,42 @@ class PurchasePartyStep extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        AppFormRow(
           children: [
-            Text(
-              'Invoice Ref',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-            ),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                idVal,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: isEdit ? Colors.black87 : sub,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Invoice Ref',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    idVal,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: isEdit ? Colors.black87 : sub,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            DatePickerButton(
+              value: draft.purchaseDate,
+              onChanged: (dt) {
+                ref.read(purchaseDraftProvider.notifier).setPurchaseDate(dt);
+                onDraftChanged();
+              },
+              label: 'Select Purchase Date',
             ),
           ],
-        ),
-        const SizedBox(height: 8),
-        DatePickerButton(
-          value: draft.purchaseDate,
-          onChanged: (dt) {
-            ref.read(purchaseDraftProvider.notifier).setPurchaseDate(dt);
-            onDraftChanged();
-          },
-          label: 'Select Purchase Date',
         ),
         const SizedBox(height: 8),
         Builder(
@@ -535,7 +540,7 @@ class PurchasePartyStep extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF94A3B8),
+                  color: HexaColors.cost,
                 ),
               ),
             ),
@@ -759,7 +764,7 @@ class PurchasePartyStep extends ConsumerWidget {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF94A3B8),
+                          color: HexaColors.cost,
                         ),
                       ),
                     ),

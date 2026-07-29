@@ -483,7 +483,7 @@ class _StockQuickPurchaseBodyState
             const SizedBox(height: 8),
             const Text(
               'Close and try again from the stock list.',
-              style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+              style: TextStyle(fontSize: 13, color: HexaColors.neutral),
             ),
             const SizedBox(height: 16),
             OutlinedButton(
@@ -561,7 +561,7 @@ class _StockQuickPurchaseBodyState
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
+              color: HexaColors.neutral,
             ),
           ),
         const SizedBox(height: 4),
@@ -570,7 +570,7 @@ class _StockQuickPurchaseBodyState
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF64748B),
+            color: HexaColors.neutral,
           ),
         ),
         if (history != null) ...[
@@ -580,7 +580,7 @@ class _StockQuickPurchaseBodyState
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
+              color: HexaColors.neutral,
             ),
           ),
         ],
@@ -632,7 +632,7 @@ class _StockQuickPurchaseBodyState
                   'Updated stock · enter quantity to preview',
                   style: HexaDsType.label(11).copyWith(
                     fontWeight: FontWeight.w600,
-                    color: const Color(0xFF64748B),
+                    color: HexaColors.neutral,
                   ),
                 ),
               ],
@@ -675,7 +675,7 @@ class _StockQuickPurchaseBodyState
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFFB91C1C),
+                      color: HexaDsColors.error,
                     ),
                   ),
                 ),
@@ -716,7 +716,7 @@ class _StockQuickPurchaseBodyState
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFFB91C1C),
+                color: HexaDsColors.error,
               ),
             ),
           ),
@@ -733,7 +733,7 @@ class _StockQuickPurchaseBodyState
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFFB91C1C),
+                      color: HexaDsColors.error,
                     ),
                   ),
                 ),
@@ -773,7 +773,7 @@ class _StockQuickPurchaseBodyState
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFFB91C1C),
+                color: HexaDsColors.error,
               ),
             ),
           ),

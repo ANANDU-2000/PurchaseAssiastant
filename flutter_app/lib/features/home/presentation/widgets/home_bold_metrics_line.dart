@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
+import '../../../../core/design_system/hexa_ds_tokens.dart';
 /// Bold colored quantity tokens for owner home (bags · kg · boxes · tins).
 class HomeBoldMetricsLine extends StatelessWidget {
   const HomeBoldMetricsLine({
@@ -19,7 +21,7 @@ class HomeBoldMetricsLine extends StatelessWidget {
         style: TextStyle(
           fontSize: fontSize - 3,
           fontWeight: FontWeight.w600,
-          color: const Color(0xFF94A3B8),
+          color: HexaColors.cost,
         ),
       );
     }
@@ -81,10 +83,10 @@ class HomeBoldMetricSegment {
 
 /// Shared palette for purchase vs warehouse metrics.
 abstract final class HomeMetricColors {
-  static const bags = Color(0xFF065F46);
-  static const kg = Color(0xFF0D9488);
+  static const bags = HexaDsColors.successForeground;
+  static const kg = HexaColors.brandTealBright;
   static const boxes = Color(0xFFCA8A04);
-  static const tins = Color(0xFF7C3AED);
-  static const amount = Color(0xFF0F172A);
-  static const meta = Color(0xFF64748B);
+  static const tins = HexaDsColors.violet;
+  static const amount = HexaColors.textOnLightSurface;
+  static const meta = HexaColors.neutral;
 }

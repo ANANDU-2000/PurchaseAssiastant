@@ -23,6 +23,7 @@ import '../../../core/widgets/friendly_load_error.dart';
 import '../../../shared/widgets/full_screen_form_scaffold.dart';
 import 'supplier_create_wizard_page.dart';
 
+import '../../../core/theme/hexa_colors.dart';
 bool _validPhoneDigits(String raw) {
   final d = raw.replaceAll(RegExp(r'\D'), '');
   return d.length >= 10 && d.length <= 15;
@@ -831,7 +832,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
                     'Advanced (optional)',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w800,
-                          color: const Color(0xFF0F172A),
+                          color: HexaColors.textOnLightSurface,
                         ),
                   ),
                   subtitle: Text(
@@ -846,7 +847,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
                       'Linked suppliers',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w900,
-                            color: const Color(0xFF0F172A),
+                            color: HexaColors.textOnLightSurface,
                           ),
                     ),
                     const SizedBox(height: 8),
@@ -856,7 +857,7 @@ class _BrokerWizardPageState extends ConsumerState<BrokerWizardPage> {
                       'Preferred items & categories',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w900,
-                            color: const Color(0xFF0F172A),
+                            color: HexaColors.textOnLightSurface,
                           ),
                     ),
                     const SizedBox(height: 8),

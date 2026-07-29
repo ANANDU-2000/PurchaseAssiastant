@@ -502,7 +502,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
 
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    const chipTeal = Color(0xFF17A8A7);
+    const chipTeal = HexaColors.brandTealSoft;
     const chipText = Color(0xFF374151);
     final fmt = DateFormat.yMMMd();
 
@@ -770,7 +770,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
                                         'Line profit (est.) ${_inr(sumProfit.round())}',
                                         style: tt.bodySmall?.copyWith(
                                           fontWeight: FontWeight.w800,
-                                          color: const Color(0xFF0F766E),
+                                          color: HexaColors.brandTealMid,
                                         ),
                                       ),
                                     ],

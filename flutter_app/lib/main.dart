@@ -234,6 +234,8 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
   Object? _error;
   String? _errorStackTrace;
   String _splashStatus = 'Connecting to server…';
+  /// UID-001: release HTML splash only after bootstrap UI is in the tree.
+  bool _bootOverlayReleaseScheduled = false;
   Timer? _splashSlowTimer;
 
   @override
@@ -248,6 +250,14 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
     }
   }
 
+  void _scheduleBootOverlayRelease({bool force = false}) {
+    if (_bootOverlayReleaseScheduled && !force) return;
+    _bootOverlayReleaseScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      removeBootOverlayIfPresent(force: force);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -258,9 +268,8 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
       });
     });
     unawaited(_prepare());
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      removeBootOverlayIfPresent();
-    });
+    // UID-001: do NOT remove HTML splash on the first (possibly empty) Flutter frame.
+    // Wait until bootstrap loader or HexaApp has mounted — see post-frame removes below.
   }
 
   Future<void> _prepare() async {
@@ -356,9 +365,7 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
       _splashSlowTimer?.cancel();
       _bootstrapLog('starting HexaApp');
       setState(() => _container = container);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        removeBootOverlayIfPresent(force: true);
-      });
+      _scheduleBootOverlayRelease(force: true);
       // Defer PDF locale setup: avoids blocking cold start path.
       unawaited(() async {
         try {
@@ -379,9 +386,11 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
   @override
   Widget build(BuildContext context) {
     if (kIsWeb && AppConfig.isWrongProductionWebHost) {
+      _scheduleBootOverlayRelease(force: true);
       return _bootstrapChrome(const _WrongWebHostGate());
     }
     if (_error != null) {
+      _scheduleBootOverlayRelease(force: true);
       return _bootstrapChrome(
         Scaffold(
           backgroundColor: Colors.transparent,
@@ -484,6 +493,8 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
     }
 
     if (_container == null) {
+      // Bootstrap spinner is the visible load state while session restores.
+      _scheduleBootOverlayRelease();
       return _bootstrapChrome(
         Scaffold(
           backgroundColor: Colors.transparent,

@@ -13,6 +13,8 @@ import 'staff_delivered_detail_sheet.dart';
 import 'stock_row_metrics.dart';
 import 'stock_update_mode_toggle.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/theme/hexa_colors.dart';
 Future<void> showStockRowActions({
   required BuildContext context,
   required WidgetRef ref,
@@ -35,6 +37,9 @@ Future<void> showStockRowActions({
     context: context,
     compact: true,
     padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+    // UID-004: keep dialog over the list/master column, not the detail CTAs.
+    desktopAlignment: Alignment.centerLeft,
+    barrierColor: Colors.black54,
     child: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -51,11 +56,11 @@ Future<void> showStockRowActions({
         ),
         const SizedBox(height: 6),
         Text(
-          'Stock in hand · ${formatStockQtyForUnit(unit, system)}',
+          'System stock · ${formatStockQtyForUnit(unit, system)}',
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w700,
-            color: const Color(0xFF2563EB),
+            color: HexaDsColors.blue,
           ),
         ),
         const SizedBox(height: 8),
@@ -159,7 +164,7 @@ class _StockActionTile extends StatelessWidget {
             constraints: const BoxConstraints(minHeight: 48),
             child: Row(
               children: [
-                Icon(icon, size: 20, color: const Color(0xFF0F766E)),
+                Icon(icon, size: 20, color: HexaColors.brandTealMid),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -171,7 +176,7 @@ class _StockActionTile extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Icon(Icons.chevron_right, color: Color(0xFF94A3B8), size: 18),
+                const Icon(Icons.chevron_right, color: HexaColors.cost, size: 18),
               ],
             ),
           ),

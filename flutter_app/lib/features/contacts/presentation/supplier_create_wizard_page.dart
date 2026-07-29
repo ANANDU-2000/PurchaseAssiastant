@@ -27,6 +27,7 @@ import '../../../core/widgets/async_value_form.dart';
 import '../../catalog/catalog_taxonomy_utils.dart';
 import '../../../shared/widgets/keyboard_safe_form_viewport.dart';
 
+import '../../../core/theme/hexa_colors.dart';
 const _kDraftKey = 'supplier_create_wizard_draft_v1';
 
 const _stepTitles = <String>[
@@ -1360,7 +1361,7 @@ class _SupplierCreateWizardPageState
         Text(
           label,
           style: const TextStyle(
-            color: Color(0xFF6B7280),
+            color: HexaColors.gray500,
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),

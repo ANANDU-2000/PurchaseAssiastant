@@ -128,9 +128,9 @@ Widget? _purchaseHistoryDaysChip(TradePurchase p) {
         final label = over > 0 ? '${over}d over' : 'Overdue';
         return _historyMetaChip(
           label: label,
-          bg: Colors.red.shade50,
-          border: Colors.red.shade200,
-          fg: Colors.red.shade900,
+          bg: HexaColors.statusDeadBg,
+          border: HexaColors.loss,
+          fg: HexaColors.dangerDeep,
           icon: Icons.timer_off_rounded,
         );
       }
@@ -138,17 +138,17 @@ Widget? _purchaseHistoryDaysChip(TradePurchase p) {
       if (p.statusEnum == PurchaseStatus.overdue) {
         return _historyMetaChip(
           label: 'Overdue',
-          bg: Colors.red.shade50,
-          border: Colors.red.shade200,
-          fg: Colors.red.shade900,
+          bg: HexaColors.statusDeadBg,
+          border: HexaColors.loss,
+          fg: HexaColors.dangerDeep,
         );
       }
       if (p.statusEnum == PurchaseStatus.dueSoon) {
         return _historyMetaChip(
           label: 'Due soon',
-          bg: const Color(0xFFFFF7ED),
-          border: const Color(0xFFFDBA74),
-          fg: const Color(0xFF9A3412),
+          bg: HexaColors.accentOrangeSoft,
+          border: HexaColors.amberBorder,
+          fg: HexaColors.accentOrangeDeep,
         );
       }
     }
@@ -175,17 +175,17 @@ Widget? _purchaseHistoryDaysChip(TradePurchase p) {
     if (p.statusEnum == PurchaseStatus.overdue) {
       return _historyMetaChip(
         label: 'Overdue',
-        bg: Colors.red.shade50,
-        border: Colors.red.shade200,
-        fg: Colors.red.shade900,
+        bg: HexaColors.statusDeadBg,
+        border: HexaColors.loss,
+        fg: HexaColors.dangerDeep,
       );
     }
     if (p.statusEnum == PurchaseStatus.dueSoon) {
       return _historyMetaChip(
         label: 'Due soon',
-        bg: const Color(0xFFFFF7ED),
-        border: const Color(0xFFFDBA74),
-        fg: const Color(0xFF9A3412),
+        bg: HexaColors.accentOrangeSoft,
+        border: HexaColors.amberBorder,
+        fg: HexaColors.accentOrangeDeep,
       );
     }
     return null;
@@ -203,9 +203,9 @@ Widget? _purchaseHistoryDaysChip(TradePurchase p) {
   }
   return _historyMetaChip(
     label: label,
-    bg: overdue ? Colors.red.shade50 : const Color(0xFFFFF7ED),
-    border: overdue ? Colors.red.shade200 : const Color(0xFFFDBA74),
-    fg: overdue ? Colors.red.shade900 : const Color(0xFF9A3412),
+    bg: overdue ? HexaColors.statusDeadBg : HexaColors.accentOrangeSoft,
+    border: overdue ? HexaColors.loss : HexaColors.amberBorder,
+    fg: overdue ? HexaColors.dangerDeep : HexaColors.accentOrangeDeep,
   );
 }
 
@@ -1379,7 +1379,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                             vertical: 1,
                                           ),
                                           decoration: BoxDecoration(
-                                            color: Colors.red.shade600,
+                                            color: HexaColors.loss,
                                             borderRadius:
                                                 BorderRadius.circular(10),
                                           ),
@@ -1436,8 +1436,8 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                       : Icons.local_shipping_outlined,
                                   size: 14,
                                   color: undeliveredSort
-                                      ? const Color(0xFFEA580C)
-                                      : const Color(0xFF64748B),
+                                      ? HexaColors.accentOrangeMid
+                                      : HexaColors.neutral,
                                 ),
                                 label: Text(
                                   'Wait ↑',
@@ -1445,7 +1445,7 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
                                     fontSize: 11,
                                     fontWeight: FontWeight.w800,
                                     color: undeliveredSort
-                                        ? const Color(0xFF0D9488)
+                                        ? HexaColors.brandTealBright
                                         : null,
                                   ),
                                 ),
@@ -2222,7 +2222,7 @@ class _LocalWipDraftHistoryRow extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: const Color(0xFFF59E0B).withValues(alpha: 0.7),
+              color: HexaColors.accentAmber.withValues(alpha: 0.7),
               width: 1.5,
             ),
           ),
@@ -2241,7 +2241,7 @@ class _LocalWipDraftHistoryRow extends StatelessWidget {
                               horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
                             color:
-                                const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                                HexaColors.accentAmber.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: const Text(
@@ -2249,7 +2249,7 @@ class _LocalWipDraftHistoryRow extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFFD97706),
+                              color: HexaDsWarehouse.warningAmber,
                             ),
                           ),
                         ),
@@ -2262,7 +2262,7 @@ class _LocalWipDraftHistoryRow extends StatelessWidget {
                             style: HexaDsType.purchaseQtyUnit.copyWith(
                               fontSize: 13,
                               fontWeight: FontWeight.w900,
-                              color: const Color(0xFF0F172A),
+                              color: HexaColors.textOnLightSurface,
                             ),
                           ),
                         ),
@@ -2637,7 +2637,7 @@ class _PurchaseHistoryFullscreenSearchPageState
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF0F172A),
+                    color: HexaColors.textOnLightSurface,
                     height: 1.35,
                   ),
                 ),
@@ -2789,7 +2789,7 @@ class _PurchaseRow extends StatelessWidget {
         decoration: deliveryStatusRowDecoration(
           deliveryStatus: ds,
           background: listHighlighted
-              ? const Color(0xFFE8F4F2)
+              ? HexaColors.brandMintWash
               : Colors.white,
           undeliveredBand: agingBand,
         ),
@@ -2812,11 +2812,11 @@ class _PurchaseRow extends StatelessWidget {
                             fontSize: 13,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 0.2,
-                            color: const Color(0xFF0F172A),
+                            color: HexaColors.textOnLightSurface,
                             height: 1.1,
                             decoration:
                                 cancelled ? TextDecoration.lineThrough : null,
-                            decorationColor: const Color(0xFF9CA3AF),
+                            decorationColor: HexaColors.slate400,
                           ),
                         ),
                       ),
@@ -2830,12 +2830,12 @@ class _PurchaseRow extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
-                            color: const Color(0xFF111827),
+                            color: HexaColors.inkNearBlack,
                             letterSpacing: -0.35,
                             height: 1.0,
                             decoration:
                                 cancelled ? TextDecoration.lineThrough : null,
-                            decorationColor: const Color(0xFF9CA3AF),
+                            decorationColor: HexaColors.slate400,
                           ),
                         ),
                       ),
@@ -2849,7 +2849,7 @@ class _PurchaseRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF1E293B),
+                        color: HexaColors.slate800,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -2862,7 +2862,7 @@ class _PurchaseRow extends StatelessWidget {
                           style: const TextStyle(
                             fontSize: 10.5,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF0D9488),
+                            color: HexaColors.brandTealBright,
                             letterSpacing: 0.1,
                           ),
                         ),
@@ -2898,8 +2898,8 @@ class _PurchaseRow extends StatelessWidget {
                             if (_showQuickDeliverIcon(p))
                               _QuickActionBtn(
                                 label: 'COMMIT STOCK',
-                                color: Colors.orange.shade800,
-                                bg: Colors.orange.shade50,
+                                color: HexaColors.accentOrangeMid,
+                                bg: HexaColors.accentOrangeSoft,
                                 onTap: onMarkDelivered,
                               ),
                             if (_showQuickPaidIcon(p))
@@ -3014,7 +3014,7 @@ class _CompactMetric extends StatelessWidget {
     final style = TextStyle(
       fontSize: 10,
       fontWeight: FontWeight.w900,
-      color: primary ? HexaColors.brandPrimary : const Color(0xFF475569),
+      color: primary ? HexaColors.brandPrimary : HexaColors.textBody,
     );
     return Text(label, style: style);
   }
@@ -3041,7 +3041,7 @@ class _CompactDetailLabel extends StatelessWidget {
       style: const TextStyle(
         fontSize: 10,
         fontWeight: FontWeight.w800,
-        color: Color(0xFF64748B),
+        color: HexaColors.neutral,
         letterSpacing: 0.1,
       ),
     );
@@ -3123,7 +3123,7 @@ class _HistoryFiltersHideAll extends StatelessWidget {
             Icon(
               Icons.filter_alt_off_rounded,
               size: 52,
-              color: Colors.orange.shade700,
+              color: HexaColors.accentOrangeMid,
             ),
             const SizedBox(height: 14),
             Text(

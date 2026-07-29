@@ -236,7 +236,7 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
                 widget.brokerId;
             context.pushNamed('purchase_new');
           },
-          backgroundColor: const Color(0xFF17A8A7),
+          backgroundColor: HexaColors.brandTealSoft,
           foregroundColor: Colors.white,
           icon: const Icon(Icons.add_shopping_cart_rounded),
           label: const Text('New purchase'),
@@ -279,7 +279,7 @@ class _BrokerDetailPageState extends ConsumerState<BrokerDetailPage> {
         ),
         data: (b) {
           final cs = Theme.of(context).colorScheme;
-          const chipTeal = Color(0xFF17A8A7);
+          const chipTeal = HexaColors.brandTealSoft;
           final phone = b['phone']?.toString();
           final viewW = MediaQuery.sizeOf(context).width;
           final compactLedger = viewW < 560;

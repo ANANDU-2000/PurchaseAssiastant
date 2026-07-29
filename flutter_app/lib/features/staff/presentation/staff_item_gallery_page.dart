@@ -294,7 +294,7 @@ class _StaffItemGalleryPageState extends ConsumerState<StaffItemGalleryPage> {
                               elevation: 0,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                side: const BorderSide(color: Color(0xFFE2E8E6)),
+                                side: const BorderSide(color: HexaColors.brandBorder),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -431,14 +431,14 @@ class _StaffGalleryItemRow extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!hideSub && sub.isNotEmpty)
-            Text(sub, style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+            Text(sub, style: const TextStyle(fontSize: 11, color: HexaColors.cost)),
           Text(
             'Stock: ${formatStockQtyNumber(stock)} $unit'
             '${code.isNotEmpty ? ' · $code' : ' · No code'}'
             '${missingBc ? ' · No barcode' : ''}',
             style: TextStyle(
               fontSize: 12,
-              color: low ? const Color(0xFFDC2626) : const Color(0xFF64748B),
+              color: low ? HexaDsColors.error : HexaColors.neutral,
               fontWeight: low ? FontWeight.w700 : FontWeight.w500,
             ),
           ),

@@ -46,7 +46,7 @@ class StaffPurchaseHistoryRow extends StatelessWidget {
                   fontSize: 13,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.2,
-                  color: Color(0xFF0F172A),
+                  color: HexaColors.textOnLightSurface,
                 ),
               ),
               const SizedBox(height: 2),
@@ -57,7 +57,7 @@ class StaffPurchaseHistoryRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF1E293B),
+                    color: HexaColors.slate800,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -70,7 +70,7 @@ class StaffPurchaseHistoryRow extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF0D9488),
+                        color: HexaColors.brandTealBright,
                       ),
                     ),
                     const _Dot(),
@@ -80,7 +80,7 @@ class StaffPurchaseHistoryRow extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 10.5,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF64748B),
+                      color: HexaColors.neutral,
                     ),
                   ),
                   if (broker.isNotEmpty) ...[
@@ -92,7 +92,7 @@ class StaffPurchaseHistoryRow extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF64748B),
+                        color: HexaColors.neutral,
                       ),
                     ),
                   ],
@@ -151,7 +151,7 @@ class _Dot extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Padding(
       padding: EdgeInsets.symmetric(horizontal: 6),
-      child: Text('·', style: TextStyle(color: Color(0xFF94A3B8))),
+      child: Text('·', style: TextStyle(color: HexaColors.cost)),
     );
   }
 }

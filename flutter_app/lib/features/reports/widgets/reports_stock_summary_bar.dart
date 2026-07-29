@@ -47,7 +47,7 @@ class ReportsStockSummaryBar extends ConsumerWidget {
   Color _accentFor(ReportsStockChipFilter chip) => switch (chip) {
         ReportsStockChipFilter.active => const Color(0xFF4CAF50),
         ReportsStockChipFilter.slow => const Color(0xFFFBC02D),
-        ReportsStockChipFilter.dead => const Color(0xFFE53935),
+        ReportsStockChipFilter.dead => HexaColors.loss,
         ReportsStockChipFilter.fast => const Color(0xFF2196F3),
         ReportsStockChipFilter.all => HexaColors.brandPrimary,
       };
@@ -83,7 +83,7 @@ class _KpiChip extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: selected ? accent : const Color(0xFFE2E8F0),
+              color: selected ? accent : HexaColors.slateBorder,
               width: selected ? 1.5 : 1,
             ),
           ),

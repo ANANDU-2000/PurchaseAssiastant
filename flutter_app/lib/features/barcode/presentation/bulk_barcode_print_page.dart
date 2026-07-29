@@ -29,6 +29,7 @@ import 'bulk_barcode_print_controller.dart';
 import 'bulk_barcode_print_preview_panel.dart';
 import 'bulk_barcode_print_toolbar.dart';
 
+import '../../../core/theme/hexa_colors.dart';
 class BulkBarcodePrintPage extends ConsumerStatefulWidget {
   const BulkBarcodePrintPage({super.key});
 
@@ -1045,7 +1046,7 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
                           const Icon(
                             Icons.warning_amber_rounded,
                             size: 20,
-                            color: Color(0xFFC62828),
+                            color: HexaColors.materialRed,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
@@ -1321,9 +1322,10 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
                     : () {
                         ref.read(bulkPreviewItemIdProvider.notifier).state = id;
                         if (!desktop) {
+                          // Fixed preview height; compact host shrink-wraps (BLANK-002).
                           showHexaBottomSheet<void>(
                             context: context,
-                            compact: false,
+                            compact: true,
                             padding: EdgeInsets.zero,
                             child: SizedBox(
                               height: 280,

@@ -186,7 +186,7 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
                             child: Row(
                               children: [
                                 const Icon(Icons.lock_reset_rounded,
-                                    size: 18, color: Color(0xFFC62828)),
+                                    size: 18, color: HexaColors.materialRed),
                                 const SizedBox(width: HexaDsLayout.inlineGap),
                                 Expanded(
                                   child: Text(
@@ -329,7 +329,7 @@ class _StaffShellBottomBar extends StatelessWidget {
                         label: 'Deliver',
                         compact: true,
                         badge: pendingDeliveryCount,
-                        badgeColor: const Color(0xFFEA580C),
+                        badgeColor: HexaColors.accentOrangeMid,
                         onTap: () => onDestinationSelected(
                             StaffShellBranch.deliveries),
                       ),
@@ -405,7 +405,7 @@ class _StaffNavTile extends StatelessWidget {
                 ),
                 child: HexaCountBadge(
                   count: badge,
-                  backgroundColor: badgeColor ?? const Color(0xFFDC2626),
+                  backgroundColor: badgeColor ?? HexaDsColors.error,
                   child: Icon(
                     ic,
                     size: compact ? 22 : 24,

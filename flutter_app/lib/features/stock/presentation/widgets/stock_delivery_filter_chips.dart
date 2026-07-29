@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/providers/stock_providers.dart' show StockDeliveryFilter;
 
+import '../../../../core/theme/hexa_colors.dart';
 /// All / pending truck / delivered chips with live counts.
 class StockDeliveryFilterChips extends StatelessWidget {
   const StockDeliveryFilterChips({
@@ -37,7 +38,7 @@ class StockDeliveryFilterChips extends StatelessWidget {
           _chip(
             label: 'Pending truck',
             count: pendingCount,
-            countColor: const Color(0xFFEA580C),
+            countColor: HexaColors.accentOrangeMid,
             icon: Icons.local_shipping_outlined,
             selected: selected == StockDeliveryFilter.pending,
             onTap: () => onSelected(StockDeliveryFilter.pending),
@@ -45,7 +46,7 @@ class StockDeliveryFilterChips extends StatelessWidget {
           _chip(
             label: 'Delivered',
             count: deliveredCount,
-            countColor: const Color(0xFF16A34A),
+            countColor: HexaColors.profit,
             icon: Icons.check_circle_outline_rounded,
             selected: selected == StockDeliveryFilter.delivered,
             onTap: () => onSelected(StockDeliveryFilter.delivered),
@@ -77,7 +78,7 @@ class StockDeliveryFilterChips extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
               decoration: BoxDecoration(
-                color: countColor ?? const Color(0xFF64748B),
+                color: countColor ?? HexaColors.neutral,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(

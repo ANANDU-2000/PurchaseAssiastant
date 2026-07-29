@@ -6,6 +6,7 @@ import '../../../../core/auth/session_notifier.dart';
 import '../../../../core/providers/api_degraded_provider.dart';
 import '../../../../core/providers/home_dashboard_provider.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Shown when the user appears signed in but live API data is missing (often 401).
 class HomeSessionDataBanner extends ConsumerWidget {
   const HomeSessionDataBanner({super.key});
@@ -47,7 +48,7 @@ class HomeSessionDataBanner extends ConsumerWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.lock_reset_rounded, size: 20, color: Color(0xFFE65100)),
+              const Icon(Icons.lock_reset_rounded, size: 20, color: HexaColors.accentOrange),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(

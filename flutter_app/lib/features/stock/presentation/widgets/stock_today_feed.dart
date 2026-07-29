@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/json_coerce.dart';
 import '../../../../core/utils/unit_utils.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Dense timeline row for stock adjustment audit entries.
 class StockTodayFeed extends StatelessWidget {
   const StockTodayFeed({
@@ -37,20 +38,20 @@ class StockTodayFeed extends StatelessWidget {
       case 'purchase':
         return (
           icon: Icons.local_shipping_outlined,
-          color: const Color(0xFFE65100),
+          color: HexaColors.accentOrange,
           label: 'Purchase',
         );
       case 'verification':
         return (
           icon: Icons.fact_check_outlined,
-          color: const Color(0xFF2E7D32),
+          color: HexaColors.materialGreen,
           label: 'Verified',
         );
       case 'damaged':
       case 'expired':
         return (
           icon: Icons.remove_circle_outline,
-          color: const Color(0xFFC62828),
+          color: HexaColors.materialRed,
           label: 'Damage',
         );
       default:
@@ -124,11 +125,11 @@ class _StockTodayFeedRow extends StatelessWidget {
             ? '+${StockTodayFeed.fmtQty(delta.abs())}'
             : '-${StockTodayFeed.fmtQty(delta.abs())}';
     final deltaColor = isPurchaseBill
-        ? const Color(0xFFE65100)
+        ? HexaColors.accentOrange
         : delta > 0
-            ? const Color(0xFF2E7D32)
+            ? HexaColors.materialGreen
             : delta < 0
-                ? const Color(0xFFC62828)
+                ? HexaColors.materialRed
                 : Theme.of(context).colorScheme.onSurfaceVariant;
     final name = row['item_name']?.toString() ?? 'Item';
     final itemId = row['item_id']?.toString();
@@ -223,9 +224,9 @@ class StockAdjustmentSourceBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = adjustmentType?.toLowerCase() ?? '';
     final (label, fg, bg) = switch (t) {
-      'purchase' => ('PURCHASE', const Color(0xFFE65100), const Color(0xFFFFF3E0)),
-      'verification' => ('VERIFIED', const Color(0xFF2E7D32), const Color(0xFFE8F5E9)),
-      'damaged' || 'expired' => ('DAMAGE', const Color(0xFFC62828), const Color(0xFFFFEBEE)),
+      'purchase' => ('PURCHASE', HexaColors.accentOrange, const Color(0xFFFFF3E0)),
+      'verification' => ('VERIFIED', HexaColors.materialGreen, const Color(0xFFE8F5E9)),
+      'damaged' || 'expired' => ('DAMAGE', HexaColors.materialRed, const Color(0xFFFFEBEE)),
       _ => ('CORRECTION', const Color(0xFF546E7A), const Color(0xFFECEFF1)),
     };
     return Container(

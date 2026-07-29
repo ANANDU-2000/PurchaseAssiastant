@@ -5,6 +5,7 @@ import '../../../../core/design_system/hexa_inline_button.dart';
 import '../../../../core/models/trade_purchase_models.dart';
 import 'purchase_delivery_badge.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Delivery pipeline status + role-specific primary action.
 class PurchaseDetailDeliveryBanner extends StatelessWidget {
   const PurchaseDetailDeliveryBanner({
@@ -104,7 +105,7 @@ class PurchaseDetailDeliveryBanner extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 12,
                         height: 1.35,
-                        color: Color(0xFF64748B),
+                        color: HexaColors.neutral,
                       ),
                     ),
                     if (meta.isNotEmpty) ...[
@@ -114,7 +115,7 @@ class PurchaseDetailDeliveryBanner extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF475569),
+                          color: HexaColors.textBody,
                         ),
                       ),
                     ],

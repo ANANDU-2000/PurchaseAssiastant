@@ -4,6 +4,7 @@ import '../../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../../core/design_system/hexa_responsive.dart';
 import 'stock_table_layout.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Warehouse table header: ITEM | SYS | PHYS | DIFF (all roles).
 class StockWarehouseTableHeader extends StatelessWidget {
   const StockWarehouseTableHeader({super.key});
@@ -12,7 +13,7 @@ class StockWarehouseTableHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final hdr = HexaDsType.label(9).copyWith(
       fontWeight: FontWeight.w800,
-      color: const Color(0xFF475569),
+      color: HexaColors.textBody,
       letterSpacing: 0.2,
       height: 1.15,
     );

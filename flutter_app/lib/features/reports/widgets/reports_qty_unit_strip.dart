@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/utils/unit_utils.dart';
 
+import '../../../core/design_system/hexa_ds_tokens.dart';
 /// Compact bag / box / tin / kg breakdown for Reports overview.
 class ReportsQtyUnitStrip extends StatelessWidget {
   const ReportsQtyUnitStrip({
@@ -18,10 +19,10 @@ class ReportsQtyUnitStrip extends StatelessWidget {
   final double tins;
   final double kg;
 
-  static const _bagColor = Color(0xFF0D9488);
-  static const _boxColor = Color(0xFF2563EB);
-  static const _tinColor = Color(0xFFD97706);
-  static const _kgColor = Color(0xFF7C3AED);
+  static const _bagColor = HexaColors.brandTealBright;
+  static const _boxColor = HexaDsColors.blue;
+  static const _tinColor = HexaDsWarehouse.warningAmber;
+  static const _kgColor = HexaDsColors.violet;
 
   @override
   Widget build(BuildContext context) {

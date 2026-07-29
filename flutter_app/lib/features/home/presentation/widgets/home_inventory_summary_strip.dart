@@ -27,7 +27,7 @@ class HomeInventorySummaryStrip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: HexaColors.slate50,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: HexaColors.brandBorder.withValues(alpha: 0.7)),
       ),

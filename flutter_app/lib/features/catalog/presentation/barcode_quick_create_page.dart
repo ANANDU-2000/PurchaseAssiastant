@@ -11,6 +11,7 @@ import '../../../core/utils/item_code_format.dart';
 import '../../../core/widgets/async_value_form.dart';
 import '../../../shared/widgets/inline_search_field.dart';
 
+import '../../../core/theme/hexa_colors.dart';
 /// Minimal item create after unknown barcode scan (no supplier/broker/HSN).
 class BarcodeQuickCreatePage extends ConsumerStatefulWidget {
   const BarcodeQuickCreatePage({super.key, required this.barcode});
@@ -240,7 +241,7 @@ class _BarcodeQuickCreatePageState extends ConsumerState<BarcodeQuickCreatePage>
             ],
             if (_error != null) ...[
               const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(color: Color(0xFFA32D2D))),
+              Text(_error!, style: const TextStyle(color: HexaColors.dangerDeep)),
             ],
             const SizedBox(height: 16),
             SizedBox(

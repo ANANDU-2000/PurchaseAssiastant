@@ -14,6 +14,9 @@ import '../../../core/utils/line_display.dart';
 import '../../../core/widgets/focused_search_chrome.dart';
 import '../../purchase/state/purchase_providers.dart';
 
+/// Live purchase-history surface for a catalog item.
+/// Kept under `features/item` (not catalog) because router path
+/// `/catalog/item/:itemId/purchase-history` owns this page — do not delete as "thin scaffolding".
 class ItemHistoryPage extends ConsumerStatefulWidget {
   const ItemHistoryPage({super.key, required this.catalogItemId});
 

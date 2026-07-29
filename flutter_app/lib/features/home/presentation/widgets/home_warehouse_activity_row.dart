@@ -67,7 +67,7 @@ Future<void> showWarehouseActivityDetailSheet(
               _DetailLine(
                 label: 'Verified by',
                 value: verified,
-                valueColor: const Color(0xFF16A34A),
+                valueColor: HexaColors.profit,
               ),
             ] else if (item.isPurchaseDelivery) ...[
               const SizedBox(height: 8),
@@ -128,7 +128,7 @@ class _DetailLine extends StatelessWidget {
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
-              color: valueColor ?? const Color(0xFF0F172A),
+              color: valueColor ?? HexaColors.textOnLightSurface,
             ),
           ),
         ),
@@ -193,7 +193,7 @@ class WarehouseActivityCompactRow extends StatelessWidget {
           subtitle,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)), // Subtitle: 12
+          style: const TextStyle(fontSize: 12, color: HexaColors.neutral), // Subtitle: 12
         ),
       ),
     );
@@ -268,7 +268,7 @@ class _DeliveryLayout extends StatelessWidget {
                 style: const TextStyle(
                   fontWeight: FontWeight.w900,
                   fontSize: 13,
-                  color: Color(0xFF0F172A),
+                  color: HexaColors.textOnLightSurface,
                 ),
               ),
               const SizedBox(height: 3),
@@ -285,7 +285,7 @@ class _DeliveryLayout extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF475569),
+                    color: HexaColors.textBody,
                   ),
                 ),
               ],
@@ -321,7 +321,7 @@ class _DeliveryLayout extends StatelessWidget {
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   height: 1.25,
-                  color: Color(0xFF334155),
+                  color: HexaColors.slate700,
                 ),
               ),
             ],
@@ -346,8 +346,8 @@ class _DeliveryLayout extends StatelessWidget {
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
                   color: verifier.isNotEmpty
-                      ? const Color(0xFF16A34A)
-                      : const Color(0xFF94A3B8),
+                      ? HexaColors.profit
+                      : HexaColors.cost,
                   height: 1.2,
                 ),
               ),
@@ -409,7 +409,7 @@ class _GenericLayout extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 11,
-                    color: Color(0xFF64748B),
+                    color: HexaColors.neutral,
                   ),
                 ),
               ],
@@ -420,7 +420,7 @@ class _GenericLayout extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF475569),
+                    color: HexaColors.textBody,
                   ),
                 ),
               ],
@@ -457,7 +457,7 @@ Color _activityColor(String kind) {
     'purchase' || 'stock_quick_purchase' => HexaColors.brandPrimary,
     'delivery_verified' => HexaColors.profit,
     'stock' || 'physical_count' || 'stock_correction' || 'correction' =>
-      const Color(0xFF0D9488),
-    _ => const Color(0xFF64748B),
+      HexaColors.brandTealBright,
+    _ => HexaColors.neutral,
   };
 }

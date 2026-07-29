@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/hexa_colors.dart';
 /// Warehouse movement classification for Reports → Stock tab.
 enum ReportsStockMovementStatus {
   active,
@@ -63,34 +64,34 @@ extension ReportsStockMovementStatusX on ReportsStockMovementStatus {
       };
 
   Color get badgeBackground => switch (this) {
-        ReportsStockMovementStatus.active => const Color(0xFFE8F5E0),
-        ReportsStockMovementStatus.slow => const Color(0xFFFFF8E1),
-        ReportsStockMovementStatus.verySlow => const Color(0xFFFFF3E0),
-        ReportsStockMovementStatus.dead => const Color(0xFFFFEBEE),
-        ReportsStockMovementStatus.fast => const Color(0xFFE3F2FD),
-        ReportsStockMovementStatus.noActivity => const Color(0xFFF1F5F9),
-        ReportsStockMovementStatus.outOfStock => const Color(0xFFF1F5F9),
+        ReportsStockMovementStatus.active => HexaColors.statusActiveBg,
+        ReportsStockMovementStatus.slow => HexaColors.statusSlowBg,
+        ReportsStockMovementStatus.verySlow => HexaColors.statusVerySlowBg,
+        ReportsStockMovementStatus.dead => HexaColors.statusDeadBg,
+        ReportsStockMovementStatus.fast => HexaColors.statusFastBg,
+        ReportsStockMovementStatus.noActivity => HexaColors.slate100,
+        ReportsStockMovementStatus.outOfStock => HexaColors.slate100,
       };
 
   Color get badgeForeground => switch (this) {
-        ReportsStockMovementStatus.active => const Color(0xFF3B6D11),
-        ReportsStockMovementStatus.slow => const Color(0xFFBA7517),
-        ReportsStockMovementStatus.verySlow => const Color(0xFFE65100),
-        ReportsStockMovementStatus.dead => const Color(0xFFA32D2D),
-        ReportsStockMovementStatus.fast => const Color(0xFF1565C0),
-        ReportsStockMovementStatus.noActivity => const Color(0xFF64748B),
-        ReportsStockMovementStatus.outOfStock => const Color(0xFF64748B),
+        ReportsStockMovementStatus.active => HexaColors.statusActiveFg,
+        ReportsStockMovementStatus.slow => HexaColors.statusSlowFg,
+        ReportsStockMovementStatus.verySlow => HexaColors.accentOrange,
+        ReportsStockMovementStatus.dead => HexaColors.dangerDeep,
+        ReportsStockMovementStatus.fast => HexaColors.materialBlue,
+        ReportsStockMovementStatus.noActivity => HexaColors.neutral,
+        ReportsStockMovementStatus.outOfStock => HexaColors.neutral,
       };
 
   /// Left border accent on intel cards.
   Color get borderAccent => switch (this) {
-        ReportsStockMovementStatus.active => const Color(0xFF4CAF50),
-        ReportsStockMovementStatus.slow => const Color(0xFFFBC02D),
-        ReportsStockMovementStatus.verySlow => const Color(0xFFFF9800),
-        ReportsStockMovementStatus.dead => const Color(0xFFE53935),
-        ReportsStockMovementStatus.fast => const Color(0xFF2196F3),
-        ReportsStockMovementStatus.noActivity => const Color(0xFF94A3B8),
-        ReportsStockMovementStatus.outOfStock => const Color(0xFFCBD5E1),
+        ReportsStockMovementStatus.active => HexaColors.statusActiveBorder,
+        ReportsStockMovementStatus.slow => HexaColors.statusSlowBorder,
+        ReportsStockMovementStatus.verySlow => HexaColors.statusVerySlowBorder,
+        ReportsStockMovementStatus.dead => HexaColors.loss,
+        ReportsStockMovementStatus.fast => HexaColors.statusFastBorder,
+        ReportsStockMovementStatus.noActivity => HexaColors.cost,
+        ReportsStockMovementStatus.outOfStock => HexaColors.slate300,
       };
 }
 

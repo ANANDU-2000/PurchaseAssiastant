@@ -1,0 +1,17 @@
+---
+description: Enforce Harisree design tokens on Flutter UI work (always apply under flutter_app/lib)
+globs:
+  - flutter_app/lib/**/*.dart
+alwaysApply: false
+---
+
+# Design quality (Flutter lib)
+
+When editing any file under `flutter_app/lib/**`:
+
+1. Read root `DESIGN.md` and `.cursor/skills/design-quality/SKILL.md`.
+2. Prefer `HexaColors` / `HexaDsColors` / `HexaDsType` / `HexaDsSpace` over raw `Color(0x…)` and inline font sizes.
+3. Use `FriendlyLoadError` / `HexaErrorCard` for load errors; never show Dio/HTTP/stack to users.
+4. Desktop: `showHexaBottomSheet` for sheets; `DesktopPageShell` for forms (max 720).
+5. Preserve purchase draft / trade save flows and ₹ formatting (`en_IN`).
+6. Self-check the design-quality skill checklist before finishing.

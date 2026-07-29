@@ -27,6 +27,8 @@ Future<T?> showSearchPickerSheet<T>({
   double initialChildFraction = 0.72,
   Duration queryDebounce = const Duration(milliseconds: 150),
 }) {
+  // Body computes its own SizedBox height; host still needs compact:false fixed
+  // dialog height so Column+Expanded inside the picker never collapses (BLANK-002).
   return showHexaBottomSheet<T>(
     context: context,
     compact: false,

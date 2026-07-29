@@ -251,7 +251,7 @@ class _ItemStickyActions extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         decoration: const BoxDecoration(
           color: Colors.white,
-          border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+          border: Border(top: BorderSide(color: HexaColors.slateBorder)),
         ),
         child: Row(
           children: [
@@ -552,7 +552,7 @@ class _DesktopActivityTab extends ConsumerWidget {
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF64748B),
+                      color: HexaColors.neutral,
                     ),
                   ),
                 ),
@@ -798,7 +798,7 @@ class _ItemDetailMobileScrollState extends ConsumerState<_ItemDetailMobileScroll
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF64748B),
+                  color: HexaColors.neutral,
                 ),
               ),
             ),

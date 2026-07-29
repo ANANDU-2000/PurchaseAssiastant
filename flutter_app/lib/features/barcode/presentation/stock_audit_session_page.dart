@@ -8,6 +8,7 @@ import '../../../core/providers/business_aggregates_invalidation.dart';
 import '../../../core/providers/stock_audit_providers.dart';
 import '../../../core/widgets/hexa_error_card.dart';
 
+import '../../../core/theme/hexa_colors.dart';
 /// Active warehouse audit session — scanned lines and complete.
 class StockAuditSessionPage extends ConsumerWidget {
   const StockAuditSessionPage({super.key});
@@ -66,7 +67,7 @@ class StockAuditSessionPage extends ConsumerWidget {
                     const SizedBox(width: 8),
                     _chip('Matched', '$matched', const Color(0xFF3B6D11)),
                     const SizedBox(width: 8),
-                    _chip('Mismatch', '$mismatch', const Color(0xFFA32D2D)),
+                    _chip('Mismatch', '$mismatch', HexaColors.dangerDeep),
                   ],
                 ),
               ),
@@ -91,7 +92,7 @@ class StockAuditSessionPage extends ConsumerWidget {
                           fontWeight: FontWeight.w800,
                           color: diff == 0
                               ? const Color(0xFF3B6D11)
-                              : const Color(0xFFA32D2D),
+                              : HexaColors.dangerDeep,
                         ),
                         ),
                       ),
@@ -120,9 +121,9 @@ class StockAuditSessionPage extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
+          color: HexaColors.slate50,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(color: HexaColors.slateBorder),
         ),
         child: Column(
           children: [

@@ -75,7 +75,7 @@ class _HomeRecentChangesSectionState
               padding: EdgeInsets.fromLTRB(12, 8, 12, 12),
               child: Text(
                 'No recent warehouse activity',
-                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                style: TextStyle(fontSize: 12, color: HexaColors.neutral),
               ),
             ),
           );
@@ -127,10 +127,10 @@ class _RecentChangeRow extends StatelessWidget {
     final color = switch (item.kind) {
       'purchase' => HexaColors.brandPrimary,
       'stock_quick_purchase' => HexaColors.brandPrimary,
-      'stock' => const Color(0xFF0D9488),
-      'usage' => const Color(0xFFE65100),
-      'transfer' => const Color(0xFF1565C0),
-      _ => const Color(0xFF64748B),
+      'stock' => HexaColors.brandTealBright,
+      'usage' => HexaColors.accentOrange,
+      'transfer' => HexaColors.materialBlue,
+      _ => HexaColors.neutral,
     };
     final timeLabel = homeTimeAgo(item.at);
     final actor = item.actor?.trim();
@@ -175,7 +175,7 @@ class _RecentChangeRow extends StatelessWidget {
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 12,
-                    color: Color(0xFF0D9488),
+                    color: HexaColors.brandTealBright,
                   ),
                 )
               : null),
@@ -209,7 +209,7 @@ class HomeSectionSkeleton extends StatelessWidget {
             child: Container(
               height: 44,
               decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
+                color: HexaColors.slate100,
                 borderRadius: BorderRadius.circular(8),
               ),
             ),

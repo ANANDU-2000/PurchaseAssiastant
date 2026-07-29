@@ -11,6 +11,8 @@ import '../../../../core/providers/business_aggregates_invalidation.dart'
 import '../../../../core/providers/purchase_damage_reports_provider.dart';
 import '../../../../core/utils/unit_utils.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/theme/hexa_colors.dart';
 const _damageReasons = <String, String>{
   'torn_bag': 'Torn bag',
   'wet_damage': 'Wet damage',
@@ -233,7 +235,7 @@ class _StaffVerificationSheetState extends ConsumerState<_StaffVerificationSheet
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.error_outline, color: Color(0xFFB91C1C), size: 18),
+                    const Icon(Icons.error_outline, color: HexaDsColors.error, size: 18),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -286,7 +288,7 @@ class _StaffVerificationSheetState extends ConsumerState<_StaffVerificationSheet
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: HexaColors.slateBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

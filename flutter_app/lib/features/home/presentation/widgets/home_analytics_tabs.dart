@@ -50,7 +50,7 @@ class _TabChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? HexaColors.brandPrimary : const Color(0xFFF1F5F9),
+      color: selected ? HexaColors.brandPrimary : HexaColors.slate100,
       borderRadius: BorderRadius.circular(8),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -65,7 +65,7 @@ class _TabChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w800,
-              color: selected ? Colors.white : const Color(0xFF334155),
+              color: selected ? Colors.white : HexaColors.slate700,
             ),
           ),
         ),

@@ -5,6 +5,8 @@ import '../../../../shared/widgets/hexa_empty_state.dart';
 import 'low_stock_compact_item_row.dart';
 import 'low_stock_tree_counts.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/theme/hexa_colors.dart';
 enum LowStockTreeTab {
   allLow,
   pendingOrder,
@@ -332,7 +334,7 @@ class _LowStockCategoryTreeState extends State<LowStockCategoryTree> {
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
-            side: const BorderSide(color: Color(0xFFE2E8E6)),
+            side: const BorderSide(color: HexaColors.brandBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -424,7 +426,7 @@ class _LowStockCategoryTreeState extends State<LowStockCategoryTree> {
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 11,
-                                color: Color(0xFF64748B),
+                                color: HexaColors.neutral,
                               ),
                             ),
                           ),
@@ -459,7 +461,7 @@ class _LowStockCategoryTreeState extends State<LowStockCategoryTree> {
                           'No items in this subcategory.',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF64748B),
+                            color: HexaColors.neutral,
                           ),
                         ),
                       );
@@ -476,7 +478,7 @@ class _LowStockCategoryTreeState extends State<LowStockCategoryTree> {
                                 : '$serial in $selectedSub · #1–$serial',
                             style: const TextStyle(
                               fontSize: 11,
-                              color: Color(0xFF94A3B8),
+                              color: HexaColors.cost,
                             ),
                           ),
                         ),
@@ -571,7 +573,7 @@ class _OutCountBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color(0xFFDC2626),
+        color: HexaDsColors.error,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(

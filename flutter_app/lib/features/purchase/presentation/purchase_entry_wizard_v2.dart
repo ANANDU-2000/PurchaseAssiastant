@@ -2177,7 +2177,7 @@ class _PurchaseEntryWizardV2State extends ConsumerState<PurchaseEntryWizardV2>
               'Terms & charges',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF0F172A),
+                    color: HexaColors.textOnLightSurface,
                   ),
             ),
             const SizedBox(height: 12),

@@ -41,7 +41,7 @@ class HomeStickyPeriodHeader extends SliverPersistentHeaderDelegate {
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 11,
-              color: Color(0xFF64748B),
+              color: HexaColors.neutral,
             ),
           ),
         ),

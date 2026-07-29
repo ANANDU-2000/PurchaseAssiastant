@@ -238,7 +238,7 @@ class _ItemLedgerSectionState extends ConsumerState<ItemLedgerSection> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(color: HexaColors.slateBorder),
           color: Colors.white,
         ),
         child: Row(
@@ -272,7 +272,7 @@ class _LedgerEmptyState extends ConsumerWidget {
         padding: EdgeInsets.fromLTRB(12, 14, 12, 14),
         child: Text(
           'No ledger entries in this range.',
-          style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+          style: TextStyle(fontSize: 12, color: HexaColors.neutral),
         ),
       );
     }
@@ -286,7 +286,7 @@ class _LedgerEmptyState extends ConsumerWidget {
         padding: EdgeInsets.fromLTRB(12, 14, 12, 14),
         child: Text(
           'No ledger entries in this range.',
-          style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+          style: TextStyle(fontSize: 12, color: HexaColors.neutral),
         ),
       );
     }
@@ -299,7 +299,7 @@ class _LedgerEmptyState extends ConsumerWidget {
           const Text(
             'System stock is positive but nothing moved in this range. '
             'Try a wider range or update the physical count.',
-            style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.35),
+            style: TextStyle(fontSize: 12, color: HexaColors.neutral, height: 1.35),
           ),
           const SizedBox(height: 10),
           Wrap(
@@ -375,7 +375,7 @@ class _LedgerRow extends StatelessWidget {
     final notes = (event['notes'] ?? '').toString().trim();
 
     final isDanger = kind.contains('damage') || kind.contains('correction') || kind.contains('physical');
-    final accent = isDanger ? const Color(0xFFA32D2D) : HexaColors.brandPrimary;
+    final accent = isDanger ? HexaColors.dangerDeep : HexaColors.brandPrimary;
 
     return InkWell(
       onTap: onToggle,
@@ -410,7 +410,7 @@ class _LedgerRow extends StatelessWidget {
               ].join('  ·  '),
               maxLines: expanded ? 3 : 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w700),
+              style: const TextStyle(fontSize: 11, color: HexaColors.neutral, fontWeight: FontWeight.w700),
             ),
             if (expanded) ...[
               const SizedBox(height: 6),

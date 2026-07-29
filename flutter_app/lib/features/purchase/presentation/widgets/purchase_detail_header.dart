@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/models/trade_purchase_models.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Compact supplier / broker / date / status header for purchase detail.
 class PurchaseDetailHeader extends StatelessWidget {
   const PurchaseDetailHeader({
@@ -115,7 +116,7 @@ class _BrokerAvatar extends StatelessWidget {
     if (imageUrl.isNotEmpty) {
       return CircleAvatar(
         radius: 14,
-        backgroundColor: const Color(0xFFE5E7EB),
+        backgroundColor: HexaColors.inputBorderGrey,
         backgroundImage: NetworkImage(imageUrl),
         onBackgroundImageError: (_, __) {},
       );

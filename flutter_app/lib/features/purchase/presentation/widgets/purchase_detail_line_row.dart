@@ -4,6 +4,7 @@ import '../../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../../core/models/trade_purchase_models.dart';
 import '../../../stock/presentation/widgets/stock_table_layout.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Operational purchase line row (replaces large cards).
 class PurchaseDetailLineRow extends StatelessWidget {
   const PurchaseDetailLineRow({
@@ -156,7 +157,7 @@ class PurchaseDetailLineRow extends StatelessWidget {
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 14,
-                        color: profitColor ?? const Color(0xFF0F766E),
+                        color: profitColor ?? HexaColors.brandTealMid,
                       ),
                     ),
                   ),

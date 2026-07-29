@@ -137,7 +137,7 @@ class _PeriodIconButton extends StatelessWidget {
                 size: 18,
                 color: selected
                     ? HexaColors.brandPrimary
-                    : const Color(0xFF64748B),
+                    : HexaColors.neutral,
               ),
             ),
           ),

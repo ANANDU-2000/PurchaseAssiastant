@@ -12,6 +12,7 @@ import '../../../stock/presentation/quick_stock_action_sheet.dart';
 import '../../../stock/presentation/stock_quick_purchase_sheet.dart';
 import '../../../stock/presentation/widgets/stock_update_mode_toggle.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
 class ItemQuickActionsBar extends ConsumerWidget {
   const ItemQuickActionsBar({
     super.key,
@@ -51,7 +52,7 @@ class ItemQuickActionsBar extends ConsumerWidget {
       _ActionSpec(
         label: 'System stock',
         icon: Icons.memory_outlined,
-        color: const Color(0xFF2563EB),
+        color: HexaDsColors.blue,
         onTap: () async {
           final row = ref.read(itemDetailStockProvider(itemId));
           if (!context.mounted) return;
@@ -79,7 +80,7 @@ class ItemQuickActionsBar extends ConsumerWidget {
       _ActionSpec(
         label: 'Ledger',
         icon: Icons.receipt_long_outlined,
-        color: const Color(0xFF334155),
+        color: HexaColors.slate700,
         onTap: () => context.push('/catalog/item/$itemId/ledger'),
       ),
       if (!isStaff)
@@ -100,7 +101,7 @@ class ItemQuickActionsBar extends ConsumerWidget {
         _ActionSpec(
           label: 'Export PDF',
           icon: Icons.picture_as_pdf_outlined,
-          color: const Color(0xFF0F766E),
+          color: HexaColors.brandTealMid,
           onTap: () async {
             final res = await exportShareItemStatementPdf(
               ref: ref,
@@ -116,7 +117,7 @@ class ItemQuickActionsBar extends ConsumerWidget {
       _ActionSpec(
         label: 'History',
         icon: Icons.history_rounded,
-        color: const Color(0xFF1565C0),
+        color: HexaColors.materialBlue,
         onTap: () => context.push(
           '/catalog/item/$itemId?tab=activity&name=${Uri.encodeComponent(itemName)}',
         ),

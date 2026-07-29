@@ -7,6 +7,7 @@ import '../../../../core/utils/unit_utils.dart';
 import 'stock_row_metrics.dart';
 import 'stock_table_layout.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Warehouse operational row — ITEM (inline truck) | SYS | PHYS | DIFF.
 class StockWarehouseRow extends StatelessWidget {
   const StockWarehouseRow({
@@ -90,19 +91,19 @@ class StockWarehouseRow extends StatelessWidget {
                   : StockTableLayout.rowFill,
               border: isLowOrCritical
                   ? const Border(
-                      left: BorderSide(color: Color(0xFFDC2626), width: 3),
+                      left: BorderSide(color: HexaDsColors.error, width: 3),
                     )
                   : deliveryKind == StockDeliveryIndicator.pending
                       ? const Border(
                           left: BorderSide(
-                            color: Color(0xFFEA580C),
+                            color: HexaColors.accentOrangeMid,
                             width: 3,
                           ),
                         )
                       : deliveryKind == StockDeliveryIndicator.delivered
                           ? const Border(
                               left: BorderSide(
-                                color: Color(0xFF16A34A),
+                                color: HexaColors.profit,
                                 width: 3,
                               ),
                             )
@@ -132,7 +133,7 @@ class StockWarehouseRow extends StatelessWidget {
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF1A1A1A),
+                              color: HexaColors.textOnLightSurface,
                               height: 1.12,
                             ),
                           ),
@@ -148,7 +149,7 @@ class StockWarehouseRow extends StatelessWidget {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: HexaDsType.label(9).copyWith(
-                                        color: const Color(0xFF7C3AED),
+                                        color: HexaDsColors.violet,
                                         fontWeight: FontWeight.w800,
                                         height: 1.1,
                                       ),
@@ -172,7 +173,7 @@ class StockWarehouseRow extends StatelessWidget {
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
                                                 style: HexaDsType.label(9).copyWith(
-                                                  color: const Color(0xFF64748B),
+                                                  color: HexaColors.neutral,
                                                   height: 1.1,
                                                 ),
                                               ),
@@ -196,7 +197,7 @@ class StockWarehouseRow extends StatelessWidget {
                   _boxedMetric(
                     context,
                     StockRowMetrics.physicalCellLabel(item),
-                    const Color(0xFF0F766E),
+                    HexaColors.brandTealMid,
                   ),
                   _boxedMetric(
                     context,

@@ -130,7 +130,7 @@ class _EmptyLine extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Text(text, style: const TextStyle(color: Color(0xFF64748B))),
+      child: Text(text, style: const TextStyle(color: HexaColors.neutral)),
     );
   }
 }

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/config/app_config.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/theme/hexa_colors.dart';
 /// Left / top brand column: dark blue–purple gradient, copy, checks, motion.
 class AuthBrandPanel extends StatefulWidget {
   const AuthBrandPanel({
@@ -74,7 +76,7 @@ class _AuthBrandPanelState extends State<AuthBrandPanel> with TickerProviderStat
                     end: Alignment.bottomRight,
                     colors: [
                       Color(0xFF020617),
-                      Color(0xFF0F172A),
+                      HexaColors.textOnLightSurface,
                       Color(0xFF1E1B4B),
                       Color(0xFF312E81),
                     ],
@@ -92,17 +94,17 @@ class _AuthBrandPanelState extends State<AuthBrandPanel> with TickerProviderStat
               Positioned(
                 top: -50 + drift,
                 right: -70 + drift * 0.55,
-                child: _glowBlob(180, const Color(0xFF6366F1), 0.28),
+                child: _glowBlob(180, HexaDsColors.indigo, 0.28),
               ),
               Positioned(
                 bottom: -40 - drift * 0.8,
                 left: -60 - drift * 0.35,
-                child: _glowBlob(220, const Color(0xFF7C3AED), 0.22),
+                child: _glowBlob(220, HexaDsColors.violet, 0.22),
               ),
               Positioned(
                 top: 0.28 * MediaQuery.sizeOf(context).height,
                 left: -30 + drift * 0.25,
-                child: _glowBlob(140, const Color(0xFF2563EB), 0.18),
+                child: _glowBlob(140, HexaDsColors.blue, 0.18),
               ),
               Positioned(
                 right: 12,
@@ -294,14 +296,14 @@ class _AuthBrandPanelState extends State<AuthBrandPanel> with TickerProviderStat
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            const Color(0xFF6366F1).withValues(alpha: 0.45),
-            const Color(0xFF7C3AED).withValues(alpha: 0.25),
+            HexaDsColors.indigo.withValues(alpha: 0.45),
+            HexaDsColors.violet.withValues(alpha: 0.25),
           ],
         ),
         border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF6366F1).withValues(alpha: 0.35),
+            color: HexaDsColors.indigo.withValues(alpha: 0.35),
             blurRadius: 28,
             offset: const Offset(0, 10),
           ),
@@ -383,7 +385,7 @@ class _MeshPainter extends CustomPainter {
         Offset(size.width * 0.75, size.height * 0.15),
         size.shortestSide * 0.45,
         [
-          const Color(0xFF6366F1).withValues(alpha: 0.12),
+          HexaDsColors.indigo.withValues(alpha: 0.12),
           Colors.transparent,
         ],
       );

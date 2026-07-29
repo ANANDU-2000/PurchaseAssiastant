@@ -16,6 +16,7 @@ import '../../../../core/utils/unit_utils.dart';
 import 'item_stock_metric_strip.dart';
 import '../../domain/item_stock_snapshot.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
 class ItemStockSnapshotCard extends ConsumerWidget {
   const ItemStockSnapshotCard({
     super.key,
@@ -206,7 +207,7 @@ class ItemStockSnapshotCard extends ConsumerWidget {
                 style: const TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF64748B),
+                  color: HexaColors.neutral,
                 ),
               ),
             ],
@@ -284,7 +285,7 @@ class ItemStockSnapshotCard extends ConsumerWidget {
                 label: 'Purchased (verified)',
                 value: _qty(purchasedQty, unit),
                 unitLabel: unitLabel,
-                valueColor: const Color(0xFF2563EB),
+                valueColor: HexaDsColors.blue,
               ),
               _summaryLine(
                 label: 'Physical count',
@@ -332,16 +333,16 @@ class ItemStockSnapshotCard extends ConsumerWidget {
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: HexaColors.slate50,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: HexaColors.slateBorder),
               ),
               child: Row(
                 children: [
                   const Icon(
                     Icons.warning_amber_outlined,
                     size: 16,
-                    color: Color(0xFFE65100),
+                    color: HexaColors.accentOrange,
                   ),
                   const SizedBox(width: 6),
                   Text(
@@ -376,7 +377,7 @@ class ItemStockSnapshotCard extends ConsumerWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF7ED),
+                  color: HexaColors.accentOrangeSoft,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: const Color(0xFFFDBA74)),
                 ),
@@ -388,7 +389,7 @@ class ItemStockSnapshotCard extends ConsumerWidget {
                         const Icon(
                           Icons.local_shipping_outlined,
                           size: 18,
-                          color: Color(0xFFE65100),
+                          color: HexaColors.accentOrange,
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -419,7 +420,7 @@ class ItemStockSnapshotCard extends ConsumerWidget {
                           : 'On truck · not committed to system stock yet',
                       style: const TextStyle(
                         fontSize: 11,
-                        color: Color(0xFF64748B),
+                        color: HexaColors.neutral,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -502,7 +503,7 @@ class ItemStockSnapshotCard extends ConsumerWidget {
                   style: TextStyle(
                     fontSize: emphasized ? 18 : 15,
                     fontWeight: FontWeight.w800,
-                    color: valueColor ?? const Color(0xFF1A1A1A),
+                    color: valueColor ?? HexaColors.textOnLightSurface,
                   ),
                 ),
                 if (subtitle != null && subtitle.isNotEmpty)

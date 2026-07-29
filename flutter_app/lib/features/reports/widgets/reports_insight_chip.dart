@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../core/theme/hexa_colors.dart';
 class ReportsInsightChip extends StatelessWidget {
   const ReportsInsightChip({
     super.key,
@@ -15,8 +17,8 @@ class ReportsInsightChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = trendUp == null
-        ? const Color(0xFF64748B)
-        : (trendUp! ? const Color(0xFF16A34A) : const Color(0xFFDC2626));
+        ? HexaColors.neutral
+        : (trendUp! ? HexaColors.profit : HexaDsColors.error);
     return Material(
       color: color.withValues(alpha: 0.08),
       borderRadius: BorderRadius.circular(999),

@@ -24,6 +24,7 @@ import '../../../../core/theme/hexa_colors.dart';
 import 'home_recent_changes_section.dart' show HomeSectionSkeleton;
 import '../../../../shared/widgets/warehouse_units_breakdown_line.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
 /// Owner dashboard: alert strip → KPI grid → purchases → activity (compact).
 class HomeOwnerDashboardBody extends ConsumerWidget {
   const HomeOwnerDashboardBody({super.key});
@@ -98,7 +99,8 @@ class HomeOwnerDashboardBody extends ConsumerWidget {
             children: [
               if (low > 0) ...[
                 _AlertChip(
-                  label: 'Low stock · $low',
+                  // Below reorder only (excludes out) — matches KPI "Low stock" base.
+                  label: 'Below reorder · $low',
                   color: HexaColors.brandPrimary,
                   onTap: () => pushLowStockDashboard(context),
                   isSelected: low > 0,
@@ -153,13 +155,16 @@ class HomeOwnerDashboardBody extends ConsumerWidget {
               label: 'Pending delivery',
               value: '$pending',
               subtitle: pending > 0 ? 'Needs action' : 'Clear',
-              accent: pending > 0 ? const Color(0xFFDC2626) : null,
+              accent: pending > 0 ? HexaDsColors.error : null,
               onTap: () => context.go('/purchase?filter=pending_delivery'),
             ),
             _KpiTile(
-              label: 'Low stock',
+              // Authoritative attention figure: low + critical + out (same as chips combined).
+              label: 'Need attention',
               value: '$lowCount',
-              subtitle: 'Items below reorder',
+              subtitle: out > 0
+                  ? 'Below reorder $low · Out $out'
+                  : 'Below reorder + out of stock',
               onTap: () => pushLowStockDashboard(context),
             ),
             _KpiTile(
@@ -246,7 +251,7 @@ class _AlertChip extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: BorderSide(
-          color: isSelected ? Colors.transparent : const Color(0xFFE2E8F0),
+          color: isSelected ? Colors.transparent : HexaColors.slateBorder,
           width: 1,
         ),
       ),
@@ -260,7 +265,7 @@ class _AlertChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
-              color: isSelected ? Colors.white : const Color(0xFF334155),
+              color: isSelected ? Colors.white : HexaColors.slate700,
             ),
           ),
         ),
@@ -289,7 +294,7 @@ class _KpiTile extends StatelessWidget {
     final valueStyle = TextStyle(
       fontSize: context.isDesktopLayout ? 20 : 22,
       fontWeight: FontWeight.bold,
-      color: accent ?? const Color(0xFF0F172A),
+      color: accent ?? HexaColors.textOnLightSurface,
       height: 1.15,
     );
     return Container(
@@ -304,7 +309,7 @@ class _KpiTile extends StatelessWidget {
           ),
         ],
         border: Border.all(
-          color: const Color(0xFFE2E8F0),
+          color: HexaColors.slateBorder,
           width: 1,
         ),
       ),
@@ -326,7 +331,7 @@ class _KpiTile extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF64748B),
+                    color: HexaColors.neutral,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -353,7 +358,7 @@ class _KpiTile extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 11,
-                    color: Color(0xFF94A3B8),
+                    color: HexaColors.cost,
                   ),
                 ),
               ],

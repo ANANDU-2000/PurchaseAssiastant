@@ -100,7 +100,7 @@ class _ItemQuickViewBody extends ConsumerWidget {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF2563EB),
+                color: HexaDsColors.blue,
               ),
             ),
             const SizedBox(height: 8),

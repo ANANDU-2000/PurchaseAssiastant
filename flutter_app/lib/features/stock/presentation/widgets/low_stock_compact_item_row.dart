@@ -7,6 +7,8 @@ import 'low_stock_category_tree.dart';
 import 'low_stock_item_detail_sheet.dart';
 import 'stock_row_metrics.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/theme/hexa_colors.dart';
 /// Mobile-first low-stock row: serial # · name · stock · actions in one line.
 class LowStockCompactItemRow extends ConsumerWidget {
   const LowStockCompactItemRow({
@@ -37,10 +39,10 @@ class LowStockCompactItemRow extends ConsumerWidget {
   final void Function(Map<String, dynamic> item)? onSystemStockUpdate;
   final void Function(Map<String, dynamic> item)? onReceive;
 
-  static const _critical = Color(0xFFDC2626);
-  static const _warn = Color(0xFFF59E0B);
-  static const _primaryBtn = Color(0xFF065F46);
-  static const _border = Color(0xFFE2E8E6);
+  static const _critical = HexaDsColors.error;
+  static const _warn = HexaColors.accentAmber;
+  static const _primaryBtn = HexaDsColors.successForeground;
+  static const _border = HexaColors.brandBorder;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -66,7 +68,7 @@ class LowStockCompactItemRow extends ConsumerWidget {
             ? _warn
             : low
                 ? _warn
-                : const Color(0xFF64748B);
+                : HexaColors.neutral;
 
     void openDetails() {
       showLowStockItemDetailSheet(
@@ -105,7 +107,7 @@ class LowStockCompactItemRow extends ConsumerWidget {
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF64748B),
+                      color: HexaColors.neutral,
                     ),
                   ),
                 ),
@@ -140,7 +142,7 @@ class LowStockCompactItemRow extends ConsumerWidget {
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
-                            color: Color(0xFF334155),
+                            color: HexaColors.slate700,
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -171,7 +173,7 @@ class LowStockCompactItemRow extends ConsumerWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 11,
-                          color: Color(0xFF94A3B8),
+                          color: HexaColors.cost,
                         ),
                       ),
                   ],
@@ -238,7 +240,7 @@ class LowStockCompactItemRow extends ConsumerWidget {
                   ),
                 IconButton(
                   icon: const Icon(Icons.more_vert, size: 20),
-                  color: const Color(0xFF64748B),
+                  color: HexaColors.neutral,
                   onPressed: openDetails,
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.zero,
@@ -271,7 +273,7 @@ class _CompactAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final fg = enabled
         ? LowStockCompactItemRow._primaryBtn
-        : const Color(0xFF94A3B8);
+        : HexaColors.cost;
     final child = Text(
       label,
       style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
@@ -283,7 +285,7 @@ class _CompactAction extends StatelessWidget {
           height: 34,
           child: FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: enabled ? fg : const Color(0xFFE2E8E6),
+              backgroundColor: enabled ? fg : HexaColors.brandBorder,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               minimumSize: const Size(0, 34),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,

@@ -13,6 +13,9 @@ import '../../mapping/purchase_line_display_adapter.dart';
 import '../../state/purchase_draft_provider.dart';
 import '../../state/purchase_trade_preview_provider.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../../core/design_system/widgets/app_form_layout.dart';
+
 String _inr0(num n) =>
     NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
         .format(n);
@@ -194,20 +197,24 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
                           ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      _inr0(bd.grand),
-                      style: Theme.of(cx).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xFF0F172A),
-                          ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      qtyLine,
-                      style: Theme.of(cx).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xFF0F172A),
-                          ),
+                    AppFormRow(
+                      children: [
+                        Text(
+                          _inr0(bd.grand),
+                          style:
+                              Theme.of(cx).textTheme.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                    color: HexaColors.textOnLightSurface,
+                                  ),
+                        ),
+                        Text(
+                          qtyLine,
+                          style: Theme.of(cx).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w900,
+                                color: HexaColors.textOnLightSurface,
+                              ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -222,7 +229,7 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
               'Items (${lines.length})',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w900,
-                    color: const Color(0xFF0F172A),
+                    color: HexaColors.textOnLightSurface,
                   ),
             ),
             const Spacer(),
@@ -276,7 +283,7 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w900,
                                   fontSize: 16,
-                                  color: Color(0xFF0F172A),
+                                  color: HexaColors.textOnLightSurface,
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -289,7 +296,7 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w900,
                                         fontSize: 16,
-                                        color: Color(0xFF0F172A),
+                                        color: HexaColors.textOnLightSurface,
                                       ),
                                     ),
                                     const SizedBox(height: 4),
@@ -298,7 +305,7 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w800,
                                         fontSize: 15,
-                                        color: Color(0xFF0F172A),
+                                        color: HexaColors.textOnLightSurface,
                                       ),
                                     ),
                                     const SizedBox(height: 6),
@@ -316,7 +323,7 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
                                             ),
                                           ),
                                           backgroundColor:
-                                              const Color(0xFFF1F5F9),
+                                              HexaColors.slate100,
                                           side: BorderSide.none,
                                           padding: EdgeInsets.zero,
                                           materialTapTargetSize:
@@ -332,7 +339,7 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
                                             ),
                                           ),
                                           backgroundColor:
-                                              const Color(0xFFECFDF5),
+                                              HexaDsColors.successSurface,
                                           side: BorderSide.none,
                                           padding: EdgeInsets.zero,
                                           materialTapTargetSize:
@@ -346,7 +353,7 @@ class _PurchaseFastItemsStepState extends ConsumerState<PurchaseFastItemsStep> {
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w900,
                                         fontSize: 18,
-                                        color: Color(0xFF0D9488),
+                                        color: HexaColors.brandTealBright,
                                       ),
                                     ),
                                   ],
@@ -406,7 +413,7 @@ class _PurchaseLineAddedPreviewCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Material(
-      color: const Color(0xFFECFDF5),
+      color: HexaDsColors.successSurface,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
@@ -427,7 +434,7 @@ class _PurchaseLineAddedPreviewCard extends StatelessWidget {
                     'Added · ${line.itemName}',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w800,
-                          color: const Color(0xFF0F172A),
+                          color: HexaColors.textOnLightSurface,
                         ),
                   ),
                   const SizedBox(height: 4),
@@ -435,7 +442,7 @@ class _PurchaseLineAddedPreviewCard extends StatelessWidget {
                     '$qtyLabel · $amountLabel',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           fontWeight: FontWeight.w700,
-                          color: const Color(0xFF0D9488),
+                          color: HexaColors.brandTealBright,
                         ),
                   ),
                 ],

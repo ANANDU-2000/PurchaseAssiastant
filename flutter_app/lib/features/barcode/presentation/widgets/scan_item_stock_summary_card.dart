@@ -5,6 +5,7 @@ import '../../../../core/json_coerce.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/utils/unit_utils.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
 /// Post-scan summary: system + physical stock, last purchase, last system edit.
 class ScanItemStockSummaryCard extends StatelessWidget {
   const ScanItemStockSummaryCard({
@@ -53,9 +54,9 @@ class ScanItemStockSummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: HexaColors.slate50,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: HexaColors.slateBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -81,7 +82,7 @@ class ScanItemStockSummaryCard extends StatelessWidget {
                   label: 'System',
                   qty: system,
                   unit: unit,
-                  accent: const Color(0xFF0E4F46),
+                  accent: HexaColors.brandPrimary,
                   subtitle: _lastUpdatedLine(item),
                   compact: true,
                 ),
@@ -101,7 +102,7 @@ class ScanItemStockSummaryCard extends StatelessWidget {
                   label: 'Physical',
                   qty: physical,
                   unit: unit,
-                  accent: const Color(0xFF2563EB),
+                  accent: HexaDsColors.blue,
                   subtitle: physical != null
                       ? [
                           if (physAt != null) daysAgoLabel(physAt),
@@ -196,7 +197,7 @@ class _StockTile extends StatelessWidget {
             subtitle,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+            style: const TextStyle(fontSize: 10, color: HexaColors.neutral),
           ),
         ],
       ),
@@ -265,7 +266,7 @@ class _PurchaseTile extends StatelessWidget {
             sub,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+            style: const TextStyle(fontSize: 10, color: HexaColors.neutral),
           ),
         ],
       ),

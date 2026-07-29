@@ -112,7 +112,7 @@ class HomePurchaseControlCenter extends ConsumerWidget {
                       style: const TextStyle(
                         fontSize: 18, // Section Title: 18 Bold
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF0F172A),
+                        color: HexaColors.textOnLightSurface,
                       ),
                     ),
                     if (suppliers > 0 || brokers > 0) ...[
@@ -125,7 +125,7 @@ class HomePurchaseControlCenter extends ConsumerWidget {
                           textAlign: TextAlign.right,
                           style: const TextStyle(
                             fontSize: 12, // Subtitle: 12
-                            color: Color(0xFF64748B),
+                            color: HexaColors.neutral,
                           ),
                         ),
                       ),
@@ -151,7 +151,7 @@ class HomePurchaseControlCenter extends ConsumerWidget {
                   style: const TextStyle(
                     fontSize: 14, // Card Title/Subtitle: 14
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF475569),
+                    color: HexaColors.textBody,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -186,7 +186,7 @@ class HomePurchaseControlCenter extends ConsumerWidget {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF1E293B),
+                            color: HexaColors.slate800,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -218,7 +218,7 @@ class HomePurchaseControlCenter extends ConsumerWidget {
   Widget _metaChip(String text, {bool isReceived = false, bool isPending = false}) {
     final chipColor = isReceived
         ? HexaColors.profit
-        : (isPending ? const Color(0xFFEA580C) : const Color(0xFF64748B));
+        : (isPending ? HexaColors.accentOrangeMid : HexaColors.neutral);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(

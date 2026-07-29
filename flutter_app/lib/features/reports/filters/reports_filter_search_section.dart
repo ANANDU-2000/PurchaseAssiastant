@@ -132,7 +132,7 @@ class _ReportsFilterSearchSectionState extends State<ReportsFilterSearchSection>
           if (list.isEmpty)
             const Text(
               'No matches.',
-              style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              style: TextStyle(fontSize: 12, color: HexaColors.neutral),
             )
           else
             Wrap(

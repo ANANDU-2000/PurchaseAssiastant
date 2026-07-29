@@ -9,6 +9,7 @@ import '../../../core/providers/stock_providers.dart';
 import '../../../core/widgets/friendly_load_error.dart';
 import '../../purchase/state/purchase_providers.dart';
 
+import '../../../core/theme/hexa_colors.dart';
 /// Full chronological timeline for one catalog item (purchases + stock audit).
 class CatalogItemTimelinePage extends ConsumerWidget {
   const CatalogItemTimelinePage({super.key, required this.itemId});
@@ -112,10 +113,10 @@ class CatalogItemTimelinePage extends ConsumerWidget {
               itemBuilder: (context, i) {
                 final e = events[i];
                 final color = switch (e.kind) {
-                  _TimelineKind.purchase => const Color(0xFF2E7D32),
+                  _TimelineKind.purchase => HexaColors.materialGreen,
                   _TimelineKind.stock when e.title.contains('-') =>
-                    const Color(0xFFC62828),
-                  _TimelineKind.stock => const Color(0xFF1565C0),
+                    HexaColors.materialRed,
+                  _TimelineKind.stock => HexaColors.materialBlue,
                 };
                 final icon = switch (e.kind) {
                   _TimelineKind.purchase => Icons.shopping_cart_rounded,

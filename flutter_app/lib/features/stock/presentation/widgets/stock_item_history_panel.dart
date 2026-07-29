@@ -7,6 +7,7 @@ import '../../../../core/providers/stock_providers.dart';
 import '../../../../core/widgets/friendly_load_error.dart';
 import '../../../../core/widgets/list_skeleton.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 enum StockItemHistoryFilter { all, today, week, month }
 
 /// Per-item stock audit timeline (embedded in catalog detail or standalone route).
@@ -166,9 +167,9 @@ class _StockItemHistoryPanelState extends ConsumerState<StockItemHistoryPanel> {
             final newQ = coerceToDouble(r['new_qty']);
             final diff = newQ - oldQ;
             final barColor = diff > 0
-                ? const Color(0xFF2E7D32)
+                ? HexaColors.materialGreen
                 : diff < 0
-                    ? const Color(0xFFC62828)
+                    ? HexaColors.materialRed
                     : Colors.grey;
             final at =
                 DateTime.tryParse(r['updated_at']?.toString() ?? '');

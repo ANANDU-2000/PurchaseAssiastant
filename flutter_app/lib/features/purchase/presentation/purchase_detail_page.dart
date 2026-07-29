@@ -55,6 +55,7 @@ import '../../../core/widgets/hexa_error_card.dart';
 import '../../../core/widgets/list_skeleton.dart';
 import '../providers/trade_purchase_detail_provider.dart';
 
+import '../../../core/design_system/hexa_ds_tokens.dart';
 String _inr(num n, {int fractionDigits = 2}) => NumberFormat.currency(
       locale: 'en_IN',
       symbol: '₹',
@@ -416,7 +417,7 @@ class _DetailSlowLoadBody extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Material(
-          color: const Color(0xFFFFF7ED),
+          color: HexaColors.accentOrangeSoft,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             child: Row(
@@ -568,7 +569,7 @@ class _LoadedPurchaseScaffold extends ConsumerWidget {
                   'Refreshing latest totals…',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
                         fontWeight: FontWeight.w700,
-                        color: const Color(0xFF0F766E),
+                        color: HexaColors.brandTealMid,
                       ),
                 ),
               ),
@@ -695,7 +696,7 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: const Color(0xFFB91C1C).withValues(alpha: 0.35),
+                color: HexaDsColors.error.withValues(alpha: 0.35),
               ),
             ),
             child: Column(
@@ -705,7 +706,7 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
                   children: [
                     const Icon(
                       Icons.error_outline_rounded,
-                      color: Color(0xFFB91C1C),
+                      color: HexaDsColors.error,
                       size: 20,
                     ),
                     const SizedBox(width: 8),
@@ -714,7 +715,7 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
                         '${issues.length} line${issues.length == 1 ? '' : 's'} need unit setup before commit',
                         style: const TextStyle(
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFFB91C1C),
+                          color: HexaDsColors.error,
                           fontSize: 13,
                         ),
                       ),
@@ -1204,7 +1205,7 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
       final rates = hideFinancials ? null : _lineRateLabels(l);
       final profitColor = pr == null
           ? cs.onSurfaceVariant
-          : (pr >= 0 ? const Color(0xFF0F766E) : HexaColors.loss);
+          : (pr >= 0 ? HexaColors.brandTealMid : HexaColors.loss);
       out.add(
         PurchaseDetailLineRow(
           index: i,

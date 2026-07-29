@@ -36,14 +36,14 @@ class StockDesktopDetailPane extends ConsumerWidget {
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 15,
-                color: Color(0xFF334155),
+                color: HexaColors.slate700,
               ),
             ),
             const SizedBox(height: 6),
             const Text(
               'Choose a row on the left to see stock metrics and recent activity.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+              style: TextStyle(color: HexaColors.neutral, fontSize: 13),
             ),
           ],
         ),
@@ -65,7 +65,7 @@ class StockDesktopDetailPane extends ConsumerWidget {
         : ref.watch(stockItemActivityProvider(id));
 
     return ColoredBox(
-      color: const Color(0xFFFAFAF8),
+      color: HexaColors.panelWarm,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -199,7 +199,7 @@ class StockDesktopDetailPane extends ConsumerWidget {
             child: Text(
               label,
               style:
-                  HexaDsType.label(12).copyWith(color: const Color(0xFF64748B)),
+                  HexaDsType.label(12).copyWith(color: HexaColors.neutral),
             ),
           ),
           Expanded(
@@ -208,7 +208,7 @@ class StockDesktopDetailPane extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
-                color: valueColor ?? const Color(0xFF1A1A1A),
+                color: valueColor ?? HexaColors.textOnLightSurface,
               ),
             ),
           ),

@@ -16,6 +16,7 @@ import 'widgets/stock_pagination_bar.dart';
 
 import 'widgets/opening_stock_sheets.dart';
 
+import '../../../core/theme/hexa_colors.dart';
 class OpeningStockSetupPage extends ConsumerStatefulWidget {
   const OpeningStockSetupPage({super.key});
 
@@ -161,7 +162,7 @@ class _OpeningStockSetupPageState
     final selectedIds = ref.watch(openingStockBulkSelectionProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F3EE),
+      backgroundColor: HexaColors.scaffoldWarm,
       appBar: OpeningStockTopBar(
         searchExpanded: _searchExpanded,
         onToggleSearch: () => setState(() => _searchExpanded = !_searchExpanded),
@@ -450,7 +451,7 @@ class _OpeningStockTableHeaderDelegate extends SliverPersistentHeaderDelegate {
     bool overlapsContent,
   ) {
     return const ColoredBox(
-      color: Color(0xFFF5F3EE),
+      color: HexaColors.scaffoldWarm,
       child: OpeningStockTableHeader(),
     );
   }
@@ -475,7 +476,7 @@ class _BulkSelectionBar extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Material(
-        color: const Color(0xFFF8FAFC),
+        color: HexaColors.slate50,
         elevation: 8,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
@@ -632,69 +633,66 @@ class _BulkOpeningSetSheetBodyState
 
   @override
   Widget build(BuildContext context) {
-    return HexaResponsiveSheetViewport(
-      // Outer showHexaBottomSheet already scrolls on desktop — avoid nested Align+scroll blank.
-      compact: true,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 6),
-          const Text(
-            'Bulk set opening stock',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+    // Outer showHexaBottomSheet already hosts scroll — no nested viewport (BLANK-003).
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 6),
+        const Text(
+          'Bulk set opening stock',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _qtyCtrl,
+          enabled: !_saving,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+          ],
+          decoration: InputDecoration(
+            labelText: 'Qty',
+            border: const OutlineInputBorder(),
+            errorText: _qtyError,
           ),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _notesCtrl,
+          enabled: !_saving,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            labelText: 'Notes (optional)',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        if (widget.anyLocked) ...[
           const SizedBox(height: 10),
           TextField(
-            controller: _qtyCtrl,
-            enabled: !_saving,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
-            ],
-            decoration: InputDecoration(
-              labelText: 'Qty',
-              border: const OutlineInputBorder(),
-              errorText: _qtyError,
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _notesCtrl,
+            controller: _reasonCtrl,
             enabled: !_saving,
             maxLines: 2,
-            decoration: const InputDecoration(
-              labelText: 'Notes (optional)',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: 'Reason (required if locked value changes)',
+              border: const OutlineInputBorder(),
+              errorText: _reasonError,
             ),
           ),
-          if (widget.anyLocked) ...[
-            const SizedBox(height: 10),
-            TextField(
-              controller: _reasonCtrl,
-              enabled: !_saving,
-              maxLines: 2,
-              decoration: InputDecoration(
-                labelText: 'Reason (required if locked value changes)',
-                border: const OutlineInputBorder(),
-                errorText: _reasonError,
-              ),
-            ),
-          ],
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _saving ? null : _apply,
-            child: _saving
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Apply to selected'),
-          ),
-          const SizedBox(height: 8),
         ],
-      ),
+        const SizedBox(height: 16),
+        FilledButton(
+          onPressed: _saving ? null : _apply,
+          child: _saving
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Apply to selected'),
+        ),
+        const SizedBox(height: 8),
+      ],
     );
   }
 }

@@ -81,7 +81,7 @@ class ReportsItemTile extends StatelessWidget {
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                         height: 1.2,
-                        color: Color(0xFF0D9488),
+                        color: HexaColors.brandTealBright,
                       ),
                     ),
                   ],
@@ -110,7 +110,7 @@ class ReportsItemTile extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF0D9488),
+                    color: HexaColors.brandTealBright,
                   ),
                 ),
               ),

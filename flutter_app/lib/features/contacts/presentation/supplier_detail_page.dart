@@ -231,7 +231,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
     final tt = Theme.of(context).textTheme;
     final fmt = DateFormat.yMMMd();
 
-    const teal = Color(0xFF17A8A7);
+    const teal = HexaColors.brandTealSoft;
     return Scaffold(
       backgroundColor: HexaColors.brandBackground,
       floatingActionButton: async.maybeWhen(
@@ -333,7 +333,7 @@ class _SupplierDetailPageState extends ConsumerState<SupplierDetailPage> {
           final filtered = _searchCtrl.text.trim().isNotEmpty;
           final mShown = ledgerMoneyKgTotals(shown, include: _isActiveBill);
           final cShown = ledgerContainerHints(shown, include: _isActiveBill);
-          const chipTeal = Color(0xFF17A8A7);
+          const chipTeal = HexaColors.brandTealSoft;
           const chipText = Color(0xFF374151);
           return RefreshIndicator(
             onRefresh: _reload,
@@ -711,7 +711,7 @@ class _QuickStat extends StatelessWidget {
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w800,
-            color: valueColor ?? const Color(0xFF0F172A),
+            color: valueColor ?? HexaColors.textOnLightSurface,
           ),
         ),
         const SizedBox(height: 2),

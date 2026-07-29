@@ -39,7 +39,7 @@ class ReportsStockIntelCard extends StatelessWidget {
             : () => context.push('/stock/intelligence/${item.id}'),
         child: Container(
           decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: HexaColors.slateBorder),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -79,7 +79,7 @@ class ReportsStockIntelCard extends StatelessWidget {
                             style: const TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w900,
-                              color: Color(0xFF0F172A),
+                              color: HexaColors.textOnLightSurface,
                               height: 1.1,
                             ),
                           ),
@@ -104,7 +104,7 @@ class ReportsStockIntelCard extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
-                          color: Color(0xFF64748B),
+                          color: HexaColors.neutral,
                           height: 1.25,
                         ),
                       ),
@@ -117,7 +117,7 @@ class ReportsStockIntelCard extends StatelessWidget {
                 child: Icon(
                   Icons.chevron_right_rounded,
                   size: 22,
-                  color: Color(0xFF94A3B8),
+                  color: HexaColors.cost,
                 ),
               ),
             ],

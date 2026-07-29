@@ -7,6 +7,7 @@ import '../../../../core/providers/low_stock_providers.dart';
 import '../../../catalog/domain/item_stock_snapshot.dart';
 import 'low_stock_lifecycle_strip.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Desktop right-rail context for the selected low-stock item.
 class LowStockContextPanel extends ConsumerWidget {
   const LowStockContextPanel({
@@ -124,7 +125,7 @@ class LowStockContextPanel extends ConsumerWidget {
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF475569),
+                            color: HexaColors.textBody,
                           ),
                         );
                       },
@@ -167,7 +168,7 @@ class LowStockContextPanel extends ConsumerWidget {
               style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF64748B),
+                color: HexaColors.neutral,
               ),
             ),
           ),

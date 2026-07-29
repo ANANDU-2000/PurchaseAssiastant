@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/hexa_operational_tokens.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Prev / next controls for merged stock list (48dp targets).
 class StockPaginationBar extends StatelessWidget {
   const StockPaginationBar({
@@ -33,7 +34,7 @@ class StockPaginationBar extends StatelessWidget {
     final canNext = !scrollOnly && currentPage < maxPage && onNext != null;
 
     return Material(
-      color: const Color(0xFFF5F3EE),
+      color: HexaColors.scaffoldWarm,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
           HexaOp.pageGutter,

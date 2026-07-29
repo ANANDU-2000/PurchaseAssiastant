@@ -11,6 +11,7 @@ import '../../../core/reporting/trade_report_aggregate.dart';
 import '../../../core/theme/hexa_colors.dart';
 import 'reports_qty_unit_strip.dart';
 
+import '../../../core/design_system/hexa_ds_tokens.dart';
 String _inr(num n) => NumberFormat.currency(
       locale: 'en_IN',
       symbol: '₹',
@@ -33,10 +34,10 @@ class ReportsOverviewKpiGrid extends ConsumerWidget {
   final VoidCallback? onTapItems;
 
   static const _amountColor = Color(0xFF3B6D11);
-  static const _countColor = Color(0xFF2563EB);
-  static const _warnColor = Color(0xFFDC2626);
-  static const _mutedColor = Color(0xFF64748B);
-  static const _accentColor = Color(0xFF0D9488);
+  static const _countColor = HexaDsColors.blue;
+  static const _warnColor = HexaDsColors.error;
+  static const _mutedColor = HexaColors.neutral;
+  static const _accentColor = HexaColors.brandTealBright;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -216,7 +217,7 @@ class _KpiTile extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF64748B),
+                  color: HexaColors.neutral,
                 ),
               ),
               const SizedBox(height: 4),

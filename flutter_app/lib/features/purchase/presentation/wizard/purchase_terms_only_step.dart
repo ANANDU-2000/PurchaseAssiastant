@@ -9,6 +9,7 @@ import '../../domain/purchase_draft.dart';
 import '../../state/purchase_draft_provider.dart';
 import 'purchase_wizard_shared.dart';
 
+import '../../../../core/theme/hexa_colors.dart';
 /// Step 2 — deal terms once (Payment days + Discount % paired on tablet+).
 class PurchaseTermsOnlyStep extends ConsumerWidget {
   const PurchaseTermsOnlyStep({
@@ -164,23 +165,23 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFF0D9488).withValues(alpha: 0.08),
+                color: HexaColors.brandTealBright.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: const Color(0xFF0D9488).withValues(alpha: 0.25),
+                  color: HexaColors.brandTealBright.withValues(alpha: 0.25),
                 ),
               ),
               child: Row(
                 children: [
                   const Icon(Icons.auto_fix_high,
-                      size: 16, color: Color(0xFF0D9488)),
+                      size: 16, color: HexaColors.brandTealBright),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Defaults from ${draft.supplierName!.trim()} (editable)',
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF0D9488),
+                        color: HexaColors.brandTealBright,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -225,7 +226,7 @@ class PurchaseTermsOnlyStep extends ConsumerWidget {
                         _duePreview(ref, paymentDaysCtrl),
                         style: const TextStyle(
                           fontSize: 12,
-                          color: Color(0xFF0D9488),
+                          color: HexaColors.brandTealBright,
                           fontWeight: FontWeight.w600,
                         ),
                       ),

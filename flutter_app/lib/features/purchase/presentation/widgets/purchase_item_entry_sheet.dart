@@ -38,6 +38,7 @@ import '../../../../core/providers/stock_providers.dart';
 import '../../state/purchase_smart_defaults.dart';
 import '../../../../core/services/prefs_helper.dart';
 
+import '../../../../core/design_system/hexa_ds_tokens.dart';
 String _stripKgSuffixForCatalogDisplay(String name) => name
     .replaceAll(RegExp(r'\s*\d+(\.\d+)?\s*KG\s*$', caseSensitive: false), '')
     .trim();
@@ -915,7 +916,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: const Color(0xFF17A8A7).withValues(alpha: 0.22),
+          color: HexaColors.brandTealSoft.withValues(alpha: 0.22),
         ),
       ),
       clipBehavior: Clip.antiAlias,
@@ -1134,7 +1135,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                     fontWeight: FontWeight.w800,
                     fontSize: 13,
                     color:
-                        sel ? cs.onPrimaryContainer : const Color(0xFF0F172A),
+                        sel ? cs.onPrimaryContainer : HexaColors.textOnLightSurface,
                   ),
                 ),
               ),
@@ -1170,7 +1171,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
     final needsWhole = !_bagQtyIsWhole(bags);
 
     return Material(
-      color: needsWhole ? const Color(0xFFFFF7ED) : const Color(0xFFECFDF5),
+      color: needsWhole ? HexaColors.accentOrangeSoft : HexaDsColors.successSurface,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1185,8 +1186,8 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                 style: theme.textTheme.bodySmall?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: needsWhole
-                      ? const Color(0xFF9A3412)
-                      : const Color(0xFF065F46),
+                      ? HexaColors.accentOrangeDeep
+                      : HexaDsColors.successForeground,
                   height: 1.25,
                 ),
               ),
@@ -1613,7 +1614,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
         ? '${kn.round()}'
         : kn.toStringAsFixed(1);
     return Material(
-      color: const Color(0xFFE0F2FE),
+      color: HexaColors.skySoft,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1625,7 +1626,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                 'This name looks like a $knLabel kg pack. Record as 1 bag instead?',
                 style: theme.textTheme.bodySmall?.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFF0369A1),
+                  color: HexaColors.skyDeep,
                   height: 1.25,
                 ),
               ),
@@ -1661,7 +1662,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
     if (totalK <= 50000 && q <= 200) return null;
     final theme = Theme.of(context);
     return Material(
-      color: const Color(0xFFFFF7ED),
+      color: HexaColors.accentOrangeSoft,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1673,7 +1674,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                 'Did you mean ${_inQtyWtFmt.format(q)} kg (not ${_inQtyWtFmt.format(q)} bags × ${_fmtQty(k)} kg)?',
                 style: theme.textTheme.bodySmall?.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFF9A3412),
+                  color: HexaColors.accentOrangeDeep,
                   height: 1.25,
                 ),
               ),
@@ -1709,7 +1710,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
     if (!blocked && !usedBag) return null;
     final theme = Theme.of(context);
     return Material(
-      color: const Color(0xFFFFF7ED),
+      color: HexaColors.accentOrangeSoft,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1722,7 +1723,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                 'Fix the catalog unit, then enter bags here.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFF9A3412),
+                  color: HexaColors.accentOrangeDeep,
                   height: 1.25,
                 ),
               ),
@@ -1754,7 +1755,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
         ? '${kn.round()}'
         : kn.toStringAsFixed(1);
     return Material(
-      color: const Color(0xFFECFDF5),
+      color: HexaDsColors.successSurface,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1762,7 +1763,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
           'Name looks like a $knLabel kg/bag item —” quantity is in **kg**, not bags. Switch unit to bag to count bags.',
           style: theme.textTheme.bodySmall?.copyWith(
             fontWeight: FontWeight.w700,
-            color: const Color(0xFF065F46),
+            color: HexaDsColors.successForeground,
             height: 1.25,
           ),
         ),
@@ -2450,13 +2451,13 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                           return Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE8F5E9),
+                              color: HexaColors.successSoft,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               'Item will be renamed to:\n"$newName"',
                               style: const TextStyle(
-                                color: Color(0xFF1A7A6A),
+                                color: HexaColors.successTeal,
                                 fontWeight: FontWeight.w600,
                                 fontSize: 13,
                               ),
@@ -2532,7 +2533,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
             'Could not save catalog weight. ${userFacingError(e)}',
           ),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.red.shade800,
+          backgroundColor: HexaColors.materialRed,
         ),
       );
     } finally {
@@ -3089,15 +3090,15 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.orange.shade50,
+              color: HexaColors.accentOrangeSoft,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange.shade300),
+              border: Border.all(color: HexaColors.amberBorder),
             ),
             child: Row(
               children: [
                 Icon(
                   Icons.warning_amber_rounded,
-                  color: Colors.orange.shade700,
+                  color: HexaColors.accentOrangeMid,
                   size: 18,
                 ),
                 const SizedBox(width: 8),
@@ -3105,7 +3106,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                   child: Text(
                     w,
                     style: TextStyle(
-                      color: Colors.orange.shade900,
+                      color: HexaColors.accentOrangeDeep,
                       fontSize: 13,
                     ),
                   ),
@@ -3116,9 +3117,9 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
+            color: HexaColors.slate50,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: HexaColors.slateBorder),
           ),
           child: Column(
             children: [
@@ -3128,7 +3129,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                   SheetSummaryPill(
                     label: 'QTY',
                     value: _qtyAndUnitWeightSummaryLine(),
-                    color: const Color(0xFF64748B),
+                    color: HexaColors.neutral,
                   ),
                   SheetSummaryPill(
                     label: 'RATE',
@@ -3137,13 +3138,13 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                         .replaceFirst('Landing cost ', '')
                         .replaceFirst('Purchase Rate ', ''),
                     subtitle: formatRupee(enteredPurchase, decimals: true),
-                    color: const Color(0xFF64748B),
+                    color: HexaColors.neutral,
                   ),
                 ],
               ),
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 6),
-                child: Divider(height: 1, color: Color(0xFFE2E8F0)),
+                child: Divider(height: 1, color: HexaColors.slateBorder),
               ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3151,7 +3152,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                   SheetMetric(
                     label: 'TAX',
                     value: gst > 1e-6 ? formatRupee(gst, decimals: true) : '—”',
-                    color: const Color(0xFF64748B),
+                    color: HexaColors.neutral,
                   ),
                   SheetMetric(
                     label: 'PROFIT',
@@ -3159,14 +3160,14 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                         ? formatRupee(profit, decimals: true)
                         : '—”',
                     color: (profit >= 0)
-                        ? const Color(0xFF10B981)
-                        : const Color(0xFFEF4444),
+                        ? HexaColors.successEmerald
+                        : HexaColors.dangerBright,
                   ),
                   SheetMetric(
                     label: 'TOTAL',
                     value: formatRupee(total, decimals: true),
                     isBold: true,
-                    color: const Color(0xFF0F172A),
+                    color: HexaColors.textOnLightSurface,
                   ),
                 ],
               ),
@@ -3197,16 +3198,16 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: const Color(0xFFF1F8F4),
+            color: HexaColors.tealWash,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFF99F6E4)),
+            border: Border.all(color: HexaColors.tealBorderSoft),
           ),
           child: Row(
             children: [
               const Icon(
                 Icons.inventory_2_outlined,
                 size: 18,
-                color: Color(0xFF2E7D32),
+                color: HexaColors.materialGreen,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -3217,7 +3218,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
+                    color: HexaColors.textOnLightSurface,
                   ),
                 ),
               ),
@@ -3267,8 +3268,8 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
     // Compact, stable fields —” Tally-style density.
     final sheetTheme = theme.copyWith(visualDensity: VisualDensity.compact);
 
-    const teal = Color(0xFF17A8A7);
-    const ink = Color(0xFF0F172A);
+    const teal = HexaColors.brandTealSoft;
+    const ink = HexaColors.textOnLightSurface;
     final gapField = widget.fullPage ? 12.0 : 6.0;
     final gapSection = widget.fullPage ? 16.0 : 8.0;
     final rateBasisSeg = _rateEntryBasisSegmented(k, showPerKgFields);
@@ -3293,9 +3294,9 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
             width: double.infinity,
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFFEFFAF9),
+              color: HexaColors.tealWashAlt,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF99F6E4)),
+              border: Border.all(color: HexaColors.tealBorderSoft),
             ),
             child: Text(
               'Live preview · Net ${formatRupee(net, decimals: true)} · '
@@ -3304,7 +3305,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF0F172A),
+                color: HexaColors.textOnLightSurface,
               ),
             ),
           );
@@ -3359,9 +3360,9 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                   hintStyle: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF334155),
+                    color: HexaColors.slate700,
                   ),
-                  idleOutlineColor: const Color(0xFF64748B),
+                  idleOutlineColor: HexaColors.neutral,
                   fillColor: Colors.white,
                   prefixIcon: const Icon(Icons.inventory_2_outlined),
                   minQueryLength: 1,
@@ -3404,7 +3405,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
         Padding(
           padding: const EdgeInsets.only(top: 2, left: 2),
           child: Text(_errItem!,
-              style: TextStyle(color: Colors.red[800], fontSize: 11)),
+              style: TextStyle(color: HexaColors.materialRed, fontSize: 11)),
         ),
       if (_lastPurchaseAutofillHint != null &&
           _lastPurchaseAutofillHint!.isNotEmpty) ...[
@@ -3973,7 +3974,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                 Text(
                   _errHsn!,
                   style: TextStyle(
-                    color: Colors.red[800],
+                    color: HexaColors.materialRed,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -4377,7 +4378,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                     style: const TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF0F172A))),
+                        color: HexaColors.textOnLightSurface)),
                 Row(
                   children: [
                     Text('PROFIT: ${s != null && s > 0 ? formatRupee(p) : "—”"}',
@@ -4385,8 +4386,8 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                             fontSize: 9,
                             fontWeight: FontWeight.w800,
                             color: p >= 0
-                                ? const Color(0xFF059669)
-                                : const Color(0xFFDC2626))),
+                                ? HexaDsColors.success
+                                : HexaDsColors.error)),
                     const SizedBox(width: 8),
                     Builder(builder: (context) {
                       final taxable =
@@ -4398,7 +4399,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                         style: const TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF64748B)),
+                            color: HexaColors.neutral),
                       );
                     }),
                   ],
@@ -4413,7 +4414,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                   style: const TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF64748B))),
+                      color: HexaColors.neutral)),
             ),
             if (!widget.isEdit)
               SizedBox(
@@ -4422,8 +4423,8 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                   onPressed:
                       _commitInFlight ? null : () => _commit(closeSheet: false),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF17A8A7),
-                    side: const BorderSide(color: Color(0xFF17A8A7)),
+                    foregroundColor: HexaColors.brandTealSoft,
+                    side: const BorderSide(color: HexaColors.brandTealSoft),
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     textStyle: const TextStyle(
                         fontSize: 11, fontWeight: FontWeight.w800),
@@ -4436,7 +4437,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
                           height: 16,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Color(0xFF17A8A7),
+                            color: HexaColors.brandTealSoft,
                           ),
                         )
                       : const Text('Add+'),
@@ -4448,7 +4449,7 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
               child: FilledButton(
                 onPressed: _commitInFlight ? null : () => _commit(closeSheet: true),
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF17A8A7),
+                  backgroundColor: HexaColors.brandTealSoft,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   textStyle: const TextStyle(
                       fontSize: 11, fontWeight: FontWeight.w800),
