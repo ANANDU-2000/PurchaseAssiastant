@@ -142,4 +142,40 @@ void main() {
     ]);
     expect(container.read(stockListRowPatchProvider).containsKey('a'), isFalse);
   });
+
+  test('stockListPatchFromPreSaveRow restores qty, version, status, stamps', () {
+    final patch = stockListPatchFromPreSaveRow({
+      'current_stock': 40,
+      'physical_stock_qty': 45,
+      'physical_stock_difference_qty': 5,
+      'stock_version': 7,
+      'stock_status': 'healthy',
+      'last_stock_updated_at': '2026-08-05T10:00:00Z',
+      'physical_stock_counted_by': 'Ananduk',
+    });
+    expect(patch['current_stock'], 40);
+    expect(patch['physical_stock_qty'], 45);
+    expect(patch['physical_stock_difference_qty'], 5);
+    expect(patch['stock_version'], 7);
+    expect(patch['stock_status'], 'healthy');
+    expect(patch['last_stock_updated_at'], '2026-08-05T10:00:00Z');
+    expect(patch['physical_stock_counted_by'], 'Ananduk');
+  });
+
+  test('stockListPatchFromPreSaveRow omits absent keys and computes diff', () {
+    final patch = stockListPatchFromPreSaveRow({
+      'current_stock': 40,
+      'physical_stock_qty': 45,
+    });
+    expect(patch['current_stock'], 40);
+    expect(patch['physical_stock_qty'], 45);
+    expect(patch['physical_stock_difference_qty'], 5);
+    expect(patch.containsKey('stock_version'), isFalse);
+    expect(patch.containsKey('stock_status'), isFalse);
+  });
+
+  test('stockListPatchFromPreSaveRow returns empty map for blank row', () {
+    expect(stockListPatchFromPreSaveRow({}), isEmpty);
+    expect(stockListPatchFromPreSaveRow({'id': 'x'}), isEmpty);
+  });
 }

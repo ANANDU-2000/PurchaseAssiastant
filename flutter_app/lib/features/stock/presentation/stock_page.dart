@@ -875,14 +875,16 @@ class _StockPageState extends ConsumerState<StockPage>
 
   @override
   Widget build(BuildContext context) {
+    // Register the patch dependency on every build path (not only inside
+    // _prepareItems) so optimistic row overlays always repaint — even when the
+    // shell branch lags and this page renders as a hidden IndexedStack child.
+    ref.watch(stockListRowPatchProvider);
     // IndexedStack keeps Stock mounted off-tab — skip paint + heavy watches.
     // Prefer shell index + route path so a lagged branch provider cannot blank /stock.
     if (!_stockShellTabVisible(ref, context, staffMode: _isStaffMode)) {
       return const SizedBox.shrink();
     }
 
-    // Register patch dependency on every build path (not only inside _prepareItems).
-    ref.watch(stockListRowPatchProvider);
     // Desktop detail pane must rebuild when row selection changes (not only on patch).
     final selectedItemId = ref.watch(stockSelectedItemIdProvider);
 

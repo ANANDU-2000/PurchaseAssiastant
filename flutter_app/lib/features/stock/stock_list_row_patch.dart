@@ -121,3 +121,37 @@ Map<String, dynamic> stockListPatchFromStockDetail(
   if (status != null) patch['stock_status'] = status;
   return patch;
 }
+
+/// List-row overlay that restores a row to its pre-save state after a failed
+/// stock write. Replaces qty fields AND the optimistic [stock_version] /
+/// [stock_status] / timestamp stamps so a stale optimistic overlay never
+/// outlives a rolled-back save (reconcile compares those keys).
+Map<String, dynamic> stockListPatchFromPreSaveRow(Map<String, dynamic> row) {
+  final system = coerceToDoubleNullable(row['current_stock']);
+  final phys = coerceToDoubleNullable(row['physical_stock_qty']);
+  final diff = coerceToDoubleNullable(row['physical_stock_difference_qty']);
+  final version = row['stock_version'];
+  final status = row['stock_status']?.toString();
+  final lastAt = row['last_stock_updated_at']?.toString();
+  final lastBy = row['last_stock_updated_by']?.toString();
+  final countedAt = row['physical_stock_counted_at']?.toString();
+  final countedBy = row['physical_stock_counted_by']?.toString();
+  final patch = <String, dynamic>{
+    if (system != null && system.isFinite) 'current_stock': system,
+    if (phys != null && phys.isFinite) 'physical_stock_qty': phys,
+    if (phys != null &&
+        system != null &&
+        phys.isFinite &&
+        system.isFinite)
+      'physical_stock_difference_qty': diff ?? (phys - system),
+    if (version != null) 'stock_version': version,
+    if (status != null && status.isNotEmpty) 'stock_status': status,
+    if (lastAt != null && lastAt.isNotEmpty) 'last_stock_updated_at': lastAt,
+    if (lastBy != null && lastBy.isNotEmpty) 'last_stock_updated_by': lastBy,
+    if (countedAt != null && countedAt.isNotEmpty)
+      'physical_stock_counted_at': countedAt,
+    if (countedBy != null && countedBy.isNotEmpty)
+      'physical_stock_counted_by': countedBy,
+  };
+  return patch;
+}

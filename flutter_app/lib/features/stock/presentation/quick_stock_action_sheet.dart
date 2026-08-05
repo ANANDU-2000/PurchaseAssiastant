@@ -22,12 +22,15 @@ import '../../../core/providers/stock_providers.dart'
     show
         applyStockItemDetailPatch,
         applyStockListRowPatch,
+        clearStockItemDetailPatch,
+        clearStockListRowPatchesForIds,
         stockChangesFeedProvider,
         stockItemActivityProvider,
         stockStatusCountsProvider;
 import '../stock_list_row_patch.dart'
     show
         stockListPatchFromPhysicalCount,
+        stockListPatchFromPreSaveRow,
         stockListPatchFromStockDetail,
         stockStatusForPatchRow;
 import '../../../core/providers/notification_center_provider.dart';
@@ -499,15 +502,18 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
     required Map<String, dynamic> preSaveSnapshot,
   }) {
     if (itemId.isEmpty) return;
-    final system = coerceToDouble(preSaveSnapshot['current_stock']);
-    final phys = coerceToDoubleNullable(preSaveSnapshot['physical_stock_qty']);
-    final patch = <String, dynamic>{
-      'current_stock': system,
-      if (phys != null) 'physical_stock_qty': phys,
-      if (phys != null) 'physical_stock_difference_qty': phys - system,
-    };
-    applyStockListRowPatch(parentRef, itemId: itemId, patch: patch);
-    applyStockItemDetailPatch(parentRef, itemId: itemId, patch: patch);
+    final patch = stockListPatchFromPreSaveRow(preSaveSnapshot);
+    if (patch.isEmpty) {
+      // No pre-save row values to restore — drop the optimistic overlay entirely.
+      clearStockListRowPatchesForIds(parentRef, [itemId]);
+    } else {
+      // Restore qty + stock_version/status stamps so a stale optimistic version
+      // never outlives a rolled-back save.
+      applyStockListRowPatch(parentRef, itemId: itemId, patch: patch);
+    }
+    // Detail overlay no longer matches server state — drop it; the post-save
+    // re-sync refetches authoritative detail.
+    clearStockItemDetailPatch(parentRef, itemId: itemId);
   }
 
   static Future<void> _afterSaveBackgroundWithRef({
@@ -521,19 +527,11 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
   }) async {
     final reorder = coerceToDouble(itemRow['reorder_level']);
     final crossedReorder = reorder > 0 && parsed <= reorder;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Always refresh detail + activity history after a system/physical save.
-      invalidateStockRowSaveSurfaces(
-        parentRef,
-        itemId: itemId,
-        reorderAlert: crossedReorder,
-        refreshItemDetail: true,
-      );
-      parentRef.invalidate(stockChangesFeedProvider);
-      if (itemId.isNotEmpty) {
-        parentRef.invalidate(stockItemActivityProvider(itemId));
-      }
-    });
+    _resyncStockAfterSave(
+      parentRef: parentRef,
+      itemId: itemId,
+      reorderAlert: crossedReorder,
+    );
     if (crossedReorder) {
       final unitLabel = unit.isNotEmpty ? unit.toUpperCase() : '';
       await LocalNotificationsService.instance.showLowStockItem(
@@ -542,6 +540,40 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
             '${formatStockQtyForUnit(unit, parsed.toDouble())} $unitLabel (reorder ${formatStockQtyForUnit(unit, reorder)})',
       );
     }
+  }
+
+  /// Reconcile list/detail caches with the server after any save attempt
+  /// (success or failure) so the UI converges without a manual refresh.
+  static void _resyncStockAfterSave({
+    required WidgetRef parentRef,
+    required String itemId,
+    bool reorderAlert = false,
+  }) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Always refresh detail + activity history after a system/physical save.
+      invalidateStockRowSaveSurfaces(
+        parentRef,
+        itemId: itemId,
+        reorderAlert: reorderAlert,
+        refreshItemDetail: true,
+      );
+      parentRef.invalidate(stockChangesFeedProvider);
+      if (itemId.isNotEmpty) {
+        parentRef.invalidate(stockItemActivityProvider(itemId));
+      }
+    });
+  }
+
+  /// True when a write may have reached the server even though the client saw an
+  /// error (timeout / transport failure). Such writes are NOT rolled back
+  /// client-side; the row keeps the optimistic value until the server reconciles.
+  static bool _writeOutcomeIsUncertain(Object error) {
+    if (error is TimeoutException) return true;
+    if (error is DioException) {
+      if (error.response != null) return false; // Server answered — definite.
+      return dioIsAutoRetryableTransport(error);
+    }
+    return false;
   }
 
   static Future<void> _completeStockSaveAfterPop({
@@ -572,7 +604,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         note: note,
         stockVersion: stockVersion,
         idempotencyKey: idempotencyKey,
-      ).timeout(const Duration(seconds: 45));
+      );
       if (saved == null || saved.isEmpty) {
         throw StateError('Could not save stock — sign in again and retry.');
       }
@@ -620,21 +652,30 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         refreshItemDetail: refreshItemDetail,
       );
     } catch (e) {
-      _rollbackOptimisticPatchWithRef(
-        parentRef: parentRef,
-        itemId: itemId,
-        preSaveSnapshot: preSaveSnapshot,
-      );
-      if (e is TimeoutException) {
+      if (_writeOutcomeIsUncertain(e)) {
+        // The write may have committed server-side (timeout / transport error) —
+        // keep the optimistic overlay and reconcile with the server instead of
+        // reverting the row to a value the backend no longer has.
+        _resyncStockAfterSave(parentRef: parentRef, itemId: itemId);
         messenger?.showSnackBar(
           const SnackBar(
-            content: Text('Save timed out — check connection and try again'),
+            content: Text(
+              'Save is still completing — the stock list will refresh shortly.',
+            ),
             duration: Duration(seconds: 5),
             behavior: SnackBarBehavior.floating,
           ),
         );
         return;
       }
+      _rollbackOptimisticPatchWithRef(
+        parentRef: parentRef,
+        itemId: itemId,
+        preSaveSnapshot: preSaveSnapshot,
+      );
+      // Even on a definite rejection, reconcile so the row reflects the true
+      // server state (e.g. another user's newer value) without a manual refresh.
+      _resyncStockAfterSave(parentRef: parentRef, itemId: itemId);
       if (e is StaleStockConflict) {
         try {
           final session = parentRef.read(sessionProvider);
