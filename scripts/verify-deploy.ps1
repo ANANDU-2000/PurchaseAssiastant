@@ -1,8 +1,8 @@
-# Smoke-check live Render + Vercel after deploy (no secrets required).
+# Smoke-check live Cloudflare API + Vercel after deploy (no secrets required).
 $ErrorActionPreference = "Stop"
 
-$renderHealth = "https://my-purchases-api.onrender.com/health"
-$renderReady = "https://my-purchases-api.onrender.com/health/ready"
+$apiHealth = "https://api.harisreeagency.online/health"
+$apiReady = "https://api.harisreeagency.online/health/ready"
 # Canonical Harisree Flutter web (spelling: assiastant — not assistant).
 $vercelCanonical = "https://purchase-assiastant.vercel.app"
 # Wrong hostname: old React "PurchaseAI" deployment — always blank for Harisree routes.
@@ -58,10 +58,10 @@ function Test-FlutterJsBundle {
 
 $ok = $true
 
-$health = Test-UrlOk -Url $renderHealth -Label "Render /health"
+$health = Test-UrlOk -Url $apiHealth -Label "API /health"
 if (-not $health.Ok) { $ok = $false }
 
-$ready = Test-UrlOk -Url $renderReady -Label "Render /health/ready (DB + schema)"
+$ready = Test-UrlOk -Url $apiReady -Label "API /health/ready (DB + schema)"
 if (-not $ready.Ok) {
   $ok = $false
 } elseif ($ready.Body) {
@@ -88,8 +88,8 @@ if (-not $ready.Ok) {
     }
     if ($alembic -ne $expectedAlembic) {
       Write-Host "FAIL: expected alembic $expectedAlembic, got $alembic" -ForegroundColor Red
-      Write-Host "  Run: Render Shell -> cd backend && alembic upgrade head" -ForegroundColor Yellow
-      Write-Host "  Or set AUTO_MIGRATE=1 and redeploy once." -ForegroundColor Yellow
+      Write-Host "  Run on Windows Server: cd backend && alembic upgrade head" -ForegroundColor Yellow
+      Write-Host "  Then: nssm restart PurchaseAssistantAPI" -ForegroundColor Yellow
       $ok = $false
     }
     if ($null -ne $schemaOk -and -not $schemaOk) {
@@ -150,12 +150,12 @@ try {
 if (-not $ok) {
   Write-Host ""
   Write-Host "Deploy smoke FAILED." -ForegroundColor Red
-  Write-Host "Render dashboard: https://dashboard.render.com/web/srv-d7ea0il8nd3s73e4fvl0/settings" -ForegroundColor Yellow
+  Write-Host "API health: https://api.harisreeagency.online/health" -ForegroundColor Yellow
   Write-Host "Vercel: open ONLY $vercelCanonical (not purchase-assistant.vercel.app)." -ForegroundColor Yellow
   Write-Host "Fix wrong domain: Vercel -> purchase-assistant project -> Settings -> Domains -> Redirect to purchase-assiastant.vercel.app" -ForegroundColor Yellow
   exit 1
 }
 
 Write-Host ""
-Write-Host "Deploy smoke: Render + canonical Vercel Flutter OK (alembic $expectedAlembic)." -ForegroundColor Green
+Write-Host "Deploy smoke: Cloudflare API + canonical Vercel Flutter OK (alembic $expectedAlembic)." -ForegroundColor Green
 Write-Host "Bookmark: $vercelCanonical/home" -ForegroundColor Green

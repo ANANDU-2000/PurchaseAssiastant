@@ -71,7 +71,7 @@ Report: `docs/ai/15_diagnostic_report_slowness_refresh.md`
 | Check | Status | Notes |
 |-------|--------|-------|
 | Vercel prod deploy `4eab5da`+ | done | Project `purchase-assiastant` READY |
-| API `my-purchases-api.onrender.com` | done | Render service live (starter cold-start possible) |
+| API `api.harisreeagency.online` | done | Cloudflare Tunnel → Windows Server FastAPI |
 | UID-001…010 code on main | done | Pushed |
 | `purchase-assistant…/stock` | **user typo** | Different site → **404** — not our app |
 | `purchase-assiatant…` (missing s) | **user typo** | Not alias of this project → blank/wrong |

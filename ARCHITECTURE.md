@@ -66,5 +66,5 @@ Browser (PWA) ──HTTPS──> Vercel CDN ──> Flutter app
 ## Deploy Targets
 
 - **Frontend:** `https://purchase-assiastant.vercel.app`
-- **API:** `https://my-purchases-api.onrender.com`
+- **API:** `https://api.harisreeagency.online`
 - **Health:** `GET /health/ready` → `{"status":"ok","db":"ok","schema_ok":true}`

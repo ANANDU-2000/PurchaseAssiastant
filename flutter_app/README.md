@@ -35,7 +35,7 @@ Ensure the FastAPI server is running and `CORS` allows your web origin (dev defa
 The repo root [`vercel.json`](../vercel.json) runs `scripts/vercel-flutter-build.sh` and publishes `flutter_app/build/web`.
 
 1. In Vercel → Project → Settings: **Root Directory** = repository root (`.`), not `flutter_app` only (unless you adjust paths).
-2. **Environment variables (Production):** `API_BASE_URL=https://my-purchases-api.onrender.com` and `GOOGLE_OAUTH_CLIENT_ID=<your Web client ID>` (same as backend `GOOGLE_OAUTH_CLIENT_IDS`).
+2. **Environment variables (Production):** `API_BASE_URL=https://api.harisreeagency.online` and `GOOGLE_OAUTH_CLIENT_ID=<your Web client ID>` (same as backend `GOOGLE_OAUTH_CLIENT_IDS`).
 3. Redeploy. A `404 NOT_FOUND` at the project URL usually meant the static `build/web` output was missing or the Root Directory pointed at the wrong folder.
 
 **Production URL (bookmarked):** [https://purchase-assiastant.vercel.app](https://purchase-assiastant.vercel.app) — note the spelling (`assiastant`, not `assistant`). The hostname `purchase-assistant.vercel.app` is a different Vercel project and serves HTML instead of `main.dart.js`, which shows a blank gray screen with no tabs.

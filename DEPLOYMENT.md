@@ -12,22 +12,16 @@
    - Output directory: `flutter_app/build/web`
    - `vercel.json` in repo root configures SPA rewrites
 3. **Env vars in Vercel:**
-   - `API_BASE_URL` — the Render API URL (`https://my-purchases-api.onrender.com`)
+   - `API_BASE_URL` — Cloudflare Tunnel API (`https://api.harisreeagency.online`)
 4. **Hard refresh after deploy:** Ctrl+Shift+R to bust cached `main.dart.js`
 
-## Backend (Render)
+## Backend (Windows Server + Cloudflare Tunnel)
 
-1. **Service:** `my-purchases-api` — Web Service connected to `main` branch
-2. **Pre-deploy command:** `alembic upgrade head` (run from `backend/` rootDir)
-3. **Runtime:** Python 3.11+, uvicorn
-4. **Env vars in Render Dashboard:**
-   - `DATABASE_URL` — internal Render Postgres URL
-   - `JWT_SECRET`, `JWT_REFRESH_SECRET` — strong random values
-   - `AI_PROVIDER` + matching API key (optional)
-   - `SUPERADMIN_BOOTSTRAP_EMAIL` — first admin email
-   - `CORS_ORIGINS` — must include the Vercel domain
-   - `AUTO_MIGRATE=0`, `AUTO_STOCK_BACKFILL_ON_START=false`
-5. **Health check:** `GET /health/ready` → 200 with `db: ok`, `schema_ok: true`
+1. **Public URL:** `https://api.harisreeagency.online` → `http://localhost:8000` via cloudflared
+2. **Service:** NSSM `PurchaseAssistantAPI` on the Windows Server
+3. **Deploy:** `git pull origin main` then `nssm restart PurchaseAssistantAPI`
+4. **Env vars:** in `backend/.env` on the server (Postgres local, CORS includes Vercel domain)
+5. **Health check:** `GET /health` and `GET /health/ready` → 200
 
 ## Database Migrations
 

@@ -2,8 +2,8 @@
 # Run from repo root: powershell -File scripts/production-readiness.ps1
 $ErrorActionPreference = "Continue"
 
-$renderHealth = "https://my-purchases-api.onrender.com/health"
-$renderReady = "https://my-purchases-api.onrender.com/health/ready"
+$apiHealth = "https://api.harisreeagency.online/health"
+$apiReady = "https://api.harisreeagency.online/health/ready"
 $vercelApp = "https://purchase-assiastant.vercel.app"
 
 function Test-Get {
@@ -21,8 +21,8 @@ function Test-Get {
 }
 
 $allOk = $true
-if (-not (Test-Get $renderHealth "Render /health")) { $allOk = $false }
-if (-not (Test-Get $renderReady "Render /health/ready (DB)")) { $allOk = $false }
+if (-not (Test-Get $apiHealth "API /health")) { $allOk = $false }
+if (-not (Test-Get $apiReady "API /health/ready (DB)")) { $allOk = $false }
 if (-not (Test-Get $vercelApp "Vercel web shell")) { $allOk = $false }
 
 Write-Host "`n=== Backend pytest ===" -ForegroundColor Cyan
@@ -49,9 +49,9 @@ if (Test-Path $routesFile) {
 }
 
 Write-Host "`n=== Client API base (reminder) ===" -ForegroundColor Cyan
-Write-Host "Production web uses API_BASE_URL=https://my-purchases-api.onrender.com (vercel.json)"
+Write-Host "Production web uses API_BASE_URL=https://api.harisreeagency.online (Vercel Dashboard)"
 Write-Host "Local dev default is http://127.0.0.1:8000 — start uvicorn or use:"
-Write-Host "  flutter run --dart-define=API_BASE_URL=https://my-purchases-api.onrender.com"
+Write-Host "  flutter run --dart-define=API_BASE_URL=https://api.harisreeagency.online"
 
 if (-not $allOk) {
   Write-Host "`nSome checks FAILED — not production-ready until fixed." -ForegroundColor Red

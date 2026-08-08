@@ -2,7 +2,7 @@
 $ErrorActionPreference = "Stop"
 
 $script:CanonicalWeb = "https://purchase-assiastant.vercel.app"
-$script:CanonicalApi = "https://my-purchases-api.onrender.com"
+$script:CanonicalApi = "https://api.harisreeagency.online"
 $script:WrongWebHosts = @(
   "https://purchase-assistant.vercel.app",
   "https://purchase-assastant.vercel.app"

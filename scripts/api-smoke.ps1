@@ -6,7 +6,7 @@
 # Optional: SMOKE_API_BASE, SMOKE_BUSINESS_ID, SMOKE_CATALOG_ITEM_ID
 $ErrorActionPreference = "Stop"
 
-$base = if ($env:SMOKE_API_BASE) { $env:SMOKE_API_BASE.TrimEnd('/') } else { "https://my-purchases-api.onrender.com" }
+$base = if ($env:SMOKE_API_BASE) { $env:SMOKE_API_BASE.TrimEnd('/') } else { "https://api.harisreeagency.online" }
 $email = $env:SMOKE_EMAIL
 $password = $env:SMOKE_PASSWORD
 
