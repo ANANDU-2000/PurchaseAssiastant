@@ -47,6 +47,16 @@ int stockListMaxPage(int total, int perPage) {
   return pages < 1 ? 1 : pages;
 }
 
+/// True when a page-1 payload carries no rows — used to stop the off-tab
+/// `{items:[], total:0}` fabrication from clobbering a healthy merged list
+/// during the post-save deferred reload while the shell branch lags.
+bool stockListPayloadIsEmpty(Map<String, dynamic>? d) {
+  if (d == null) return true;
+  if (_int(d['total'] ?? d['item_count']) > 0) return false;
+  final items = d['items'];
+  return items is List && items.isEmpty;
+}
+
 int _int(dynamic v) {
   if (v is int) return v;
   if (v is num) return v.toInt();
