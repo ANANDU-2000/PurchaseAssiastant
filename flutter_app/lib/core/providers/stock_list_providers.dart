@@ -26,10 +26,28 @@ import 'home_dashboard_provider.dart'
 import '../providers/analytics_kpi_provider.dart' show analyticsDateRangeProvider;
 import 'stock_list_exceptions.dart';
 import '../utils/stock_audit_rows.dart';
+import '../debug/stock_api_storm_monitor.dart';
 
 final Map<String, Future<Map<String, dynamic>>> _stockListInflight = {};
 final Map<String, Future<Map<String, dynamic>>> _deliveryCountsInflight = {};
 final Map<String, Future<Map<String, dynamic>>> _stockAlertsSummaryInflight = {};
+
+/// Prefer shell-bundle `audit_recent` so Activity paints without waiting on a
+/// duplicate `/audit/recent` GET.
+List<Map<String, dynamic>> auditRowsFromShellBundle(Map<String, dynamic>? bundle) {
+  final raw = bundle?['audit_recent'];
+  if (raw is! List || raw.isEmpty) return const [];
+  return raw
+      .whereType<Map>()
+      .map((e) => Map<String, dynamic>.from(e))
+      .toList(growable: false);
+}
+
+/// Soft TTL before Activity tab forces a fresh audit fetch on tab select.
+const Duration kStockChangesFeedStaleTtl = Duration(minutes: 2);
+
+/// Last successful Activity feed load (local clock).
+final stockChangesFeedLoadedAtProvider = StateProvider<DateTime?>((ref) => null);
 
 /// True when the owner Stock tab or staff Stock tab is the active IndexedStack branch.
 bool stockShellTabIsVisible(dynamic ref) {
@@ -400,7 +418,8 @@ final stockShellBundleProvider =
 });
 
 /// Stock audit events for the stock page **Changes** tab (newest first).
-/// Reads [stockAuditRecentSnapshotProvider] — no extra HTTP when home already loaded audit.
+/// Seeds from shell-bundle `audit_recent` when present; hydrates full snapshot
+/// with a 15s timeout (never infinite skeleton).
 final stockChangesFeedProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final disposed = registerProviderDisposeGuard(ref);
@@ -411,14 +430,66 @@ final stockChangesFeedProvider =
   if (!ref.watch(stockChangesTabActiveProvider)) {
     return const [];
   }
-  final rows = await ref.watch(stockAuditRecentSnapshotProvider.future);
-  if (providerWasDisposed(disposed)) return [];
+
   final period = ref.read(stockPagePeriodProvider);
-  // Prefer `updated_at` (API StockAdjustmentOut) via shared helpers — filtering
-  // only on `created_at` left the Activity tab empty on desktop/web.
-  return sortStockAuditRowsNewestFirst(
-    filterStockAuditRowsByHomePeriod(rows, period),
+  List<Map<String, dynamic>> filterAndSort(List<Map<String, dynamic>> rows) {
+    return sortStockAuditRowsNewestFirst(
+      filterStockAuditRowsByHomePeriod(rows, period),
+    );
+  }
+
+  final seeded = auditRowsFromShellBundle(
+    ref.read(stockShellBundleProvider).valueOrNull,
   );
+
+  final snapAsync = ref.watch(stockAuditRecentSnapshotProvider);
+  if (snapAsync.hasValue) {
+    final rows = snapAsync.value ?? const <Map<String, dynamic>>[];
+    if (providerWasDisposed(disposed)) return [];
+    ref.read(stockChangesFeedLoadedAtProvider.notifier).state = DateTime.now();
+    return filterAndSort(rows);
+  }
+  if (snapAsync.hasError) {
+    if (seeded.isNotEmpty) {
+      ref.read(stockChangesFeedLoadedAtProvider.notifier).state = DateTime.now();
+      return filterAndSort(seeded);
+    }
+    final err = snapAsync.error;
+    if (err != null) {
+      throw err;
+    }
+    throw StateError('Stock activity failed');
+  }
+
+  // Snapshot still loading — paint from shell-bundle seed immediately.
+  if (seeded.isNotEmpty) {
+    if (kDebugMode) {
+      debugPrint(
+        '[STOCK_ACTIVITY] seeded ${seeded.length} rows from shell-bundle',
+      );
+      StockApiStormMonitor.flushNow(reason: 'activity_seed');
+    }
+    ref.read(stockChangesFeedLoadedAtProvider.notifier).state = DateTime.now();
+    return filterAndSort(seeded);
+  }
+
+  try {
+    final rows = await ref
+        .watch(stockAuditRecentSnapshotProvider.future)
+        .timeout(const Duration(seconds: 15));
+    if (providerWasDisposed(disposed)) return [];
+    ref.read(stockChangesFeedLoadedAtProvider.notifier).state = DateTime.now();
+    if (kDebugMode) {
+      StockApiStormMonitor.flushNow(reason: 'activity_loaded');
+    }
+    return filterAndSort(rows);
+  } on TimeoutException {
+    if (kDebugMode) {
+      debugPrint('[STOCK_ACTIVITY] audit/recent timed out after 15s');
+      StockApiStormMonitor.flushNow(reason: 'activity_timeout');
+    }
+    throw TimeoutException('Stock activity timed out after 15s');
+  }
 });
 
 Map<String, dynamic> _stockListFinalizePayload(

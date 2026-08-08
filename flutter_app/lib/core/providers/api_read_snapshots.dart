@@ -28,6 +28,7 @@ final stockAuditRecentSnapshotProvider =
           businessId: bid,
           limit: HexaApi.stockAuditRecentMaxLimit,
         )
+        .timeout(const Duration(seconds: 15))
         .whenComplete(() => _auditRecentInflight.remove(bid)),
   );
   return rows;

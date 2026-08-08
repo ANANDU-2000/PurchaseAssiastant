@@ -430,6 +430,7 @@ async def stock_shell_bundle(
     audit_limit: int = Query(12, ge=1, le=50),
 ):
     """Bundled Stock tab payload — list, KPI chips, delivery counts, recent activity."""
+    t0 = monotonic()
     gen = trade_read_cache_generation(business_id)
     cache_query = {
         "gen": gen,
@@ -456,6 +457,11 @@ async def stock_shell_bundle(
     cache_key = stock_shell_bundle_cache_key(business_id, cache_query)
     cached = get_cached(cache_key, stock_shell_bundle_ttl_s())
     if cached is not None:
+        logger.info(
+            "stock.shell_bundle cache_hit business_id=%s ms=%.0f",
+            business_id,
+            (monotonic() - t0) * 1000,
+        )
         return StockShellBundleOut(**cached)
 
     # Sequential on shared AsyncSession — gather would raise isce under concurrency.
@@ -507,6 +513,13 @@ async def stock_shell_bundle(
         audit_recent=audit_recent,
     ).model_dump(mode="json")
     set_cached(cache_key, payload, stock_shell_bundle_ttl_s())
+    logger.info(
+        "stock.shell_bundle business_id=%s ms=%.0f page=%s audit_limit=%s",
+        business_id,
+        (monotonic() - t0) * 1000,
+        page,
+        audit_limit,
+    )
     return StockShellBundleOut.model_validate(payload)
 
 

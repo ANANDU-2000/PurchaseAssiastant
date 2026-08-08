@@ -10,12 +10,35 @@ import 'package:http_parser/http_parser.dart';
 import 'dio_auto_retry_interceptor.dart';
 import '../auth/auth_error_messages.dart' show dioIsAutoRetryableTransport;
 import '../config/app_config.dart';
+import '../debug/stock_api_storm_monitor.dart';
 import '../json_coerce.dart';
 import '../models/session.dart';
 import '../stock/stock_version_retry.dart';
 import '../strict_decimal.dart';
 
 bool _reports404HintLogged = false;
+
+void _noteStockStormTiming(RequestOptions options, {required bool ok}) {
+  if (!kDebugMode) return;
+  if (options.method.toUpperCase() != 'GET') return;
+  final started = options.extra['_stock_storm_sw'];
+  final ms = started is int
+      ? DateTime.now().millisecondsSinceEpoch - started
+      : 0;
+  final rid = options.headers['x-request-id']?.toString() ??
+      options.headers['X-Request-Id']?.toString();
+  StockApiStormMonitor.noteStockGet(
+    path: options.uri.path,
+    elapsedMs: ms < 0 ? 0 : ms,
+    requestId: rid,
+  );
+  if (kDebugMode && StockApiStormMonitor.classifyStockGetPath(options.uri.path) != null) {
+    debugPrint(
+      '[STOCK_TIMING] ${ok ? 'ok' : 'err'} ${options.uri.path} ${ms}ms '
+      'x-request-id=${rid ?? '-'}',
+    );
+  }
+}
 
 /// Correlates app failures with Render/API logs (echoed as `X-Request-Id`).
 String _newRequestCorrelationId() {
@@ -172,7 +195,16 @@ class HexaApi {
           if (s.isEmpty) {
             h['x-request-id'] = _newRequestCorrelationId();
           }
+          options.extra['_stock_storm_sw'] = DateTime.now().millisecondsSinceEpoch;
           return handler.next(options);
+        },
+        onResponse: (response, handler) {
+          _noteStockStormTiming(response.requestOptions, ok: true);
+          return handler.next(response);
+        },
+        onError: (DioException err, ErrorInterceptorHandler handler) {
+          _noteStockStormTiming(err.requestOptions, ok: false);
+          return handler.next(err);
         },
       ),
     );
@@ -2352,6 +2384,99 @@ class HexaApi {
       queryParameters: {
         if (status != null && status.isNotEmpty) 'status_filter': status,
       },
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> createStaffTask({
+    required String businessId,
+    required String staffId,
+    String taskType = 'general',
+    String? referenceId,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/staff/tasks',
+      data: {
+        'staff_id': staffId,
+        'task_type': taskType,
+        if (referenceId != null && referenceId.isNotEmpty)
+          'reference_id': referenceId,
+      },
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> acceptStaffTask({
+    required String businessId,
+    required String taskId,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/staff/tasks/$taskId/accept',
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> completeStaffTask({
+    required String businessId,
+    required String taskId,
+    bool rejected = false,
+    String? correctionNote,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/staff/tasks/$taskId/complete',
+      data: {
+        'rejected': rejected,
+        if (correctionNote != null && correctionNote.isNotEmpty)
+          'correction_note': correctionNote,
+      },
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> listBackupLogs({
+    required String businessId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/exports/backup/logs',
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> runServerBackup({
+    required String businessId,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/exports/backup/run',
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> restoreDryRun({
+    required String businessId,
+    required Map<String, dynamic> payload,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/exports/restore/dry-run',
+      data: {'payload': payload},
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> listWhatsappDeliveries({
+    required String businessId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/owner/whatsapp-deliveries',
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> resendWhatsappDelivery({
+    required String businessId,
+    required String poId,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/owner/whatsapp-deliveries/$poId/resend',
     );
     return res.data ?? {};
   }

@@ -28,13 +28,20 @@ _DEFAULT_UA = (
 )
 
 
-def _get(path: str, *, origin: str | None = None) -> tuple[int, dict[str, str], str]:
+def _get(
+    path: str,
+    *,
+    origin: str | None = None,
+    bearer: str | None = None,
+) -> tuple[int, dict[str, str], str]:
     headers = {
         "Accept": "application/json",
         "User-Agent": os.environ.get("SMOKE_UA", _DEFAULT_UA),
     }
     if origin:
         headers["Origin"] = origin
+    if bearer:
+        headers["Authorization"] = f"Bearer {bearer}"
     req = urllib.request.Request(f"{API_BASE}{path}", headers=headers, method="GET")
     try:
         with urllib.request.urlopen(req, timeout=45) as resp:
@@ -93,7 +100,18 @@ def main() -> int:
             db_ok = data.get("db") == "ok"
             schema_ok = data.get("schema_ok") is True
             all_ok &= _ok("health/ready db", db_ok, str(data.get("db")))
-            all_ok &= _ok("health/ready schema", schema_ok, str(data.get("alembic_version")))
+            all_ok &= _ok(
+                "health/ready schema",
+                schema_ok,
+                f"version={data.get('alembic_version')} expected_hint=069_owner_ops_tables",
+            )
+            # Soft note when head lags — still FAIL if schema_ok false.
+            ver = str(data.get("alembic_version") or "")
+            if "070" not in ver and schema_ok:
+                print(
+                    "[WARN] alembic_version does not contain 070 — "
+                    "run alembic upgrade head on Windows API host"
+                )
         except json.JSONDecodeError:
             all_ok &= _ok("health/ready json", False, "invalid JSON")
     else:
@@ -122,6 +140,27 @@ def main() -> int:
             code in (200, 204) and cors == CORS_ORIGIN and "GET" in methods.upper(),
             f"HTTP {code} allow-origin={cors!r} methods={methods!r}",
         )
+
+    token = (os.environ.get("SMOKE_TOKEN") or "").strip()
+    biz = (os.environ.get("SMOKE_BUSINESS_ID") or "").strip()
+    if token and biz:
+        for name, path in (
+            ("credentials GET", f"/v1/businesses/{biz}/settings/credentials"),
+            ("owner dashboard", f"/v1/businesses/{biz}/owner/dashboard"),
+            ("staff tasks", f"/v1/businesses/{biz}/staff/tasks"),
+            ("backup logs", f"/v1/businesses/{biz}/exports/backup/logs"),
+        ):
+            code, _, body = _get(path, bearer=token)
+            # 200 = allowed; 403 = role gate; never print body (may leak).
+            all_ok &= _ok(
+                f"authed {name}",
+                code in (200, 403),
+                f"HTTP {code}",
+            )
+            if code == 200 and "encrypted_value" in body.lower():
+                all_ok &= _ok("credentials no plaintext", False, "encrypted_value leaked")
+    else:
+        print("[SKIP] authed owner-ops (set SMOKE_TOKEN + SMOKE_BUSINESS_ID)")
 
     print("done:", "OK" if all_ok else "ISSUES")
     return 0 if all_ok else 1

@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/auth/session_permissions.dart';
+import '../../../core/debug/stock_api_storm_monitor.dart';
 import '../../../core/stock/stock_version_retry.dart';
 import '../../../core/errors/user_facing_errors.dart';
 import '../../../core/json_coerce.dart';
@@ -624,10 +625,13 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
       parentRef.invalidate(stockStatusCountsProvider);
       emitBusinessWriteEvent(parentRef, kind: 'stock', affectedItemIds: {itemId});
       if (mode == StockUpdateMode.physical) {
+        if (kDebugMode) {
+          StockApiStormMonitor.flushNow(reason: 'physical_save_ok');
+        }
         messenger?.showSnackBar(
           const SnackBar(
             content: Text(
-              'Physical count logged — system stock unchanged. Switch to System to update it.',
+              'Physical saved — system ledger unchanged. Switch to System to update ledger qty.',
             ),
             duration: Duration(seconds: 5),
             behavior: SnackBarBehavior.floating,

@@ -221,7 +221,16 @@ async def recent_adjustments_all(
     limit: int = Query(5, ge=1, le=250),
     on: date | None = Query(None, description="Filter to calendar day (UTC) YYYY-MM-DD"),
 ):
-    return await fetch_recent_adjustments(db, business_id, limit=limit, on=on)
+    t0 = monotonic()
+    rows = await fetch_recent_adjustments(db, business_id, limit=limit, on=on)
+    logger.info(
+        "stock.audit_recent business_id=%s ms=%.0f limit=%s rows=%s",
+        business_id,
+        (monotonic() - t0) * 1000,
+        limit,
+        len(rows),
+    )
+    return rows
 @router.get("/variances/today", response_model=list[StockVarianceOut])
 async def variances_today(
     business_id: uuid.UUID,

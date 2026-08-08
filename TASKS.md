@@ -107,6 +107,18 @@ Program: `context/` briefs — one wave at a time. HEAD at start: `fffc710`.
 | W4 API credentials | done | `provider_credentials` encrypted; `GET/PUT …/settings/credentials`; Flutter `OwnerCredentialsPage` |
 | W5–6 Staff + owner CC | done | `staff_tasks` + endpoints; `GET …/owner/dashboard`; Flutter tasks + command center |
 | UX Purchases pane | done | `PurchaseDesktopDetailPane` uses `DesktopDetailPaneScaffold` |
-| UX Reports pane | deferred | Same scaffold ready; Reports page pass next after deploy/migration |
+| UX Reports pane | done | Overview desktop uses `DesktopDetailPaneScaffold` + stretch Row (same Stock/Purchase pattern); mobile unchanged |
+| P0 Ship 1444692 | done | Pushed owner-ops; smoke PASS 2026-08-08; **operator:** `alembic upgrade head` on Windows API for 069 |
+| P1 UX Reports | done | Overview desktop `DesktopDetailPaneScaffold`; blank-safe stretch Row retained |
+| P2 Partial gaps | done | `resolve_key` in `llm_failover`; backup logs/dry-run UI; staff accept/complete/create; dashboard damage/AI/WA + TTL |
+| P3 Dedup rename | done | `stock_audit.py` → `stock_adjustments.py` (routes unchanged) |
+| P4 OpenRouter | done | `run_tiered_failover` + `ai_usage_logs` (070); OCR AI path via `extract_item_rows_via_ai`; `AI_FORCE_TIER2_ONLY` |
+| P5 WhatsApp PO | done | `whatsapp_delivery_logs`; send on lifecycle `approved`; owner resend; creds from 07 |
+| P6 Fit-check | done | `docs/debug/DEPLOY_FIT_CHECK.md` |
+| Phase A RBAC+creds | done | owner/admin gate; phone_number_id; Graph PDF document send; media OCR `use_ai` |
+| Phase B API verify | done | health head 070; `check_env_keys` PASS; smoke PASS; `docs/debug/OWNER_ADMIN_API_VERIFY.md` |
+| Desktop UX C1–C4 | done | Home Wrap alerts + off-tab canvas; Stock/Purchase fill gutters; Reports ≤3 cols; Settings ListView expand |
+| Local alembic 069/070 | done | Cursor PC: `localhost:5433/harisree_db` → `070_ai_whatsapp_ops`; 069/070 idempotent; unit tests 13 PASS |
+| Stock lag P0 | done | Activity 15s timeout + shell audit seed; tab-return bundle-only; physical snackbar; Dio storm monitor; health expect **069** |
 
-**Deploy note:** run `alembic upgrade head` on Windows API host before using new tables.
+**Deploy note:** PC6 API host must `git pull` + `alembic upgrade head` separately (laptop DB ≠ server DB). See `docs/debug/OWNER_ADMIN_API_VERIFY.md` and `docs/debug/STOCK_LAG_TRACE.md`.

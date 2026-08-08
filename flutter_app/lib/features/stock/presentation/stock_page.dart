@@ -14,6 +14,8 @@ import '../../../core/auth/provider_api_guard.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/api_degraded_provider.dart';
 import '../../../core/providers/api_health_snapshot_provider.dart';
+import '../../../core/providers/api_read_snapshots.dart'
+    show bustStockAuditRecentSnapshot;
 import '../../../core/models/session.dart';
 import '../../../core/providers/stock_list_exceptions.dart';
 import '../../../core/services/stock_list_pdf.dart' deferred as stockPdf;
@@ -306,7 +308,15 @@ class _StockPageState extends ConsumerState<StockPage>
     final active = _tabs.index == 1;
     ref.read(stockChangesTabActiveProvider.notifier).state = active;
     if (active) {
-      ref.invalidate(stockChangesFeedProvider);
+      // Do not hard-invalidate every switch (forced infinite skeleton). Soft
+      // refresh only when the last feed load is older than TTL.
+      final loadedAt = ref.read(stockChangesFeedLoadedAtProvider);
+      final stale = loadedAt == null ||
+          DateTime.now().difference(loadedAt) > kStockChangesFeedStaleTtl;
+      if (stale) {
+        bustStockAuditRecentSnapshot(ref);
+        ref.invalidate(stockChangesFeedProvider);
+      }
       if (_searchExpanded) {
         setState(() => _searchExpanded = false);
       }
@@ -865,18 +875,11 @@ class _StockPageState extends ConsumerState<StockPage>
           flex: 4,
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final windowW = MediaQuery.sizeOf(context).width;
-              final cap = HexaResponsive.desktopDetailContentMax(windowW);
-              final w = constraints.maxWidth < cap ? constraints.maxWidth : cap;
-              // Bind height — Align + maxWidth-only blanks ListView on web.
-              // Desktop: topLeft so detail sits flush with the list/sidebar.
-              return Align(
-                alignment: Alignment.topLeft,
-                child: SizedBox(
-                  width: w,
-                  height: constraints.maxHeight,
-                  child: StockDesktopDetailPane(item: selected),
-                ),
+              // Fill flex pane — no width-cap gutter beside detail.
+              return SizedBox(
+                width: constraints.maxWidth,
+                height: constraints.maxHeight,
+                child: StockDesktopDetailPane(item: selected),
               );
             },
           ),
@@ -894,7 +897,7 @@ class _StockPageState extends ConsumerState<StockPage>
     // IndexedStack keeps Stock mounted off-tab — skip paint + heavy watches.
     // Prefer shell index + route path so a lagged branch provider cannot blank /stock.
     if (!_stockShellTabVisible(ref, context, staffMode: _isStaffMode)) {
-      return const SizedBox.shrink();
+      return const ColoredBox(color: HexaColors.brandBackground);
     }
 
     // Desktop detail pane must rebuild when row selection changes (not only on patch).
