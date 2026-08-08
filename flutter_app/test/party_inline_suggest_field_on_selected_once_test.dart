@@ -36,10 +36,21 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(find.text('Basmati Rice'), findsOneWidget);
+    final suggestion = find.byWidgetPredicate(
+      (w) =>
+          w is Text &&
+          w.data == 'Basmati Rice' &&
+          w.style?.fontSize == 13.5,
+    );
+    expect(suggestion, findsOneWidget);
 
-    await tester.tap(find.text('Basmati Rice'));
+    await tester.tap(suggestion);
     await tester.pump();
+    // Second attempt while fingerprint window is open (panel may still list the row).
+    if (suggestion.evaluate().isNotEmpty) {
+      await tester.tap(suggestion);
+      await tester.pump();
+    }
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(picks, hasLength(1));

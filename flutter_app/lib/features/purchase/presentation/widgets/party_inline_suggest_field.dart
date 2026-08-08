@@ -219,6 +219,9 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   bool _suppressPanelAfterPick = false;
   String? _lastPickedLabel;
 
+  /// Blocks nested / second `_pick` until the current apply finishes.
+  bool _pickInProgress = false;
+
   /// Blocks double-commit when both pointer-down and tap-up deliver for one gesture.
   String? _lastCommitFingerprint;
   int _lastCommitMs = 0;
@@ -551,7 +554,9 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   }
 
   void _pick(InlineSearchItem it, {bool keepFocus = true}) {
+    if (_pickInProgress) return;
     if (_consumeIfDuplicatePick(it)) return;
+    _pickInProgress = true;
     _cancelSuggestPanelGrace();
     _filterDebounceTimer?.cancel();
     _revealDebounceTimer?.cancel();
@@ -565,38 +570,42 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     }
 
     void applyPick() {
-      if (!mounted) return;
-      // Parent before [controller] — avoids listener clearing selection on label mismatch.
-      widget.onSelected?.call(it);
-      HapticFeedback.selectionClick();
+      try {
+        if (!mounted) return;
+        // Parent before [controller] — avoids listener clearing selection on label mismatch.
+        widget.onSelected?.call(it);
+        HapticFeedback.selectionClick();
 
-      widget.controller.value = TextEditingValue(
-        text: it.label,
-        selection: TextSelection.collapsed(offset: it.label.length),
-      );
+        widget.controller.value = TextEditingValue(
+          text: it.label,
+          selection: TextSelection.collapsed(offset: it.label.length),
+        );
 
-      if (mounted) setState(() {});
-      if (!usedOverlay) {
-        _scheduleOverlaySync();
-      }
+        if (mounted) setState(() {});
+        if (!usedOverlay) {
+          _scheduleOverlaySync();
+        }
 
-      if (kDebugMode) {
-        final tag = widget.debugLabel != null ? ' ${widget.debugLabel}' : '';
-        debugPrint('[PartySuggest$tag] pick id="${it.id}" label="${it.label}" '
-            'focusNext=${widget.focusAfterSelection != null} keepFocus=$keepFocus');
-      }
+        if (kDebugMode) {
+          final tag = widget.debugLabel != null ? ' ${widget.debugLabel}' : '';
+          debugPrint('[PartySuggest$tag] pick id="${it.id}" label="${it.label}" '
+              'focusNext=${widget.focusAfterSelection != null} keepFocus=$keepFocus');
+        }
 
-      if (!keepFocus) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          final next = widget.focusAfterSelection;
-          if (next != null) {
-            FocusScope.of(context).requestFocus(next);
-          } else {
-            widget.focusNode.unfocus();
-            FocusManager.instance.primaryFocus?.unfocus();
-          }
-        });
+        if (!keepFocus) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            final next = widget.focusAfterSelection;
+            if (next != null) {
+              FocusScope.of(context).requestFocus(next);
+            } else {
+              widget.focusNode.unfocus();
+              FocusManager.instance.primaryFocus?.unfocus();
+            }
+          });
+        }
+      } finally {
+        _pickInProgress = false;
       }
     }
 
@@ -612,22 +621,18 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
     void commit() => _pick(it, keepFocus: false);
 
-    // Single gesture path: Semantics for a11y label only — do not set Semantics.onTap
-    // or web/assistive stacks double-fire with GestureDetector/InkWell.
-    return Semantics(
-      button: true,
-      label: it.label,
-      child: Material(
-        type: MaterialType.transparency,
-        color: cs.surface,
-        child: InkWell(
-          onTap: commit,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              minHeight: 44,
-              minWidth: double.infinity,
-            ),
-            child: Padding(
+    // Single interactive surface — InkWell supplies button semantics (no outer Semantics).
+    return Material(
+      type: MaterialType.transparency,
+      color: cs.surface,
+      child: InkWell(
+        onTap: commit,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            minHeight: 44,
+            minWidth: double.infinity,
+          ),
+          child: Padding(
             padding: EdgeInsets.symmetric(
               horizontal: 14,
               vertical: widget.dense ? 8 : 10,
@@ -694,7 +699,6 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
           ),
         ),
       ),
-    ),
     );
   }
 
@@ -704,6 +708,7 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       return const SizedBox.shrink();
     }
     void invoke() {
+      if (_pickInProgress) return;
       _hideSuggestionOverlay();
       widget.focusNode.unfocus();
       FocusManager.instance.primaryFocus?.unfocus();
@@ -714,29 +719,25 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     }
 
     final label = widget.addRowLabel ?? 'Add';
-    // Single gesture path — Semantics label only (no Semantics.onTap).
-    return Semantics(
-      button: true,
-      label: label,
-      child: Material(
-        type: MaterialType.transparency,
-        color: cs.surface,
-        child: InkWell(
-          onTap: invoke,
-          child: ConstrainedBox(
-            constraints:
-                const BoxConstraints(minHeight: 44, minWidth: double.infinity),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: cs.primary,
-                  ),
+    // Single interactive surface — InkWell only (no outer Semantics).
+    return Material(
+      type: MaterialType.transparency,
+      color: cs.surface,
+      child: InkWell(
+        onTap: invoke,
+        child: ConstrainedBox(
+          constraints:
+              const BoxConstraints(minHeight: 44, minWidth: double.infinity),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: cs.primary,
                 ),
               ),
             ),

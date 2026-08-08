@@ -205,6 +205,10 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
   bool _suppressCatalogTextUnlink = false;
   Timer? _defaultsDebounceTimer;
 
+  /// Defense-in-depth: same catalog id within 400ms does not re-run async pick.
+  String? _lastItemSelectId;
+  int _lastItemSelectMs = 0;
+
   bool _keyboardVisible = false;
   late final Listenable _lineTotalsListenable;
 
@@ -2543,6 +2547,10 @@ class _PurchaseItemEntrySheetState extends ConsumerState<PurchaseItemEntrySheet>
 
   void _onItemSelected(String id, String name) {
     if (id.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_lastItemSelectId == id && now - _lastItemSelectMs < 400) return;
+    _lastItemSelectId = id;
+    _lastItemSelectMs = now;
     _suppressCatalogTextUnlink = true;
     unawaited(
       _onCatalogPickAsync(InlineSearchItem(id: id, label: name))

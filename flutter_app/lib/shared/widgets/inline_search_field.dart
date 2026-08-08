@@ -72,6 +72,8 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
   bool _pickInProgress = false;
   String? _lastPickFingerprint;
   int _lastPickMs = 0;
+  /// Label last committed via [_pick] / [_commitSelection]; skips focus-loss re-pick.
+  String? _lastCommittedLabel;
   InlineSearchItem? _pendingSelection;
   final Object _suggestionTapGroup = Object();
 
@@ -104,8 +106,14 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
       _pick(pending, keepFocus: false);
       return;
     }
+    final typed = _ctrl.text.trim();
+    if (_lastCommittedLabel != null &&
+        typed == _lastCommittedLabel!.trim()) {
+      if (mounted) setState(() {});
+      return;
+    }
     if (!_pickInProgress) {
-      final q = _ctrl.text.trim().toLowerCase();
+      final q = typed.toLowerCase();
       if (q.isNotEmpty) {
         final exact = <InlineSearchItem>[];
         for (final it in widget.items) {
@@ -163,6 +171,7 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
     if (_consumeIfDuplicatePick(it)) return;
     _pickInProgress = true;
     final label = it.label;
+    _lastCommittedLabel = label;
     _ctrl.value = TextEditingValue(
       text: label,
       selection: TextSelection.collapsed(offset: label.length),
@@ -186,6 +195,7 @@ class _InlineSearchFieldState extends State<InlineSearchField> {
     if (_consumeIfDuplicatePick(it)) return;
     _pickInProgress = true;
     final label = it.label;
+    _lastCommittedLabel = label;
     _ctrl.value = TextEditingValue(
       text: label,
       selection: TextSelection.collapsed(offset: label.length),

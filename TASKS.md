@@ -21,6 +21,7 @@ Roadmap: [PLAN.md](PLAN.md). Rules: [AGENTS.md](AGENTS.md). Cleanup contract: [d
 |------|--------|-------|
 | Fix `PartyInlineSuggestField` dual tap handlers | done | Semantics label only; InkWell single path |
 | Regression test (onSelected once) | done | `party_inline_suggest_field_on_selected_once_test.dart` |
+| Harden residual double-fire | done | Remove Semantics wrapper + `_pickInProgress`; InlineSearchField skip exact re-pick; item sheet same-id guard |
 
 ---
 
