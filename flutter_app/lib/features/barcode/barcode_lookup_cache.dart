@@ -34,7 +34,21 @@ class BarcodeLookupCache {
     );
   }
 
+  /// Drop one barcode entry after edit / assign (never clears unrelated keys).
+  static void invalidate(String businessId, String code) {
+    _entries.remove(_key(businessId, code));
+  }
+
+  /// Drop every entry for a business (rare; prefer [invalidate]).
+  static void invalidateBusiness(String businessId) {
+    final prefix = '$businessId::';
+    _entries.removeWhere((k, _) => k.startsWith(prefix));
+  }
+
   static void clear() => _entries.clear();
+
+  /// Test / debug only.
+  static int get debugEntryCount => _entries.length;
 }
 
 class _CacheEntry {

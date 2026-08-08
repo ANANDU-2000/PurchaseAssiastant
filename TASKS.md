@@ -23,6 +23,16 @@ Roadmap: [PLAN.md](PLAN.md). Rules: [AGENTS.md](AGENTS.md). Cleanup contract: [d
 | Regression test (onSelected once) | done | `party_inline_suggest_field_on_selected_once_test.dart` |
 | Harden residual double-fire | done | Remove Semantics wrapper + `_pickInProgress`; InlineSearchField skip exact re-pick; item sheet same-id guard |
 
+## Step C — Barcode scanner rebuild (done)
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Scan FSM + cache invalidate + SystemSound | done | `barcode_scan_session.dart`, cache `invalidate`, success/fail sounds |
+| Result panel + permission CTAs | done | `barcode_scan_result_panel.dart`; `stock_edit` / `purchase_*` / `barcode_print` |
+| Mobile continuous + Hexa result sheet | done | Camera stays warm; compact result sheet |
+| Desktop ≥1024 two-pane | done | Height-bound result pane; Enter/Esc/Tab |
+| Print/audit/quick-create/assign | kept | Not deleted |
+
 ---
 
 ## Phase 1 — Architecture cleanup (done)
@@ -78,4 +88,4 @@ See [docs/debug/OWNER_ADMIN_API_VERIFY.md](docs/debug/OWNER_ADMIN_API_VERIFY.md)
 | Commit restore (backup) | 501 until production-copy sign-off |
 | WhatsApp / OCR / voice / ERP expansion | PLAN.md P1+ only after approval |
 | Backend `catalog.py` router split | Deferred |
-| Barcode / API-slowness Phase 1 | After Step B sign-off |
+| Barcode / API-slowness Phase 1 | Scanner Step C done; API-slowness still deferred |

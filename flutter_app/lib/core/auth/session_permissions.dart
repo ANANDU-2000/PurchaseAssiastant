@@ -66,6 +66,12 @@ bool sessionCanStockView(Session session) => sessionCanStockEdit(session);
 bool sessionCanBarcodePrint(Session session) =>
     sessionPermissions(session)['barcode_print'] == true;
 
+bool sessionCanPurchaseCreate(Session session) =>
+    sessionPermissions(session)['purchase_create'] == true;
+
+bool sessionCanPurchaseEdit(Session session) =>
+    sessionPermissions(session)['purchase_edit'] == true;
+
 /// Scan/view allowed; assign barcode, create item, update stock blocked.
 bool sessionIsStockReadOnly(Session session) => !sessionCanStockEdit(session);
 
