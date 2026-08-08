@@ -49,6 +49,49 @@ const Duration kStockChangesFeedStaleTtl = Duration(minutes: 2);
 /// Last successful Activity feed load (local clock).
 final stockChangesFeedLoadedAtProvider = StateProvider<DateTime?>((ref) => null);
 
+/// Activity list filter: all merged rows vs today's physical floor edits only.
+enum StockActivityFeedFilter { all, todayPhysical }
+
+final stockActivityFeedFilterProvider =
+    StateProvider<StockActivityFeedFilter>((ref) => StockActivityFeedFilter.all);
+
+bool isPhysicalFloorFeedRow(Map<String, dynamic> r) {
+  final kind = r['feed_kind']?.toString() ?? '';
+  final adj = r['adjustment_type']?.toString() ?? '';
+  return kind == 'physical_floor' || adj == 'physical_floor';
+}
+
+List<Map<String, dynamic>> normalizePhysicalFeedRows(
+  List<Map<String, dynamic>> rows,
+) {
+  return [
+    for (final r in rows)
+      {
+        ...r,
+        'feed_kind': r['feed_kind'] ?? 'physical_floor',
+        'adjustment_type': r['adjustment_type'] ?? 'physical_floor',
+        if (r['updated_at'] == null && r['counted_at'] != null)
+          'updated_at': r['counted_at'],
+        if (r['updated_by_name'] == null && r['counted_by_name'] != null)
+          'updated_by_name': r['counted_by_name'],
+        if (r['old_qty'] == null && r['system_qty'] != null)
+          'old_qty': r['system_qty'],
+        if (r['new_qty'] == null && r['counted_qty'] != null)
+          'new_qty': r['counted_qty'],
+      },
+  ];
+}
+
+List<Map<String, dynamic>> mergeStockActivityRows({
+  required List<Map<String, dynamic>> audit,
+  required List<Map<String, dynamic>> physical,
+}) {
+  return sortStockAuditRowsNewestFirst([
+    ...audit,
+    ...normalizePhysicalFeedRows(physical),
+  ]);
+}
+
 /// True when the owner Stock tab or staff Stock tab is the active IndexedStack branch.
 bool stockShellTabIsVisible(dynamic ref) {
   if (ref.watch(shellCurrentBranchProvider) == ShellBranch.stock) return true;
@@ -417,9 +460,7 @@ final stockShellBundleProvider =
   return bundle;
 });
 
-/// Stock audit events for the stock page **Changes** tab (newest first).
-/// Seeds from shell-bundle `audit_recent` when present; hydrates full snapshot
-/// with a 15s timeout (never infinite skeleton).
+/// Stock audit + physical floor events for the **Activity** tab (newest first).
 final stockChangesFeedProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final disposed = registerProviderDisposeGuard(ref);
@@ -427,65 +468,89 @@ final stockChangesFeedProvider =
   final session = ref.watch(sessionProvider);
   if (session == null) return [];
   ref.watch(stockPagePeriodProvider);
+  ref.watch(stockActivityFeedFilterProvider);
   if (!ref.watch(stockChangesTabActiveProvider)) {
     return const [];
   }
 
   final period = ref.read(stockPagePeriodProvider);
-  List<Map<String, dynamic>> filterAndSort(List<Map<String, dynamic>> rows) {
-    return sortStockAuditRowsNewestFirst(
-      filterStockAuditRowsByHomePeriod(rows, period),
-    );
+  final filter = ref.read(stockActivityFeedFilterProvider);
+
+  List<Map<String, dynamic>> applyFilters(List<Map<String, dynamic>> rows) {
+    var out = filterStockAuditRowsByHomePeriod(rows, period);
+    if (filter == StockActivityFeedFilter.todayPhysical) {
+      final now = DateTime.now();
+      final day = DateTime(now.year, now.month, now.day);
+      out = out.where((r) {
+        if (!isPhysicalFloorFeedRow(r)) return false;
+        final at = parseStockAuditTimestamp(r);
+        if (at == null) return false;
+        final d = DateTime(at.year, at.month, at.day);
+        return d == day;
+      }).toList();
+    }
+    return sortStockAuditRowsNewestFirst(out);
   }
 
-  final seeded = auditRowsFromShellBundle(
+  final seededAudit = auditRowsFromShellBundle(
     ref.read(stockShellBundleProvider).valueOrNull,
   );
 
-  final snapAsync = ref.watch(stockAuditRecentSnapshotProvider);
-  if (snapAsync.hasValue) {
-    final rows = snapAsync.value ?? const <Map<String, dynamic>>[];
-    if (providerWasDisposed(disposed)) return [];
-    ref.read(stockChangesFeedLoadedAtProvider.notifier).state = DateTime.now();
-    return filterAndSort(rows);
-  }
-  if (snapAsync.hasError) {
-    if (seeded.isNotEmpty) {
-      ref.read(stockChangesFeedLoadedAtProvider.notifier).state = DateTime.now();
-      return filterAndSort(seeded);
+  final auditAsync = ref.watch(stockAuditRecentSnapshotProvider);
+  final physAsync = ref.watch(stockPhysicalCountsRecentSnapshotProvider);
+
+  Future<List<Map<String, dynamic>>> loadAudit() async {
+    if (auditAsync.hasValue) {
+      return auditAsync.value ?? const [];
     }
-    final err = snapAsync.error;
-    if (err != null) {
-      throw err;
+    if (auditAsync.hasError && seededAudit.isNotEmpty) {
+      return seededAudit;
     }
-    throw StateError('Stock activity failed');
+    if (!auditAsync.hasValue && !auditAsync.hasError && seededAudit.isNotEmpty) {
+      return seededAudit;
+    }
+    return ref
+        .watch(stockAuditRecentSnapshotProvider.future)
+        .timeout(const Duration(seconds: 15));
   }
 
-  // Snapshot still loading — paint from shell-bundle seed immediately.
-  if (seeded.isNotEmpty) {
-    if (kDebugMode) {
-      debugPrint(
-        '[STOCK_ACTIVITY] seeded ${seeded.length} rows from shell-bundle',
-      );
-      StockApiStormMonitor.flushNow(reason: 'activity_seed');
+  Future<List<Map<String, dynamic>>> loadPhysical() async {
+    if (physAsync.hasValue) {
+      return physAsync.value ?? const [];
     }
-    ref.read(stockChangesFeedLoadedAtProvider.notifier).state = DateTime.now();
-    return filterAndSort(seeded);
+    if (physAsync.hasError) {
+      return const [];
+    }
+    try {
+      return await ref
+          .watch(stockPhysicalCountsRecentSnapshotProvider.future)
+          .timeout(const Duration(seconds: 15));
+    } on TimeoutException {
+      return const [];
+    }
   }
 
   try {
-    final rows = await ref
-        .watch(stockAuditRecentSnapshotProvider.future)
-        .timeout(const Duration(seconds: 15));
+    final results = await Future.wait([loadAudit(), loadPhysical()]);
     if (providerWasDisposed(disposed)) return [];
+    final merged = mergeStockActivityRows(
+      audit: results[0],
+      physical: results[1],
+    );
     ref.read(stockChangesFeedLoadedAtProvider.notifier).state = DateTime.now();
     if (kDebugMode) {
-      StockApiStormMonitor.flushNow(reason: 'activity_loaded');
+      StockApiStormMonitor.flushNow(reason: 'activity_merged');
     }
-    return filterAndSort(rows);
+    return applyFilters(merged);
   } on TimeoutException {
+    if (seededAudit.isNotEmpty) {
+      ref.read(stockChangesFeedLoadedAtProvider.notifier).state = DateTime.now();
+      return applyFilters(
+        mergeStockActivityRows(audit: seededAudit, physical: const []),
+      );
+    }
     if (kDebugMode) {
-      debugPrint('[STOCK_ACTIVITY] audit/recent timed out after 15s');
+      debugPrint('[STOCK_ACTIVITY] feed timed out after 15s');
       StockApiStormMonitor.flushNow(reason: 'activity_timeout');
     }
     throw TimeoutException('Stock activity timed out after 15s');

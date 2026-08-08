@@ -120,5 +120,6 @@ Program: `context/` briefs — one wave at a time. HEAD at start: `fffc710`.
 | Desktop UX C1–C4 | done | Home Wrap alerts + off-tab canvas; Stock/Purchase fill gutters; Reports ≤3 cols; Settings ListView expand |
 | Local alembic 069/070 | done | Cursor PC: `localhost:5433/harisree_db` → `070_ai_whatsapp_ops`; 069/070 idempotent; unit tests 13 PASS |
 | Stock lag P0 | done | Activity 15s timeout + shell audit seed; tab-return bundle-only; physical snackbar; Dio storm monitor; health expect **069** |
+| Daily physical logs | done | `physical-counts/recent` + Activity merge; staff Physical-only; Diff copy; item history Physical chip |
 
 **Deploy note:** PC6 API host must `git pull` + `alembic upgrade head` separately (laptop DB ≠ server DB). See `docs/debug/OWNER_ADMIN_API_VERIFY.md` and `docs/debug/STOCK_LAG_TRACE.md`.

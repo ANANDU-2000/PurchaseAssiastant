@@ -5,6 +5,7 @@ import '../providers/home_dashboard_provider.dart';
 DateTime? parseStockAuditTimestamp(Map<String, dynamic> row) {
   for (final key in [
     'updated_at',
+    'counted_at',
     'created_at',
     'audited_at',
     'at',

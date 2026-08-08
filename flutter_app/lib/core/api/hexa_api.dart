@@ -2887,6 +2887,55 @@ class HexaApi {
     ];
   }
 
+  /// Observation physical remaining history (Activity change log).
+  Future<List<Map<String, dynamic>>> listPhysicalCountsRecent({
+    required String businessId,
+    int limit = 50,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final capped = limit.clamp(1, HexaApi.stockAuditRecentMaxLimit);
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/stock/physical-counts/recent',
+      queryParameters: {
+        'limit': capped,
+        if (dateFrom != null && dateFrom.isNotEmpty) 'from': dateFrom,
+        if (dateTo != null && dateTo.isNotEmpty) 'to': dateTo,
+      },
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return [
+      for (final e in data)
+        if (e is Map<String, dynamic>)
+          e
+        else if (e is Map)
+          Map<String, dynamic>.from(e),
+    ];
+  }
+
+  /// Per-item physical remaining history.
+  Future<List<Map<String, dynamic>>> listPhysicalCountsForItem({
+    required String businessId,
+    required String itemId,
+    int limit = 50,
+  }) async {
+    final capped = limit.clamp(1, 200);
+    final res = await _dio.get<dynamic>(
+      '/v1/businesses/$businessId/stock/physical-counts/by-item/$itemId',
+      queryParameters: {'limit': capped},
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return [
+      for (final e in data)
+        if (e is Map<String, dynamic>)
+          e
+        else if (e is Map)
+          Map<String, dynamic>.from(e),
+    ];
+  }
+
   /// Today's stock count variances (purchase qty vs verification).
   Future<List<Map<String, dynamic>>> listStockVariancesToday({
     required String businessId,

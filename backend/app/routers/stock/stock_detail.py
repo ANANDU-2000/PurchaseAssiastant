@@ -828,6 +828,27 @@ async def record_physical_stock_count(
     )
     await db.commit()
     await db.refresh(entry)
+    publish_business_event(
+        business_id,
+        "stock.physical_counted",
+        {
+            "item_id": str(item_id),
+            "count_id": str(entry.id),
+            "counted_qty": float(counted),
+            "system_qty": float(system_qty),
+            "difference_qty": float(counted - system_qty),
+        },
+    )
+    # Also nudge list clients that listen for stock.changed.
+    publish_business_event(
+        business_id,
+        "stock.changed",
+        {
+            "item_id": str(item_id),
+            "kind": "physical_floor",
+            "count_id": str(entry.id),
+        },
+    )
     return _physical_count_out(item, entry)
 @router.post("/{item_id}/physical-update", response_model=StockPhysicalUpdateOut)
 async def update_physical_stock(

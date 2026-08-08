@@ -15,7 +15,7 @@ import '../../../core/auth/session_notifier.dart';
 import '../../../core/providers/api_degraded_provider.dart';
 import '../../../core/providers/api_health_snapshot_provider.dart';
 import '../../../core/providers/api_read_snapshots.dart'
-    show bustStockAuditRecentSnapshot;
+    show bustStockAuditRecentSnapshot, bustStockPhysicalCountsRecentSnapshot;
 import '../../../core/models/session.dart';
 import '../../../core/providers/stock_list_exceptions.dart';
 import '../../../core/services/stock_list_pdf.dart' deferred as stockPdf;
@@ -315,6 +315,7 @@ class _StockPageState extends ConsumerState<StockPage>
           DateTime.now().difference(loadedAt) > kStockChangesFeedStaleTtl;
       if (stale) {
         bustStockAuditRecentSnapshot(ref);
+        bustStockPhysicalCountsRecentSnapshot(ref);
         ref.invalidate(stockChangesFeedProvider);
       }
       if (_searchExpanded) {

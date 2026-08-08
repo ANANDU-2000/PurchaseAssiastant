@@ -60,6 +60,8 @@ Future<bool> showQuickStockActionSheet({
   StockUpdateMode initialMode = StockUpdateMode.physical,
   bool skipInitialRefresh = false,
   bool refreshItemDetail = false,
+  /// When false, staff can only edit floor remaining (Physical).
+  bool allowSystem = true,
 }) async {
   final id = item['id']?.toString().trim() ?? '';
   if (id.isEmpty) {
@@ -77,6 +79,7 @@ Future<bool> showQuickStockActionSheet({
   if ((safeItem['id']?.toString() ?? '').isEmpty) {
     safeItem['id'] = id;
   }
+  final mode = allowSystem ? initialMode : StockUpdateMode.physical;
   final result = await showHexaBottomSheet<bool>(
     context: context,
     compact: true,
@@ -84,9 +87,10 @@ Future<bool> showQuickStockActionSheet({
     child: _QuickStockActionBody(
       item: safeItem,
       parentRef: ref,
-      initialMode: initialMode,
+      initialMode: mode,
       skipInitialRefresh: skipInitialRefresh,
       refreshItemDetail: refreshItemDetail,
+      allowSystem: allowSystem,
     ),
   );
   return result == true;
@@ -99,6 +103,7 @@ class _QuickStockActionBody extends ConsumerStatefulWidget {
     this.initialMode = StockUpdateMode.physical,
     this.skipInitialRefresh = false,
     this.refreshItemDetail = false,
+    this.allowSystem = true,
   });
 
   final Map<String, dynamic> item;
@@ -106,6 +111,7 @@ class _QuickStockActionBody extends ConsumerStatefulWidget {
   final StockUpdateMode initialMode;
   final bool skipInitialRefresh;
   final bool refreshItemDetail;
+  final bool allowSystem;
 
   @override
   ConsumerState<_QuickStockActionBody> createState() =>
@@ -977,11 +983,20 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         if (_mode == StockUpdateMode.physical) ...[
           const SizedBox(height: 3),
           Text(
-            'System ledger: ${formatStockQtyForUnit(_unit, systemSafe)} $_unitLabel (unchanged by this save)',
+            'System (from purchases/delivery): ${formatStockQtyForUnit(_unit, systemSafe)} $_unitLabel (unchanged by this save)',
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
               color: HexaColors.neutral,
+            ),
+          ),
+          const SizedBox(height: 3),
+          const Text(
+            'Diff = floor remaining − system. Daily edits update Physical only.',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: HexaColors.textBody,
             ),
           ),
         ],
@@ -1053,6 +1068,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
         StockUpdateModeToggle(
           mode: _mode,
           onChanged: _saving ? (_) {} : _onModeChanged,
+          allowSystem: widget.allowSystem,
         ),
         const Divider(height: 20),
         AppFormRow(
@@ -1063,7 +1079,7 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
                 Text(
                   _mode == StockUpdateMode.system
                       ? 'Entered system quantity'
-                      : 'Entered physical quantity',
+                      : 'Floor remaining (Physical)',
                   style:
                       const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                 ),

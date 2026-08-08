@@ -1,3 +1,16 @@
+## Operator: daily physical remaining (sugar example)
+
+1. Purchase + delivery of sugar **100** → **System** qty = 100 (ledger).
+2. Staff daily floor check: save **Physical** remaining 99, then later 80.
+3. **Diff** column / sheet = Physical − System (e.g. −1, then −20).
+4. System stays 100 until someone uses **System** mode (owner/manager).
+5. Activity tab shows physical edits; filter **Today's physical** for today’s floor log.
+6. Item history **Physical** chip lists per-item floor remaining trail.
+
+See also Activity merge + `GET …/stock/physical-counts/recent`.
+
+---
+
 # Stock lag / save / Activity — trace notes (2026-08-08)
 
 No secrets. Live topology: Vercel Flutter → `api.harisreeagency.online` (Windows + Cloudflare Tunnel) → Postgres on PC6.

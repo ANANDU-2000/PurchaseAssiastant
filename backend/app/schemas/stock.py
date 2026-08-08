@@ -346,6 +346,20 @@ class PhysicalStockCountOut(BaseModel):
     counted_at: datetime
 
 
+class PhysicalStockCountRecentOut(PhysicalStockCountOut):
+    """Feed row for Activity / change logs (observation physical remaining)."""
+
+    item_code: str | None = None
+    # Alias fields so Flutter Activity can reuse audit row helpers.
+    feed_kind: str = "physical_floor"
+    old_qty: Decimal | None = None  # system snapshot
+    new_qty: Decimal | None = None  # counted / floor remaining
+    adjustment_type: str = "physical_floor"
+    reason: str | None = None
+    updated_by_name: str | None = None
+    updated_at: datetime | None = None
+
+
 class OpeningStockIn(BaseModel):
     qty: Decimal = Field(ge=0, max_digits=12, decimal_places=3)
     override: bool = False

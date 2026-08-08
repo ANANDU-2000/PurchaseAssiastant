@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/auth/session_permissions.dart';
 
 import 'quick_stock_action_sheet.dart';
 import 'widgets/stock_update_mode_toggle.dart';
@@ -87,5 +88,6 @@ Future<bool> openQuickStockWithFreshItem({
     initialMode: initialMode,
     skipInitialRefresh: true,
     refreshItemDetail: true,
+    allowSystem: sessionIsPrivilegedStockRole(session),
   );
 }

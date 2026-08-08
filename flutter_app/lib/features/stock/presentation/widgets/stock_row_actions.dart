@@ -123,6 +123,7 @@ Future<void> showStockRowActions({
         item: item,
         initialMode: StockUpdateMode.physical,
         skipInitialRefresh: true,
+        allowSystem: !staff,
       );
     case _StockRowNextAction.system:
       await showQuickStockActionSheet(
@@ -131,6 +132,7 @@ Future<void> showStockRowActions({
         item: item,
         initialMode: StockUpdateMode.system,
         skipInitialRefresh: true,
+        allowSystem: true,
       );
     case _StockRowNextAction.deliveryDetails:
       await showStaffDeliveredDetailSheet(

@@ -153,3 +153,24 @@ final stockItemAuditProvider =
     return rows;
   },
 );
+
+/// Per-item observation physical remaining history.
+final stockItemPhysicalCountsProvider =
+    FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
+  (ref, itemId) async {
+    final disposed = registerProviderDisposeGuard(ref);
+    registerProviderKeepAliveTimer(ref, const Duration(seconds: 45));
+    final session = ref.watch(sessionProvider);
+    if (session == null) return [];
+    final rows = await ref
+        .read(hexaApiProvider)
+        .listPhysicalCountsForItem(
+          businessId: session.primaryBusiness.id,
+          itemId: itemId,
+          limit: 50,
+        )
+        .timeout(const Duration(seconds: 15));
+    if (providerWasDisposed(disposed)) return [];
+    return rows;
+  },
+);

@@ -340,6 +340,7 @@ void invalidatePurchaseWorkspace(
 
 void _invalidateStockAuditFeeds(dynamic ref) {
   bustStockAuditRecentSnapshot(ref);
+  bustStockPhysicalCountsRecentSnapshot(ref);
   ref.invalidate(stockChangesFeedProvider);
   ref.invalidate(stockAuditPeriodProvider);
   ref.invalidate(homeRecentActivityFeedProvider);
@@ -390,6 +391,8 @@ void invalidateWarehouseItemSurfacesLight(dynamic ref, {required String itemId})
   ref.invalidate(stockItemDetailProvider(itemId));
   ref.invalidate(stockItemIntelligenceProvider(itemId));
   ref.invalidate(stockItemActivityProvider(itemId));
+  ref.invalidate(stockItemAuditProvider(itemId));
+  ref.invalidate(stockItemPhysicalCountsProvider(itemId));
   ref.invalidate(tradePurchasesForItemProvider(itemId));
 }
 

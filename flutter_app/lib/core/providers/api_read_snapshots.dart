@@ -9,6 +9,8 @@ import '../auth/provider_api_guard.dart';
 final Map<String, Future<List<Map<String, dynamic>>>> _tradePurchasesRecentInflight =
     {};
 final Map<String, Future<List<Map<String, dynamic>>>> _auditRecentInflight = {};
+final Map<String, Future<List<Map<String, dynamic>>>> _physicalCountsRecentInflight =
+    {};
 
 /// SSOT for `GET …/stock/audit/recent` — one fetch serves home, stock tabs, and activity.
 final stockAuditRecentSnapshotProvider =
@@ -30,6 +32,30 @@ final stockAuditRecentSnapshotProvider =
         )
         .timeout(const Duration(seconds: 15))
         .whenComplete(() => _auditRecentInflight.remove(bid)),
+  );
+  return rows;
+});
+
+/// SSOT for observation physical counts (floor remaining change log).
+final stockPhysicalCountsRecentSnapshotProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final keepAliveLink = ref.keepAlive();
+  final keepAliveTimer = Timer(const Duration(minutes: 2), keepAliveLink.close);
+  ref.onDispose(keepAliveTimer.cancel);
+  if (providerSkipApi(ref)) return [];
+  final session = ref.watch(activeSessionProvider);
+  if (session == null) return [];
+  final bid = session.primaryBusiness.id;
+  final rows = await _physicalCountsRecentInflight.putIfAbsent(
+    bid,
+    () => ref
+        .read(hexaApiProvider)
+        .listPhysicalCountsRecent(
+          businessId: bid,
+          limit: HexaApi.stockAuditRecentMaxLimit,
+        )
+        .timeout(const Duration(seconds: 15))
+        .whenComplete(() => _physicalCountsRecentInflight.remove(bid)),
   );
   return rows;
 });
@@ -56,6 +82,10 @@ final tradePurchasesRecentSnapshotProvider =
 
 void bustStockAuditRecentSnapshot(dynamic ref) {
   ref.invalidate(stockAuditRecentSnapshotProvider);
+}
+
+void bustStockPhysicalCountsRecentSnapshot(dynamic ref) {
+  ref.invalidate(stockPhysicalCountsRecentSnapshotProvider);
 }
 
 void bustTradePurchasesRecentSnapshot(dynamic ref) {

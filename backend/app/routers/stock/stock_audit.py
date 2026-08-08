@@ -76,6 +76,7 @@ from app.schemas.stock import (
     OpeningStockSetupSummaryOut,
     PhysicalStockCountIn,
     PhysicalStockCountOut,
+    PhysicalStockCountRecentOut,
     StockTotalsOut,
     StockAlertsSummaryOut,
     WarehouseAlertsSummaryOut,
@@ -231,6 +232,148 @@ async def recent_adjustments_all(
         len(rows),
     )
     return rows
+
+
+def _physical_count_feed_row(
+    entry: StockPhysicalCount,
+    *,
+    item_name: str | None,
+    item_code: str | None = None,
+) -> PhysicalStockCountRecentOut:
+    diff = entry.difference_qty
+    counted = entry.counted_qty
+    system = entry.system_qty
+    unit = (entry.stock_unit or "").strip()
+    unit_s = f" {unit}" if unit else ""
+    try:
+        diff_f = float(diff)
+        diff_label = (
+            f"{diff_f:+g}" if diff_f == int(diff_f) else f"{diff_f:+.3f}".rstrip("0").rstrip(".")
+        )
+    except (TypeError, ValueError):
+        diff_label = str(diff)
+    reason = (
+        f"Physical remaining: {counted}{unit_s} "
+        f"(system {system}{unit_s}, diff {diff_label}{unit_s})"
+    )
+    return PhysicalStockCountRecentOut(
+        id=entry.id,
+        item_id=entry.item_id,
+        item_name=item_name,
+        item_code=item_code,
+        system_qty=system,
+        counted_qty=counted,
+        difference_qty=diff,
+        purchased_qty=entry.purchased_qty,
+        stock_unit=entry.stock_unit,
+        period_start=entry.period_start.isoformat() if entry.period_start else None,
+        period_end=entry.period_end.isoformat() if entry.period_end else None,
+        notes=entry.notes,
+        counted_by_name=entry.counted_by_name,
+        counted_at=entry.counted_at,
+        old_qty=system,
+        new_qty=counted,
+        reason=reason,
+        updated_by_name=entry.counted_by_name,
+        updated_at=entry.counted_at,
+    )
+
+
+@router.get("/physical-counts/recent", response_model=list[PhysicalStockCountRecentOut])
+async def physical_counts_recent(
+    business_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    limit: int = Query(50, ge=1, le=250),
+    date_from: date | None = Query(None, alias="from"),
+    date_to: date | None = Query(None, alias="to"),
+):
+    """Recent observation physical counts for Activity / change logs."""
+    t0 = monotonic()
+    stmt = select(StockPhysicalCount).where(
+        StockPhysicalCount.business_id == business_id,
+    )
+    if date_from is not None:
+        start = datetime.combine(date_from, time.min, tzinfo=timezone.utc)
+        stmt = stmt.where(StockPhysicalCount.counted_at >= start)
+    if date_to is not None:
+        end = datetime.combine(date_to, time.max, tzinfo=timezone.utc)
+        stmt = stmt.where(StockPhysicalCount.counted_at <= end)
+    stmt = stmt.order_by(desc(StockPhysicalCount.counted_at)).limit(limit)
+    r = await db.execute(stmt)
+    entries = list(r.scalars().all())
+    item_ids = {e.item_id for e in entries}
+    names: dict[uuid.UUID, str] = {}
+    codes: dict[uuid.UUID, str | None] = {}
+    if item_ids:
+        ir = await db.execute(
+            select(CatalogItem.id, CatalogItem.name, CatalogItem.item_code).where(
+                CatalogItem.business_id == business_id,
+                CatalogItem.id.in_(item_ids),
+            )
+        )
+        for row in ir.all():
+            names[row[0]] = row[1]
+            codes[row[0]] = row[2]
+    out = [
+        _physical_count_feed_row(
+            e,
+            item_name=names.get(e.item_id),
+            item_code=codes.get(e.item_id),
+        )
+        for e in entries
+    ]
+    logger.info(
+        "stock.physical_counts_recent business_id=%s ms=%.0f limit=%s rows=%s",
+        business_id,
+        (monotonic() - t0) * 1000,
+        limit,
+        len(out),
+    )
+    return out
+
+
+@router.get(
+    "/physical-counts/by-item/{item_id}",
+    response_model=list[PhysicalStockCountRecentOut],
+)
+async def physical_counts_for_item(
+    business_id: uuid.UUID,
+    item_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _m: Annotated[Membership, Depends(require_membership)],
+    limit: int = Query(50, ge=1, le=200),
+):
+    """Per-item physical remaining history (newest first)."""
+    ir = await db.execute(
+        select(CatalogItem).where(
+            CatalogItem.id == item_id,
+            CatalogItem.business_id == business_id,
+            CatalogItem.deleted_at.is_(None),
+        )
+    )
+    item = ir.scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
+    r = await db.execute(
+        select(StockPhysicalCount)
+        .where(
+            StockPhysicalCount.business_id == business_id,
+            StockPhysicalCount.item_id == item_id,
+        )
+        .order_by(desc(StockPhysicalCount.counted_at))
+        .limit(limit)
+    )
+    return [
+        _physical_count_feed_row(
+            e,
+            item_name=item.name,
+            item_code=getattr(item, "item_code", None),
+        )
+        for e in r.scalars().all()
+    ]
+
+
 @router.get("/variances/today", response_model=list[StockVarianceOut])
 async def variances_today(
     business_id: uuid.UUID,
