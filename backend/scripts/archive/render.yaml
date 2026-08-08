@@ -1,3 +1,7 @@
+# ARCHIVED — do not use for production.
+# Superseded by Windows Server + Cloudflare Tunnel (https://api.harisreeagency.online).
+# Historical Render Blueprint only.
+#
 # Render Blueprint reference — mirror these in the Dashboard if not using Blueprint sync.
 # my-purchases-api → rootDir backend, healthCheckPath /health/live (no DB on platform probe)
 #

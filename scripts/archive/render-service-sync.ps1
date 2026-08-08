@@ -1,3 +1,7 @@
+﻿# ARCHIVED — do not use for production.
+# Superseded by Windows Server + Cloudflare Tunnel (https://api.harisreeagency.online).
+# Historical Render Dashboard sync helper only.
+#
 # Render service settings checklist — align live my-purchases-api with render.yaml.
 # MCP cannot update web service build settings; apply in Dashboard:
 # https://dashboard.render.com/web/srv-d7ea0il8nd3s73e4fvl0/settings
@@ -27,7 +31,7 @@ Write-Host "  Do NOT use purchase-assistant.vercel.app — old React host, blank
 Write-Host "  Remove unused: AUTHKEY_*, WHATSAPP_*, GOOGLE_AI_API_KEY, GROQ_API_KEY, HTTP_ACCESS_LOG_ALL"
 Write-Host ""
 Write-Host "Automated cleanup (uses .cursor/mcp.json Render token):"
-Write-Host "  python backend/scripts/apply_render_env_cleanup.py"
+Write-Host "  python backend/scripts/archive/ops/apply_render_env_cleanup.py"
 Write-Host ""
 Write-Host "After saving, Manual Deploy once, then:"
 Write-Host "  powershell -File scripts/verify-deploy.ps1"

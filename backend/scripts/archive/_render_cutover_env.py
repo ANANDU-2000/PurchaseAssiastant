@@ -1,4 +1,8 @@
-"""Set Render API DATABASE_URL to internal Postgres; clear pooler vars; trigger deploy."""
+"""ARCHIVED — do not use for production.
+
+Superseded by Windows Server + Cloudflare Tunnel (https://api.harisreeagency.online).
+Historical: Set Render API DATABASE_URL to internal Postgres; clear pooler vars; trigger deploy.
+"""
 from __future__ import annotations
 
 import json

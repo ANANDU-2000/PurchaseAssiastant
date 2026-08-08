@@ -1,0 +1,4 @@
+﻿# ARCHIVED — do not use for production.
+# Superseded by Windows Server + Cloudflare Tunnel (https://api.harisreeagency.online).
+# Kept only as historical reference for the former Render Blueprint.
+

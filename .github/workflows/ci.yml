@@ -12,6 +12,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  no-dead-api-hosts:
+    name: Assert no dead Render API hosts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Forbid onrender production hosts outside archive/
+        run: bash scripts/assert-no-dead-api-hosts.sh
+
   flutter-ssot:
     name: Flutter SSOT smoke (money + reports + classifier)
     runs-on: ubuntu-latest

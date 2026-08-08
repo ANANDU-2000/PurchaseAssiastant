@@ -1,5 +1,8 @@
-"""
-One-time Supabase → Render Postgres migration (public schema dump/restore).
+"""ARCHIVED — do not use for production.
+
+Superseded by Windows Server + Cloudflare Tunnel (https://api.harisreeagency.online).
+
+Historical one-time Supabase → Render Postgres migration (public schema dump/restore).
 
 Requires: Docker, backend/.env (Supabase), Render API key in RENDER_API_KEY or .cursor/mcp.json.
 

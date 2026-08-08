@@ -1,4 +1,8 @@
-"""Apply Render env cleanup for my-purchases-api (Harisree production).
+"""ARCHIVED — do not use for production.
+
+Superseded by Windows Server + Cloudflare Tunnel (https://api.harisreeagency.online).
+
+Historical: Apply Render env cleanup for my-purchases-api (Harisree production).
 
 Reads Render API token from .cursor/mcp.json (same as _render_cutover_env.py).
 Resumes suspended web service + Postgres if needed, merges fixes, deletes unused keys.

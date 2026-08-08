@@ -2,7 +2,7 @@
 
 Usage:
   python -m scripts.smoke_production_api
-  API_BASE=https://my-purchases-api.onrender.com python -m scripts.smoke_production_api
+  API_BASE=https://api.harisreeagency.online python -m scripts.smoke_production_api
   CORS_ORIGIN=https://purchase-assiastant.vercel.app python -m scripts.smoke_production_api
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-API_BASE = os.environ.get("API_BASE", "https://my-purchases-api.onrender.com").rstrip("/")
+API_BASE = os.environ.get("API_BASE", "https://api.harisreeagency.online").rstrip("/")
 CORS_ORIGIN = os.environ.get(
     "CORS_ORIGIN", "https://purchase-assiastant.vercel.app"
 ).strip()

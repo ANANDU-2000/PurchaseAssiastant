@@ -147,7 +147,7 @@ out.append(
     "method+path pairs. Tracker uses discovered count as 100%."
 )
 out.append(
-    "**Hosts:** API https://my-purchases-api.onrender.com · "
+    "**Hosts:** API https://api.harisreeagency.online · "
     "Web https://purchase-assiastant.vercel.app"
 )
 out.append("**Detail audit (Auth):** `docs/debug/API_AUDIT_AUTH.md`")
