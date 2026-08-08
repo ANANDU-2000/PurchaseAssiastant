@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:printing/printing.dart';
@@ -11,8 +13,12 @@ enum BarcodeOperationKind {
   batchPartial,
   cameraPermission,
   photoUnreadable,
+  unreadableScan,
+  emptyDecode,
+  ambiguousBarcode,
   network,
   emptySelection,
+  permissionDenied,
   unknown,
 }
 
@@ -35,16 +41,109 @@ class BarcodeOperationException implements Exception {
   String toString() => message;
 }
 
+/// Stable scanner copy — keep UI panel + Dio 404 aligned.
+const kBarcodeUnknownCatalogMessage =
+    'Unknown barcode — not in your catalog. Assign it or create a new item.';
+
+const kBarcodeUnreadableMessage =
+    "Couldn't read that — try again or enter the code manually.";
+
+const kBarcodeAmbiguousMessage =
+    'Multiple items share this barcode. Fix duplicates in catalog, then scan again.';
+
+const kBarcodeNetworkMessage =
+    "Couldn't reach server. Retry or enter the code manually.";
+
+const kBarcodePermissionDeniedMessage =
+    "Your account doesn't have permission for this action.";
+
+const kBarcodeEmptyDecodeMessage =
+    "Couldn't read that — try again or enter the code manually.";
+
+const kBarcodeCameraPermissionMessage =
+    'Allow camera access to scan barcodes, or enter the code manually.';
+
+/// Reject empty / control-heavy / absurd scanner library garbage before lookup.
+bool isGarbageBarcodeDecode(String? raw) {
+  final code = raw?.trim() ?? '';
+  if (code.isEmpty) return true;
+  if (code.length > 128) return true;
+  // Mostly non-printable / control characters.
+  final printable = code.replaceAll(RegExp(r'[\x00-\x1F\x7F]'), '');
+  if (printable.isEmpty) return true;
+  if (printable.length < code.length ~/ 2) return true;
+  return false;
+}
+
+BarcodeOperationException barcodeEmptyDecodeError() => BarcodeOperationException(
+      kBarcodeEmptyDecodeMessage,
+      kind: BarcodeOperationKind.emptyDecode,
+    );
+
+BarcodeOperationException barcodeUnreadableError() => BarcodeOperationException(
+      kBarcodeUnreadableMessage,
+      kind: BarcodeOperationKind.unreadableScan,
+    );
+
+BarcodeOperationException barcodePhotoUnreadableError() =>
+    BarcodeOperationException(
+      kBarcodeUnreadableMessage,
+      kind: BarcodeOperationKind.photoUnreadable,
+    );
+
+BarcodeOperationException barcodeNetworkError([Object? cause]) =>
+    BarcodeOperationException(
+      kBarcodeNetworkMessage,
+      kind: BarcodeOperationKind.network,
+      cause: cause,
+    );
+
+BarcodeOperationException barcodeCameraPermissionError([String? detail]) =>
+    BarcodeOperationException(
+      detail?.trim().isNotEmpty == true
+          ? detail!.trim()
+          : kBarcodeCameraPermissionMessage,
+      kind: BarcodeOperationKind.cameraPermission,
+    );
+
 /// User-safe message for barcode/PDF/print/scanner flows (no generic "Something went wrong").
 String barcodeMessageForUser(
   Object error, {
   BarcodeOperationContext ctx = BarcodeOperationContext.bulkPrint,
 }) {
   if (error is BarcodeOperationException) return error.message;
+  if (error is TimeoutException) {
+    return kBarcodeNetworkMessage;
+  }
   if (error is DioException) {
-    if (ctx == BarcodeOperationContext.scanner &&
-        error.response?.statusCode == 404) {
-      return 'Unknown barcode — not in your catalog. Assign it or create a new item.';
+    final sc = error.response?.statusCode;
+    if (ctx == BarcodeOperationContext.scanner) {
+      if (sc == 404) return kBarcodeUnknownCatalogMessage;
+      if (sc == 403) return kBarcodePermissionDeniedMessage;
+      if (sc == 409) {
+        final detail = error.response?.data;
+        if (detail is Map &&
+            (detail['detail']?.toString().toLowerCase().contains('ambiguous') ==
+                    true ||
+                detail['detail']?.toString().toLowerCase().contains('multiple') ==
+                    true)) {
+          return kBarcodeAmbiguousMessage;
+        }
+        if (detail is String &&
+            (detail.toLowerCase().contains('ambiguous') ||
+                detail.toLowerCase().contains('multiple'))) {
+          return kBarcodeAmbiguousMessage;
+        }
+        // Scanner 409 default = ambiguous barcode data issue.
+        return kBarcodeAmbiguousMessage;
+      }
+      if (sc == null ||
+          error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.sendTimeout ||
+          error.type == DioExceptionType.connectionError) {
+        return kBarcodeNetworkMessage;
+      }
     }
     return friendlyApiError(error);
   }

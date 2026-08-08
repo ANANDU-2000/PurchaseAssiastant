@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/design_system/hexa_ds_tokens.dart';
+import '../../../core/errors/barcode_operation_errors.dart';
 import '../../../core/theme/hexa_colors.dart';
 import 'widgets/scan_item_stock_summary_card.dart';
 
@@ -123,7 +124,7 @@ class BarcodeScanResultPanel extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Barcode not linked to an item.',
+              kBarcodeUnknownCatalogMessage,
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w800,
               ),
@@ -138,7 +139,7 @@ class BarcodeScanResultPanel extends StatelessWidget {
             if (!canStockEdit) ...[
               SizedBox(height: gap),
               Text(
-                "Your account doesn't have permission for this action.",
+                kBarcodePermissionDeniedMessage,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.error,
                   fontWeight: FontWeight.w600,
@@ -177,6 +178,7 @@ class BarcodeScanResultPanel extends StatelessWidget {
         item!['default_unit']?.toString() ??
         '';
     final barcode = item!['barcode']?.toString() ?? code;
+    final name = item!['name']?.toString() ?? 'Item';
 
     return Padding(
       padding: EdgeInsets.all(dense ? 12 : 16),
@@ -184,19 +186,29 @@ class BarcodeScanResultPanel extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ScanItemStockSummaryCard(item: item!, showTitle: true),
-          if (unit.isNotEmpty || barcode.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              [
-                if (unit.isNotEmpty) 'Unit: $unit',
-                'Barcode: $barcode',
-              ].join(' · '),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: HexaColors.textBody,
-              ),
+          Text(
+            name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
             ),
-          ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            [
+              if (unit.isNotEmpty) unit,
+              barcode,
+            ].join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: HexaColors.textBody,
+            ),
+          ),
+          SizedBox(height: gap),
+          // Summary already shows system / physical / last purchase — no outer scroll.
+          ScanItemStockSummaryCard(item: item!, showTitle: false),
           SizedBox(height: gap),
           if (canAddToPurchase && onAddToPurchase != null)
             FilledButton.icon(

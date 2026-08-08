@@ -172,7 +172,13 @@ async def barcode_lookup(
             CatalogItem.deleted_at.is_(None),
         )
     )
-    item = r.scalar_one_or_none()
+    barcode_matches = list(r.scalars().all())
+    if len(barcode_matches) > 1:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail="ambiguous_barcode: multiple items share this barcode",
+        )
+    item = barcode_matches[0] if barcode_matches else None
     if item is None:
         r2 = await db.execute(
             select(CatalogItem).where(
@@ -181,7 +187,13 @@ async def barcode_lookup(
                 CatalogItem.deleted_at.is_(None),
             )
         )
-        item = r2.scalar_one_or_none()
+        code_matches = list(r2.scalars().all())
+        if len(code_matches) > 1:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="ambiguous_barcode: multiple items share this item code",
+            )
+        item = code_matches[0] if code_matches else None
     if not item:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Item not found")
     # Sequential on shared AsyncSession — gather would raise isce under concurrency.

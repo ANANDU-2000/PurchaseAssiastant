@@ -67,7 +67,7 @@ void main() {
       ),
     );
 
-    expect(find.textContaining('not linked'), findsOneWidget);
+    expect(find.textContaining('Unknown barcode'), findsOneWidget);
     expect(find.textContaining("doesn't have permission"), findsOneWidget);
     expect(find.text('Create new item'), findsNothing);
   });

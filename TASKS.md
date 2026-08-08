@@ -23,15 +23,22 @@ Roadmap: [PLAN.md](PLAN.md). Rules: [AGENTS.md](AGENTS.md). Cleanup contract: [d
 | Regression test (onSelected once) | done | `party_inline_suggest_field_on_selected_once_test.dart` |
 | Harden residual double-fire | done | Remove Semantics wrapper + `_pickInProgress`; InlineSearchField skip exact re-pick; item sheet same-id guard |
 
-## Step C — Barcode scanner rebuild (done)
+## Step C — Barcode scanner rebuild (done — extraction pass)
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Scan FSM + cache invalidate + SystemSound | done | `barcode_scan_session.dart`, cache `invalidate`, success/fail sounds |
-| Result panel + permission CTAs | done | `barcode_scan_result_panel.dart`; `stock_edit` / `purchase_*` / `barcode_print` |
-| Mobile continuous + Hexa result sheet | done | Camera stays warm; compact result sheet |
-| Desktop ≥1024 two-pane | done | Height-bound result pane; Enter/Esc/Tab |
-| Print/audit/quick-create/assign | kept | Not deleted |
+| Camera controller extract | done | `services/barcode_camera_controller.dart`; page has zero `_initCamera` / `_bootstrapCamera` |
+| Scan controller extract | done | `barcode_scan_controller.dart` — FSM/lookup/recent/manual/sound/timings |
+| Presentation split | done | mobile scanner/result sheet; desktop panes; workspace; page **229 LOC** (was 1873) |
+| Decode pulse + sound toggle | done | `playDecode` + AppBar mute; prefs `barcode_scan_sound_enabled` |
+| Result full detail / no-scroll | done | `BarcodeScanResultPanel` + `ScanItemStockSummaryCard`; compact Hexa sheet |
+| Desktop persistent pane + keys | done | `DesktopMasterDetailScaffold`; Enter/Esc/Tab; no per-scan dialog |
+| Measured timings | done | Cache hit ~3–4ms; cache miss (mocked 80ms API) ~83–84ms — `barcode_scan_lookup_timing_test.dart` |
+| Edge cases / error handling | done | Extended `barcodeMessageForUser`; cache revalidate; 409 ambiguous; unreadable nudge; desktop keys; edit re-lookup |
+
+**Layouts:** Mobile = camera stack + `showHexaBottomSheet(compact: true)` result. Desktop ≥1024 = left scanner/search + persistent right result pane (design-system master-detail), not stretched mobile.
+
+**Deferred (not this task):** live `/barcodeStockLookup` API latency; physical-device timing (no device in CI).
 
 ---
 

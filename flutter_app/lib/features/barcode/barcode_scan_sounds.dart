@@ -4,8 +4,30 @@ import 'package:flutter/services.dart';
 class BarcodeScanSounds {
   BarcodeScanSounds._();
 
-  /// Known item / cache hit / successful decode ack.
-  static Future<void> playSuccess() async {
+  /// Fired the moment a barcode is decoded (before lookup).
+  static Future<void> playDecode({bool enabled = true}) async {
+    if (!enabled) {
+      try {
+        await HapticFeedback.selectionClick();
+      } catch (_) {}
+      return;
+    }
+    try {
+      await SystemSound.play(SystemSoundType.click);
+    } catch (_) {}
+    try {
+      await HapticFeedback.mediumImpact();
+    } catch (_) {}
+  }
+
+  /// Known item / cache hit.
+  static Future<void> playSuccess({bool enabled = true}) async {
+    if (!enabled) {
+      try {
+        await HapticFeedback.mediumImpact();
+      } catch (_) {}
+      return;
+    }
     try {
       await SystemSound.play(SystemSoundType.click);
     } catch (_) {}
@@ -15,7 +37,13 @@ class BarcodeScanSounds {
   }
 
   /// Not found, network, or permission failure.
-  static Future<void> playFailure() async {
+  static Future<void> playFailure({bool enabled = true}) async {
+    if (!enabled) {
+      try {
+        await HapticFeedback.lightImpact();
+      } catch (_) {}
+      return;
+    }
     try {
       await SystemSound.play(SystemSoundType.alert);
     } catch (_) {}

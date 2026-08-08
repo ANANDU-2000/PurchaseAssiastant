@@ -1,58 +1,27 @@
 import 'dart:async';
 import 'dart:developer' as developer;
-import 'dart:math' as math;
 
-import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
 
-import '../../../core/services/prefs_helper.dart';
-
-import '../../../core/design_system/hexa_operational_tokens.dart';
-import '../../../core/design_system/hexa_responsive.dart';
-import '../../../core/theme/hexa_colors.dart';
-import '../../../core/errors/barcode_operation_errors.dart';
 import '../../../core/auth/session_notifier.dart';
 import '../../../core/auth/session_permissions.dart';
-import '../../../core/providers/barcode_recent_scans.dart';
-import '../../../core/providers/home_owner_dashboard_providers.dart';
-import '../../../core/providers/stock_audit_providers.dart';
-import '../../../core/providers/stock_providers.dart';
-import '../../../core/providers/stock_offline_queue_provider.dart';
-import '../../../core/providers/catalog_providers.dart';
-import '../../../core/router/navigation_ext.dart';
-import '../../../shared/widgets/search_picker_sheet.dart';
-import '../../stock/presentation/stock_sheet_launch.dart';
-import '../../stock/presentation/stock_undo_snackbar.dart';
-import '../barcode_camera_session.dart';
-import '../barcode_lookup_cache.dart';
+import '../../../core/design_system/hexa_responsive.dart';
+import '../../../core/errors/barcode_operation_errors.dart';
+import '../barcode_scan_controller.dart';
 import '../barcode_scan_session.dart';
-import '../barcode_scan_sounds.dart';
 import '../services/assign_barcode_helper.dart';
-import '../services/camera_permission_cache.dart';
+import '../services/barcode_camera_controller.dart';
+import 'barcode_mobile_result_sheet.dart';
+import 'barcode_scan_page_actions.dart';
 import 'barcode_scan_result_panel.dart';
 import 'barcode_scan_web_stub.dart'
     if (dart.library.html) 'barcode_scan_web.dart';
-import 'web_live_barcode_scanner.dart' show WebLiveBarcodeScanner;
+import 'barcode_scan_workspace.dart';
 
-const _kMaxRecent = 10;
-const _kDebounceMs = 200;
-const _kCameraPermGrantedKey = 'camera_perm_granted';
-const _kManualSearchDebounceMs = 400;
-/// Primary warehouse formats (fewer = faster decode per frame).
-const _kWarehouseBarcodeFormats = <BarcodeFormat>[
-  BarcodeFormat.code128,
-  BarcodeFormat.ean13,
-  BarcodeFormat.qrCode,
-];
-
-/// Warehouse barcode scan — camera + manual lookup → item detail.
+/// Warehouse barcode scan — thin scaffold wiring camera + scan controllers.
 class BarcodeScanPage extends ConsumerStatefulWidget {
   const BarcodeScanPage({super.key});
 
@@ -61,1813 +30,240 @@ class BarcodeScanPage extends ConsumerStatefulWidget {
 }
 
 class _BarcodeScanPageState extends ConsumerState<BarcodeScanPage>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  /// Avoid re-requesting OS camera permission on every scanner page open (iOS PWA).
-  static bool _cameraPermissionGrantedThisSession = false;
-  final _permCache = CameraPermissionCache.instance;
-
-  MobileScannerController? _camera;
-  WebLiveBarcodeScanner? _webLiveScanner;
-  bool _useWebDetectorPreview = false;
-  bool _cameraInitInFlight = false;
-  String? _cameraDeniedMessage;
-  final _manualCtrl = TextEditingController();
-  final _manualFocus = FocusNode();
-  String _manualQuery = '';
-  bool _torch = false;
-  bool _busy = false;
-  /// Mobile result sheet open — blocks overlapping continuous detects.
-  bool _resultUiOpen = false;
-  final BarcodeScanSession _scanSession = BarcodeScanSession();
-  int _scanGeneration = 0;
+    with WidgetsBindingObserver {
+  late final BarcodeScanController _scan;
+  late final BarcodeCameraController _camera;
   final _resultActionFocus = FocusNode(debugLabel: 'barcodeResultActions');
-
-  bool get _acceptCameraDetect =>
-      !_resultUiOpen &&
-      _scanSession.acceptsCameraDetect &&
-      !_scanSession.isLookingUp;
-
-  void _setBusy(bool value) {
-    if (!mounted) return;
-    setState(() {
-      _busy = value;
-    });
-    if (value) {
-      _scanLineCtrl.stop();
-    } else {
-      _scanLineCtrl.repeat(reverse: true);
-    }
-  }
-  String? _lastCode;
-  DateTime? _lastAt;
-  List<BarcodeRecentScan> _recent = [];
-  List<Map<String, dynamic>> _manualMatches = const [];
-  bool _manualSearching = false;
-  Timer? _manualSearchDebounce;
-  late final AnimationController _scanLineCtrl;
-  bool _cameraDenied = false;
-  bool _cameraPermanent = false;
-  Timer? _safariNoDetectTimer;
-  bool _safariUploadNudgeShown = false;
-  bool _hadDetectThisVisit = false;
-  bool _scanConfirmed = false;
-  String? _lookupLabel;
-  bool _webCameraAwaitingGesture = false;
+  bool _boundBiz = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _scanLineCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true); // paused via _setBusy when camera is processing
-    _manualCtrl.addListener(_onManualChanged);
-    _manualFocus.addListener(_onManualFocusChange);
-    unawaited(_loadRecent());
-    unawaited(_bootstrapCamera());
-  }
-
-  Future<void> _bootstrapCamera() async {
-    try {
-      final persisted = await _readPersistedCameraPerm();
-      _permCache.persistedGranted = persisted;
-      if (persisted) {
-        _cameraPermissionGrantedThisSession = true;
-        _permCache.grantedThisSession = true;
-      }
-      if (kIsWeb && !_permCache.canAutoStartCamera) {
-        if (!mounted) return;
-        setState(() => _webCameraAwaitingGesture = true);
-        return;
-      }
-      await _initCamera();
-    } catch (e, st) {
-      developer.log('Error bootstrapping camera', error: e, stackTrace: st);
-    }
-  }
-
-  Future<void> _startCameraFromUserGesture() async {
-    try {
-      if (!mounted) return;
-      setState(() => _webCameraAwaitingGesture = false);
-      await _initCamera();
-    } catch (e, st) {
-      developer.log('Error starting camera from user gesture', error: e, stackTrace: st);
-    }
-  }
-
-  void _onManualFocusChange() {
-    if (_manualFocus.hasFocus) {
-      _scanLineCtrl.stop();
-    } else if (!_busy) {
-      _scanLineCtrl.repeat(reverse: true);
-    }
-  }
-
-  void _onManualChanged() {
-    final next = _manualCtrl.text.toLowerCase().trim();
-    if (next == _manualQuery) return;
-    setState(() {
-      _manualQuery = next;
-      if (next.length < 2) {
-        _manualMatches = const [];
-        _manualSearching = false;
-      }
-    });
-    _manualSearchDebounce?.cancel();
-    if (next.length < 2) return;
-    _manualSearchDebounce = Timer(
-      const Duration(milliseconds: _kManualSearchDebounceMs),
-      () => unawaited(_searchManualItems(next)),
-    );
-  }
-
-  Future<void> _searchManualItems(String q) async {
-    final session = ref.read(sessionProvider);
-    if (session == null || !mounted) return;
-    setState(() => _manualSearching = true);
-    try {
-      final blob = await ref.read(hexaApiProvider).listStock(
-            businessId: session.primaryBusiness.id,
-            q: q,
-            perPage: 8,
-            page: 1,
-          );
-      if (!mounted || _manualQuery != q) return;
-      final items = [
-        for (final row in (blob['items'] as List? ?? []))
-          if (row is Map) Map<String, dynamic>.from(row),
-      ];
-      setState(() {
-        _manualMatches = items;
-        _manualSearching = false;
-      });
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _manualMatches = const [];
-          _manualSearching = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _scanFromImage() async {
-    if (_busy) return;
-    try {
-      final picker = ImagePicker();
-      final file = await picker.pickImage(source: ImageSource.gallery);
-      if (file == null || !mounted) return;
-      String? code;
-      try {
-        if (_camera != null) {
-          final cap = await _camera!.analyzeImage(file.path);
-          if (cap != null && cap.barcodes.isNotEmpty) {
-            code = cap.barcodes.first.rawValue?.trim();
-          }
-        }
-        if ((code == null || code.isEmpty) && kIsWeb) {
-          final bytes = await file.readAsBytes();
-          code = await decodeBarcodeFromImageBytes(bytes);
-        }
-      } catch (e, st) {
-        developer.log('Error analyzing barcode image', error: e, stackTrace: st);
-      }
-      if (code != null && code.isNotEmpty) {
-        await _lookupAndNavigate(code);
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Barcode image unreadable. Try another photo.'),
-            action: SnackBarAction(
-              label: 'Manual',
-              onPressed: () => _manualFocus.requestFocus(),
-            ),
+    _scan = BarcodeScanController(
+      lookupFn: ({required String businessId, required String code}) =>
+          ref.read(hexaApiProvider).barcodeStockLookup(
+                businessId: businessId,
+                code: code,
+              ),
+      stockSearchFn: ({required String businessId, required String q}) =>
+          ref.read(hexaApiProvider).listStock(
+                businessId: businessId,
+                q: q,
+                perPage: 8,
+                page: 1,
+              ),
+      assignFn: ({
+        required String businessId,
+        required String itemId,
+        required String barcode,
+      }) =>
+          assignBarcodeToItem(
+            api: ref.read(hexaApiProvider),
+            businessId: businessId,
+            itemId: itemId,
+            barcode: barcode,
           ),
-        );
-      }
-    } catch (e, st) {
-      developer.log('Error in _scanFromImage', error: e, stackTrace: st);
-    }
-  }
-
-  Future<bool> _readPersistedCameraPerm() async {
-    try {
-      final prefs = PrefsHelper.prefs;
-      return prefs.getBool(_kCameraPermGrantedKey) ?? false;
-    } catch (e, st) {
-      developer.log('Error reading persisted camera permission', error: e, stackTrace: st);
-      return false;
-    }
-  }
-
-  Future<void> _markCameraPermGranted() async {
-    _cameraPermissionGrantedThisSession = true;
-    _permCache.markGranted();
-    try {
-      final prefs = PrefsHelper.prefs;
-      await prefs.setBool(_kCameraPermGrantedKey, true);
-    } catch (e, st) {
-      developer.log('Error marking camera permission granted', error: e, stackTrace: st);
-    }
-  }
-
-  Future<void> _stopWebLiveScanner() async {
-    await _webLiveScanner?.stop();
-    _webLiveScanner = null;
-    _useWebDetectorPreview = false;
-  }
-
-  MobileScannerController _newScannerController() {
-    return MobileScannerController(
-      detectionSpeed: DetectionSpeed.noDuplicates,
-      detectionTimeoutMs: kIsWeb ? 400 : 100,
-      facing: CameraFacing.back,
-      formats: _kWarehouseBarcodeFormats,
-      cameraResolution: const Size(1280, 720),
-      autoStart: true,
-      returnImage: false,
     );
+    _camera = BarcodeCameraController(onCodeDetected: _onCode);
+    _scan.manualCtrl.addListener(_scan.onManualChanged);
+    unawaited(_scan.loadPrefs());
+    unawaited(_scan.loadRecent());
+    unawaited(_camera.bootstrap());
   }
 
-  void _pulseReticle() {
-    if (!mounted) return;
-    setState(() => _scanConfirmed = true);
-    Future<void>.delayed(const Duration(milliseconds: 150), () {
-      if (mounted) setState(() => _scanConfirmed = false);
-    });
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_boundBiz) return;
+    final bid = ref.read(sessionProvider)?.primaryBusiness.id;
+    if (bid == null) return;
+    _boundBiz = true;
+    _scan.bindBusinessId(bid);
   }
 
-  void _ackLookup({required bool success}) {
-    if (!mounted) return;
-    unawaited(
-      success ? BarcodeScanSounds.playSuccess() : BarcodeScanSounds.playFailure(),
-    );
-    _pulseReticle();
-  }
+  BarcodeScanPageActions get _actions => BarcodeScanPageActions(
+        context: context,
+        ref: ref,
+        scan: _scan,
+        camera: _camera,
+        onReadyForNext: _dismissResult,
+        onRetryLookup: _runLookup,
+      );
 
-  void _onWebBarcodeCode(String code) {
-    if (!_acceptCameraDetect || !mounted) return;
-    final v = code.trim();
-    if (v.isEmpty) return;
-    if (!_debouncePass(v)) return;
-    _pulseReticle();
-    _hadDetectThisVisit = true;
-    _safariNoDetectTimer?.cancel();
-    unawaited(_lookupAndNavigate(v));
-  }
-
-  Future<bool> _tryStartWebBarcodeDetector() async {
-    if (!kIsWeb) return false;
-    final scanner = createWebLiveBarcodeScanner();
-    if (scanner == null) return false;
-    final ok = await scanner.start(_onWebBarcodeCode);
-    if (!ok || !mounted) {
-      await scanner.stop();
-      return false;
-    }
-    await _camera?.dispose();
-    _camera = null;
-    BarcodeCameraSession.mobile = null;
-    _webLiveScanner = scanner;
-    _useWebDetectorPreview = true;
-    BarcodeCameraSession.retainWebDetector(scanner);
-    await _markCameraPermGranted();
-    if (mounted) {
-      setState(() {
-        _cameraDenied = false;
-        _cameraPermanent = false;
-        _cameraDeniedMessage = null;
-      });
-      _scheduleSafariNoDetectNudge();
-    }
-    return true;
-  }
-
-  Future<void> _startWebMobileScanner() async {
-    await _stopWebLiveScanner();
-    try {
-      if (defaultTargetPlatform == TargetPlatform.iOS && _camera == null) {
-        if (BarcodeCameraSession.mobile != null) {
-          await BarcodeCameraSession.mobile!.dispose();
-          BarcodeCameraSession.mobile = null;
-        }
-      }
-      _camera = (defaultTargetPlatform == TargetPlatform.iOS)
-          ? _newScannerController()
-          : (BarcodeCameraSession.mobile ?? _newScannerController());
-      BarcodeCameraSession.retainMobile(_camera!);
-      await _markCameraPermGranted();
-      if (mounted) {
-        setState(() {
-          _cameraDenied = false;
-          _cameraPermanent = false;
-          _cameraDeniedMessage = null;
-        });
-        _scheduleSafariNoDetectNudge();
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _cameraDenied = true;
-          _cameraPermanent = false;
-          _cameraDeniedMessage =
-              'Could not start the camera in this browser. '
-              'Allow camera for this site in Safari settings, or use '
-              'Upload barcode photo / manual entry below.';
-        });
-      }
-    }
-  }
-
-  Future<void> _disposeNativeCamera() async {
-    final cam = _camera;
-    _camera = null;
-    if (BarcodeCameraSession.mobile == cam) {
-      BarcodeCameraSession.mobile = null;
-    }
-    if (cam != null) {
-      await cam.stop();
-      await cam.dispose();
-    }
-  }
-
-  Future<void> _startNativeMobileScanner() async {
-    if (!mounted) return;
-    try {
-      if (defaultTargetPlatform == TargetPlatform.iOS) {
-        await _disposeNativeCamera();
-        _camera = _newScannerController();
-      } else {
-        _camera = BarcodeCameraSession.mobile ?? _newScannerController();
-      }
-      BarcodeCameraSession.retainMobile(_camera!);
-      if (!_camera!.value.isRunning) {
-        await _camera!.start();
-      }
-      await _markCameraPermGranted();
-      if (!mounted) return;
-      setState(() {
-        _cameraDenied = false;
-        _cameraDeniedMessage = null;
-      });
-    } catch (e, st) {
-      developer.log('Error starting native mobile scanner', error: e, stackTrace: st);
-    }
-  }
-
-  void _scheduleSafariNoDetectNudge() {
-    if (!kIsWeb || !isSafariBrowser) return;
-    _safariNoDetectTimer?.cancel();
-    _safariNoDetectTimer = Timer(const Duration(seconds: 4), () {
-      if (!mounted ||
-          _busy ||
-          _hadDetectThisVisit ||
-          _safariUploadNudgeShown) {
-        return;
-      }
-      setState(() => _safariUploadNudgeShown = true);
-    });
-  }
-
-  Future<void> _retryCameraAfterDenial() async {
-    try {
-      await BarcodeCameraSession.reset();
-      await _initCamera();
-    } catch (e, st) {
-      developer.log('Error retrying camera after denial', error: e, stackTrace: st);
-    }
-  }
-
-  Future<void> _initCamera() async {
-    if ((_camera != null && _camera!.value.isRunning) ||
-        (_useWebDetectorPreview && (_webLiveScanner?.isActive ?? false))) {
+  void _onCode(String code) {
+    if (!_scan.acceptsCameraDetect) return;
+    if (!_scan.acceptDecode(code)) {
+      _showRejectIfAny();
       return;
     }
-    if (_cameraInitInFlight) return;
-    _cameraInitInFlight = true;
-    try {
-      final persisted = await _readPersistedCameraPerm();
-      if (persisted) {
-        _cameraPermissionGrantedThisSession = true;
-      }
-      if (kIsWeb) {
-        if (BarcodeCameraSession.hasLiveWebDetector &&
-            BarcodeCameraSession.webDetector != null) {
-          _webLiveScanner = BarcodeCameraSession.webDetector;
-          _useWebDetectorPreview = true;
-          await _webLiveScanner!.start(_onWebBarcodeCode);
-          if (mounted) {
-            setState(() {
-              _cameraDenied = false;
-              _cameraPermanent = false;
-              _cameraDeniedMessage = null;
-            });
-          }
-          return;
-        }
-        if (BarcodeCameraSession.hasLiveMobile &&
-            BarcodeCameraSession.mobile != null) {
-          final retained = BarcodeCameraSession.mobile!;
-          var reuseOk = true;
-          if (defaultTargetPlatform == TargetPlatform.iOS) {
-            reuseOk = false;
-            await BarcodeCameraSession.reset();
-          }
-          if (reuseOk) {
-            _camera = retained;
-            if (mounted) {
-              setState(() {
-                _cameraDenied = false;
-                _cameraPermanent = false;
-                _cameraDeniedMessage = null;
-              });
-            }
-            return;
-          }
-        }
-        if (await _tryStartWebBarcodeDetector()) return;
-        await _startWebMobileScanner();
-        return;
-      }
-
-      final status = await Permission.camera.status;
-      if (status.isPermanentlyDenied) {
-        if (mounted) {
-          setState(() {
-            _cameraDenied = true;
-            _cameraPermanent = true;
-            _cameraDeniedMessage = null;
-          });
-        }
-        return;
-      }
-
-      if (status.isGranted || status.isLimited) {
-        await _markCameraPermGranted();
-        await _startNativeMobileScanner();
-        return;
-      }
-
-      if (_cameraPermissionGrantedThisSession || persisted) {
-        final recheck = await Permission.camera.status;
-        if (recheck.isGranted || recheck.isLimited) {
-          await _markCameraPermGranted();
-          await _startNativeMobileScanner();
-          return;
-        }
-        if (persisted) {
-          final prefs = PrefsHelper.prefs;
-          await prefs.setBool(_kCameraPermGrantedKey, false);
-        }
-        _cameraPermissionGrantedThisSession = false;
-      }
-
-      final req = await Permission.camera.request();
-      if (!req.isGranted && !req.isLimited) {
-        if (mounted) {
-          setState(() {
-            _cameraDenied = true;
-            _cameraPermanent = req.isPermanentlyDenied;
-            _cameraDeniedMessage = null;
-          });
-        }
-        return;
-      }
-
-      if (!mounted) return;
-      await _markCameraPermGranted();
-      await _startNativeMobileScanner();
-    } finally {
-      _cameraInitInFlight = false;
-    }
+    if (!_scan.debouncePass(code)) return;
+    _scan.onDecoded(code);
+    unawaited(_runLookup(code));
   }
 
-  Future<void> _loadRecent() async {
-    try {
-      final list = await loadBarcodeRecentScans(max: _kMaxRecent);
-      if (!mounted) return;
-      setState(() => _recent = list);
-    } catch (e, st) {
-      developer.log('Error loading recent scans', error: e, stackTrace: st);
-    }
-  }
-
-  Future<void> _pushRecent(BarcodeRecentScan row) async {
-    final next = <BarcodeRecentScan>[
-      row,
-      ..._recent.where((x) => x.code != row.code),
-    ].take(_kMaxRecent).toList();
-    setState(() => _recent = next);
-    try {
-      await saveBarcodeRecentScans(next);
-    } catch (e, st) {
-      developer.log('Error saving recent scans', error: e, stackTrace: st);
-    }
-  }
-
-  bool _debouncePass(String code) {
-    final now = DateTime.now();
-    if (_lastCode == code &&
-        _lastAt != null &&
-        now.difference(_lastAt!) < const Duration(milliseconds: _kDebounceMs)) {
-      return false;
-    }
-    _lastCode = code;
-    _lastAt = now;
-    return true;
-  }
-
-  Future<void> _resumeScan({int? generation}) async {
-    if (generation != null && generation != _scanGeneration) return;
-    if (!mounted) return;
-    _scanSession.readyForNext();
-    _setBusy(false);
-    _lastCode = null;
-    _lastAt = null;
-    // Keep camera warm — no stop/start on continuous path.
-    if (_useWebDetectorPreview && _webLiveScanner != null) {
-      // Detector loop already running.
-    } else if (_camera != null) {
-      try {
-        if (!_camera!.value.isInitialized) {
-          await _initCamera();
-        } else if (!kIsWeb &&
-            defaultTargetPlatform != TargetPlatform.iOS &&
-            !_camera!.value.isRunning) {
-          await _camera!.start();
-        }
-      } catch (_) {
-        if (mounted) unawaited(_initCamera());
-      }
-    }
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _dismissResultUi() async {
-    _resultUiOpen = false;
-    _scanSession.readyForNext();
-    if (mounted) setState(() {});
-    await _resumeScan();
-  }
-
-  Widget _buildResultPanelForSnapshot({
-    required bool dense,
-    VoidCallback? onSheetPop,
-  }) {
-    final snap = _scanSession.current;
-    final session = ref.read(sessionProvider);
-    final canEdit =
-        session != null && !sessionIsStockReadOnly(session);
-    final canPurchase = session != null &&
-        (sessionCanPurchaseCreate(session) || sessionCanPurchaseEdit(session));
-    final canPrint =
-        session != null && sessionCanBarcodePrint(session);
-    final code = snap?.code ?? '';
-    final lookingUp = snap?.phase == BarcodeScanPhase.lookingUp;
-    final err = snap?.phase == BarcodeScanPhase.error
-        ? (snap?.errorMessage ?? "Couldn't reach server. Retry.")
-        : null;
-    final notFound = snap?.outcome == BarcodeScanOutcome.notFound;
-    final item = snap?.item;
-
-    void closeSheet() {
-      onSheetPop?.call();
-      unawaited(_dismissResultUi());
-    }
-
-    return BarcodeScanResultPanel(
-      code: code,
-      item: item,
-      notFound: notFound && item == null,
-      errorMessage: err,
-      lookingUp: lookingUp,
-      canStockEdit: canEdit,
-      canAddToPurchase: canPurchase,
-      canPrint: canPrint,
-      dense: dense,
-      onAddToPurchase: item == null || !canPurchase
-          ? null
-          : () {
-              closeSheet();
-              final id = item['id']?.toString() ?? '';
-              if (id.isNotEmpty) {
-                context.push(
-                  '/purchase/new?catalogItemId=${Uri.encodeComponent(id)}',
-                );
-              }
-            },
-      onEdit: item == null || !canEdit
-          ? null
-          : () async {
-              final id = item['id']?.toString() ?? '';
-              final bc = code;
-              closeSheet();
-              if (id.isEmpty) return;
-              await context.push('/catalog/item/$id/edit');
-              if (!mounted) return;
-              final bid = ref.read(sessionProvider)?.primaryBusiness.id;
-              if (bid != null && bc.isNotEmpty) {
-                BarcodeLookupCache.invalidate(bid, bc);
-              }
-              await _resumeScan();
-            },
-      onStock: item == null || !canEdit
-          ? null
-          : () async {
-              final id = item['id']?.toString() ?? '';
-              final name = item['name']?.toString() ?? code;
-              closeSheet();
-              if (id.isEmpty) return;
-              _scanSession.markAction();
-              await openQuickStockWithFreshItem(
-                context: context,
-                ref: ref,
-                itemId: id,
-                itemName: name,
-                fallbackRow: Map<String, dynamic>.from(item),
-                skipFreshFetch: true,
-              );
-              if (mounted) await _resumeScan();
-            },
-      onHistory: item == null
-          ? null
-          : () {
-              final id = item['id']?.toString() ?? '';
-              closeSheet();
-              if (id.isNotEmpty) {
-                context.push('/catalog/item/$id/purchase-history');
-              }
-            },
-      onPrint: item == null || !canPrint
-          ? null
-          : () {
-              final id = item['id']?.toString() ?? '';
-              closeSheet();
-              if (id.isNotEmpty) {
-                context.push('/barcode/print/$id');
-              }
-            },
-      onCreateItem: !canEdit
-          ? null
-          : () {
-              closeSheet();
-              context.push(
-                '/catalog/quick-add-from-scan?barcode=${Uri.encodeComponent(code)}',
-              );
-            },
-      onAssign: !canEdit
-          ? null
-          : () {
-              closeSheet();
-              unawaited(_assignBarcodeToExisting(code));
-            },
-      onRetry: err == null
-          ? null
-          : () {
-              closeSheet();
-              unawaited(_lookupAndNavigate(code));
-            },
-      onDismiss: closeSheet,
+  void _showRejectIfAny() {
+    final msg = _scan.lastRejectMessage;
+    if (msg == null || !mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        action: SnackBarAction(
+          label: 'Manual',
+          onPressed: () => _scan.manualFocus.requestFocus(),
+        ),
+      ),
     );
+    _scan.clearRejectMessage();
   }
 
-  Future<void> _presentResultUi({required bool desktop}) async {
+  Future<void> _runLookup(String raw) async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final bid = session.primaryBusiness.id;
+    _scan.bindBusinessId(bid);
+    await _scan.lookup(raw, businessId: bid);
     if (!mounted) return;
-    if (desktop) {
-      _resultUiOpen = false;
-      if (mounted) setState(() {});
+    final snap = _scan.session.current;
+    if (snap == null) return;
+
+    final item = snap.item;
+    final id = item?['id']?.toString();
+    final name = item?['name']?.toString() ?? snap.code;
+    if (snap.outcome == BarcodeScanOutcome.found &&
+        item != null &&
+        id != null &&
+        id.isNotEmpty) {
+      if (await _actions.handleReturnQuery(item: item, id: id, name: name)) {
+        return;
+      }
+    }
+
+    if (MediaQuery.sizeOf(context).width >= kDesktopMin) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _resultActionFocus.requestFocus();
       });
       return;
     }
-    _resultUiOpen = true;
-    await showHexaBottomSheet<void>(
-      context: context,
-      compact: true,
-      padding: EdgeInsets.zero,
-      child: _buildResultPanelForSnapshot(
-        dense: true,
-        onSheetPop: () => _resultUiOpen = false,
-      ),
-    );
-    _resultUiOpen = false;
-    await _dismissResultUi();
+
+    if (snap.phase == BarcodeScanPhase.result ||
+        snap.phase == BarcodeScanPhase.error) {
+      await showBarcodeMobileResultSheet(
+        context: context,
+        scan: _scan,
+        panel: _buildPanel(dense: true),
+      );
+      await _camera.ensureRunning();
+    }
   }
 
-  Future<void> _assignBarcodeToExisting(String code) async {
+  BarcodeScanResultPanel _buildPanel({required bool dense}) {
     final session = ref.read(sessionProvider);
-    if (session == null || !mounted) return;
-    final catalog = ref.read(catalogItemsListProvider).valueOrNull ?? [];
-    if (catalog.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Load catalog first, then try again')),
-      );
-      await _resumeScan();
-      return;
-    }
-    final picked = await showSearchPickerSheet<String>(
-      context: context,
-      title: 'Assign barcode $code',
-      rows: [
-        for (final row in catalog)
-          SearchPickerRow<String>(
-            value: row['id']?.toString() ?? '',
-            title: row['name']?.toString() ?? '—',
-            subtitle: row['item_code']?.toString(),
-          ),
-      ],
-    );
-    if (picked == null || picked.isEmpty || !mounted) {
-      await _resumeScan();
-      return;
-    }
-    try {
-      await assignBarcodeToItem(
-        api: ref.read(hexaApiProvider),
-        businessId: session.primaryBusiness.id,
-        itemId: picked,
-        barcode: code,
-      );
-      BarcodeLookupCache.invalidate(session.primaryBusiness.id, code);
-      ref.invalidate(catalogItemsListProvider);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Barcode $code assigned')),
-      );
-      context.push('/catalog/item/$picked?source=scan');
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(barcodeMessageForUser(e,
-                ctx: BarcodeOperationContext.scanner))),
-      );
-      await _resumeScan();
-    }
-  }
-
-  Future<void> _showFoundActions(
-    Map<String, dynamic> row,
-    String id,
-    String name,
-  ) async {
-    if (!mounted) return;
-    final returnTo = GoRouterState.of(context).uri.queryParameters['return'];
-    if (returnTo == 'search') {
-      if (mounted) context.pop(Map<String, dynamic>.from(row));
-      return;
-    }
-    final desktop = MediaQuery.sizeOf(context).width >= kDesktopMin;
-    await _presentResultUi(desktop: desktop);
-  }
-
-  Future<void> _showNotFoundSheet(String code) async {
-    if (!mounted) return;
-    final desktop = MediaQuery.sizeOf(context).width >= kDesktopMin;
-    await _presentResultUi(desktop: desktop);
-  }
-
-  Future<void> _lookupAndNavigate(String raw) async {
-    final code = raw.trim();
-    if (code.isEmpty) return;
-    if (_scanSession.isLookingUp) return;
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
-
-    final gen = ++_scanGeneration;
-    final scanId = _scanSession.beginLookup(code);
-    _setBusy(true);
-    if (mounted) setState(() => _lookupLabel = code);
-
-    // Keep camera warm on all platforms (continuous scan).
-
-    final desktop = MediaQuery.sizeOf(context).width >= kDesktopMin;
-
-    try {
-      final bid = session.primaryBusiness.id;
-      var fromCache = true;
-      var row = BarcodeLookupCache.get(bid, code);
-      if (row == null) {
-        fromCache = false;
-        row = await ref
-            .read(hexaApiProvider)
-            .barcodeStockLookup(
-              businessId: bid,
-              code: code,
-            )
-            .timeout(const Duration(seconds: 6));
-        BarcodeLookupCache.put(bid, code, row);
-      }
-      if (_scanSession.isStale(scanId)) return;
-
-      final id = row['id']?.toString();
-      final name = row['name']?.toString() ?? code;
-      if (id == null || id.isEmpty) {
-        _ackLookup(success: false);
-        _scanSession.completeNotFound(scanId);
-        if (mounted) setState(() {});
-        await _showNotFoundSheet(code);
-        return;
-      }
-      _ackLookup(success: true);
-      _scanSession.completeFound(
-        scanId,
-        item: row,
-        fromCache: fromCache,
-      );
-      await _pushRecent(
-        BarcodeRecentScan(id: id, name: name, code: code),
-      );
-      if (!mounted) return;
-      final returnTo = GoRouterState.of(context).uri.queryParameters['return'];
-      if (returnTo == 'stock') {
-        final saved = await openQuickStockWithFreshItem(
-          context: context,
-          ref: ref,
-          itemId: id,
-          itemName: name,
-          fallbackRow: Map<String, dynamic>.from(row),
-          skipFreshFetch: true,
-        );
-        if (saved && mounted) {
-          ref.invalidate(stockListProvider);
-          ref.invalidate(stockAuditPeriodProvider);
-          if (id.isNotEmpty) {
-            ref.invalidate(catalogItemDetailProvider(id));
-            ref.invalidate(stockItemIntelligenceProvider(id));
-          }
-          await _loadRecent();
-          showStockUndoSnackBar(
-            context: context,
-            ref: ref,
-            itemId: id,
-            itemName: name,
-          );
+    final canEdit = session != null && !sessionIsStockReadOnly(session);
+    final canPurchase = session != null &&
+        (sessionCanPurchaseCreate(session) || sessionCanPurchaseEdit(session));
+    final canPrint = session != null && sessionCanBarcodePrint(session);
+    final a = _actions;
+    return barcodeResultPanelFromScan(
+      scan: _scan,
+      canStockEdit: canEdit,
+      canAddToPurchase: canPurchase,
+      canPrint: canPrint,
+      dense: dense,
+      onAddToPurchase: a.addPurchase,
+      onEdit: a.edit,
+      onStock: a.stock,
+      onHistory: a.history,
+      onPrint: a.printLabel,
+      onCreateItem: canEdit ? a.createItem : null,
+      onAssign: canEdit ? a.assign : null,
+      onRetry: a.retry,
+      onDismiss: () {
+        if (context.mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
         }
-        if (mounted) context.pop();
-        return;
-      }
-      if (mounted) setState(() {});
-      await _showFoundActions(row, id, name);
-    } on TimeoutException {
-      if (_scanSession.isStale(scanId)) return;
-      _ackLookup(success: false);
-      _scanSession.completeError(
-        scanId,
-        message: "Couldn't reach server. Retry.",
-      );
-      if (!mounted) return;
-      if (desktop) {
-        setState(() {});
-      } else {
-        ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("Couldn't reach server. Retry."),
-            action: SnackBarAction(
-              label: 'Retry',
-              onPressed: () => _lookupAndNavigate(raw),
-            ),
-          ),
-        );
-        await _resumeScan(generation: gen);
-      }
-    } on DioException catch (e) {
-      if (_scanSession.isStale(scanId)) return;
-      if (!mounted) return;
-      if (e.response?.statusCode == 404) {
-        _ackLookup(success: false);
-        _scanSession.completeNotFound(scanId);
-        if (mounted) setState(() {});
-        await _showNotFoundSheet(code);
-        return;
-      }
-      _ackLookup(success: false);
-      final msg = barcodeMessageForUser(
-        e,
-        ctx: BarcodeOperationContext.scanner,
-      );
-      _scanSession.completeError(scanId, message: msg);
-      if (desktop) {
-        if (mounted) setState(() {});
-      } else {
-        ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg)),
-        );
-        await _resumeScan(generation: gen);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _lookupLabel = null);
-      }
-      // Camera stays warm; clear looking-up busy. Result sheet/desktop pane owns dismiss.
-      if (gen == _scanGeneration && mounted) {
-        _setBusy(false);
-      }
-    }
-  }
-
-  void _onDetect(BarcodeCapture cap) {
-    if (!_acceptCameraDetect) return;
-    if (!mounted) return;
-
-    // On iOS, cap.barcodes can be empty even when detection fires — filter early
-    final barcodes = cap.barcodes
-        .where((b) => b.rawValue != null && b.rawValue!.trim().isNotEmpty)
-        .toList();
-
-    if (barcodes.isEmpty) return;
-
-    // Prefer QR codes over linear barcodes (QR is more reliable on iOS)
-    final preferred = barcodes.firstWhere(
-      (b) => b.format == BarcodeFormat.qrCode,
-      orElse: () => barcodes.first,
+      },
     );
-
-    final v = preferred.rawValue?.trim();
-    if (v == null || v.isEmpty) return;
-    if (!_debouncePass(v)) return;
-    _pulseReticle();
-    _hadDetectThisVisit = true;
-    _safariNoDetectTimer?.cancel();
-    unawaited(_lookupAndNavigate(v));
-  }
-
-  Future<void> _toggleTorch() async {
-    if (_camera == null) return;
-    try {
-      await _camera!.toggleTorch();
-      if (!mounted) return;
-      setState(() => _torch = !_torch);
-    } catch (e, st) {
-      developer.log('Error toggling torch', error: e, stackTrace: st);
-    }
-  }
-
-  Future<void> _startAuditSession() async {
-    final session = ref.read(sessionProvider);
-    if (session == null) return;
-    try {
-      final existing = await ref.read(hexaApiProvider).getActiveStockAudit(
-            businessId: session.primaryBusiness.id,
-          );
-      if (existing != null && existing['id'] != null) {
-        if (!mounted) return;
-        context.push('/barcode/audit-session');
-        return;
-      }
-      await ref.read(hexaApiProvider).createStockAudit(
-            businessId: session.primaryBusiness.id,
-            notes: 'Mobile scan session',
-          );
-      ref.invalidate(activeStockAuditProvider);
-      if (!mounted) return;
-      context.push('/barcode/audit-session');
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(barcodeMessageForUser(e,
-                ctx: BarcodeOperationContext.scanner))),
-      );
-    }
-  }
-
-  void _goBack(BuildContext context) {
-    final p = GoRouterState.of(context).uri.path;
-    if (p.startsWith('/staff')) {
-      context.go('/staff/home');
-    } else {
-      context.popOrGo('/catalog');
-    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (kIsWeb) {
-      final cam = _camera;
-      if (state == AppLifecycleState.paused) {
-        if (cam != null) unawaited(cam.stop());
-        unawaited(_stopWebLiveScanner());
-        _scanLineCtrl.stop();
-      } else if (state == AppLifecycleState.resumed) {
-        unawaited(_initCamera());
-        if (!_busy) _scanLineCtrl.repeat(reverse: true);
-      }
-      return;
-    }
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.hidden) {
-      unawaited(_disposeNativeCamera());
-      unawaited(_stopWebLiveScanner());
-      _scanLineCtrl.stop();
-    } else if (state == AppLifecycleState.resumed) {
-      unawaited(_initCamera());
-      if (!_busy) {
-        _scanLineCtrl.repeat(reverse: true);
-      }
-    }
+    if (state == AppLifecycleState.resumed) _camera.onAppResumed();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    if (BarcodeCameraSession.mobile == _camera) {
-      BarcodeCameraSession.mobile = null;
-    }
-    _safariNoDetectTimer?.cancel();
-    _manualSearchDebounce?.cancel();
-    _scanLineCtrl.dispose();
-    _manualCtrl.removeListener(_onManualChanged);
-    _manualCtrl.dispose();
-    _manualFocus.removeListener(_onManualFocusChange);
-    _manualFocus.dispose();
     _resultActionFocus.dispose();
-    if (kIsWeb) {
-      _webLiveScanner = null;
-      _camera = null;
-    } else {
-      unawaited(_stopWebLiveScanner());
-      unawaited(_camera?.stop());
-      _camera = null;
-    }
+    _scan.manualCtrl.removeListener(_scan.onManualChanged);
+    _scan.abandonInFlight();
+    _camera.dispose();
+    _scan.dispose();
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final size = MediaQuery.sizeOf(context);
-    final landscape = size.width > size.height;
-    final desktopSplit = size.width >= kDesktopMin;
-    final cameraH = desktopSplit
-        ? double.infinity
-        : (size.height * (landscape ? 0.40 : 0.48))
-            .clamp(landscape ? 180.0 : 260.0, landscape ? 280.0 : 420.0)
-            .toDouble();
-    final pendingSync = ref.watch(stockOfflinePendingCountProvider);
-    final manualMatches = _manualMatches;
-    final safariUpload = kIsWeb && preferUploadBarcodeOnWeb;
-    final showDesktopResult = desktopSplit &&
-        (_scanSession.phase == BarcodeScanPhase.result ||
-            _scanSession.phase == BarcodeScanPhase.error ||
-            _scanSession.phase == BarcodeScanPhase.lookingUp ||
-            _scanSession.phase == BarcodeScanPhase.action);
-
-    KeyEventResult onDesktopKey(FocusNode node, KeyEvent event) {
-      if (!desktopSplit || event is! KeyDownEvent) {
-        return KeyEventResult.ignored;
+  Future<void> _scanFromImage() async {
+    if (_scan.lookingUp) return;
+    try {
+      final file = await ImagePicker().pickImage(source: ImageSource.gallery);
+      if (file == null || !mounted) return;
+      var code = await _camera.analyzeImagePath(file.path);
+      if ((code == null || code.isEmpty) && kIsWeb) {
+        code = await decodeBarcodeFromImageBytes(await file.readAsBytes());
       }
-      if (event.logicalKey == LogicalKeyboardKey.escape) {
-        unawaited(_dismissResultUi());
-        return KeyEventResult.handled;
+      if (code != null &&
+          code.isNotEmpty &&
+          _scan.acceptDecode(code)) {
+        _scan.onDecoded(code);
+        await _runLookup(code);
+      } else if (mounted) {
+        final msg = barcodeMessageForUser(
+          barcodePhotoUnreadableError(),
+          ctx: BarcodeOperationContext.scanner,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            action: SnackBarAction(
+              label: 'Manual',
+              onPressed: () => _scan.manualFocus.requestFocus(),
+            ),
+          ),
+        );
       }
-      if (event.logicalKey == LogicalKeyboardKey.enter ||
-          event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-        if (_manualFocus.hasFocus || _manualCtrl.text.trim().isNotEmpty) {
-          unawaited(_lookupAndNavigate(_manualCtrl.text));
-          return KeyEventResult.handled;
-        }
+    } catch (e, st) {
+      developer.log('Error in scanFromImage', error: e, stackTrace: st);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              barcodeMessageForUser(
+                e,
+                ctx: BarcodeOperationContext.scanner,
+              ),
+            ),
+          ),
+        );
       }
-      if (event.logicalKey == LogicalKeyboardKey.tab &&
-          showDesktopResult &&
-          !_resultActionFocus.hasFocus) {
-        _resultActionFocus.requestFocus();
-        return KeyEventResult.handled;
-      }
-      return KeyEventResult.ignored;
     }
-
-    return Focus(
-      autofocus: desktopSplit,
-      onKeyEvent: onDesktopKey,
-      child: Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => _goBack(context),
-        ),
-        title: const Text('Scan barcode'),
-        actions: [
-          PopupMenuButton<String>(
-            tooltip: 'More',
-            onSelected: (v) {
-              switch (v) {
-                case 'history':
-                  context.push('/barcode/scan-history');
-                case 'manual':
-                  _manualFocus.requestFocus();
-                case 'torch':
-                  unawaited(_toggleTorch());
-                case 'audit':
-                  if (!_busy) unawaited(_startAuditSession());
-              }
-            },
-            itemBuilder: (ctx) => [
-              const PopupMenuItem(
-                value: 'history',
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.history_rounded, size: 20),
-                  title: Text('Scan history'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'manual',
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.keyboard_rounded, size: 20),
-                  title: Text('Manual entry'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              if (!kIsWeb)
-                const PopupMenuItem(
-                  value: 'torch',
-                  child: ListTile(
-                    dense: true,
-                    leading: Icon(Icons.flashlight_on_rounded, size: 20),
-                    title: Text('Torch'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-              const PopupMenuItem(
-                value: 'audit',
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.fact_check_outlined, size: 20),
-                  title: Text('Start audit'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-      body: desktopSplit
-          ? LayoutBuilder(
-              builder: (context, constraints) {
-                return SizedBox(
-                  height: constraints.maxHeight,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        flex: 46,
-                        child: SizedBox(
-                          height: constraints.maxHeight,
-                          child: SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                ..._scanTopSections(
-                                  context,
-                                  theme: theme,
-                                  size: size,
-                                  cameraH: math.min(
-                                    360.0,
-                                    constraints.maxHeight * 0.45,
-                                  ),
-                                  safariUpload: safariUpload,
-                                  pendingSync: pendingSync,
-                                ),
-                                _scanManualSection(
-                                  context,
-                                  theme: theme,
-                                  manualMatches: manualMatches,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const VerticalDivider(width: 1),
-                      Expanded(
-                        flex: 54,
-                        child: SizedBox(
-                          height: constraints.maxHeight,
-                          child: Focus(
-                            focusNode: _resultActionFocus,
-                            child: showDesktopResult
-                                ? SingleChildScrollView(
-                                    child: _buildResultPanelForSnapshot(
-                                      dense: false,
-                                    ),
-                                  )
-                                : Center(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(24),
-                                      child: Text(
-                                        'Scan or search an item.\nResult stays here for the next action.',
-                                        textAlign: TextAlign.center,
-                                        style: theme.textTheme.bodyLarge
-                                            ?.copyWith(
-                                          color: HexaColors.textBody,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            )
-          : Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ..._scanTopSections(
-            context,
-            theme: theme,
-            size: size,
-            cameraH: cameraH,
-            safariUpload: safariUpload,
-            pendingSync: pendingSync,
-          ),
-          _scanManualSection(
-            context,
-            theme: theme,
-            manualMatches: manualMatches,
-            expanded: true,
-          ),
-        ],
-      ),
-    ),
-    );
   }
 
-  List<Widget> _scanTopSections(
-    BuildContext context, {
-    required ThemeData theme,
-    required Size size,
-    required double cameraH,
-    required bool safariUpload,
-    required int pendingSync,
-  }) {
-    return [
-          if (safariUpload)
-            MaterialBanner(
-              content: const Text(
-                'Live camera scan needs iOS 17 or newer in Safari. '
-                'Upload a barcode photo or use manual search below.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: _busy ? null : _scanFromImage,
-                  child: const Text('Upload photo'),
-                ),
-              ],
-            ),
-          if (pendingSync > 0)
-            MaterialBanner(
-              content: Text('Pending sync: $pendingSync stock change(s)'),
-              actions: [
-                TextButton(
-                  onPressed: () =>
-                      ref.read(stockOfflineSyncProvider.notifier).syncNow(),
-                  child: const Text('Sync now'),
-                ),
-              ],
-            ),
-          if (_webCameraAwaitingGesture)
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Icon(Icons.touch_app_outlined,
-                      size: 48, color: theme.colorScheme.primary),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Tap to start camera',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Browsers require a tap before opening the camera.',
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: _busy ? null : () => unawaited(_startCameraFromUserGesture()),
-                    icon: const Icon(Icons.videocam_rounded),
-                    label: const Text('Start camera'),
-                  ),
-                ],
-              ),
-            )
-          else if (_cameraDenied)
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Icon(Icons.videocam_off_outlined,
-                      size: 48, color: theme.colorScheme.error),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Camera access needed',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _cameraDeniedMessage ??
-                        'Allow camera access to scan barcodes.',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 16),
-                  if (kIsWeb) ...[
-                    Text(
-                      'Safari (installed app)',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      '1. Open iPhone Settings\n'
-                      '2. Scroll to Safari → Advanced → Website Data (or find this app on Home Screen)\n'
-                      '3. Open Website Settings for Harisree\n'
-                      '4. Set Camera to Allow\n'
-                      '5. Return here and tap Try again',
-                    ),
-                    const SizedBox(height: 12),
-                  ] else if (_cameraPermanent) ...[
-                    Text(
-                      'iPhone / Android',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      '1. Open device Settings\n'
-                      '2. Find Harisree / Purchase Assistant\n'
-                      '3. Enable Camera\n'
-                      '4. Return and tap Try again',
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton.icon(
-                      onPressed: openAppSettings,
-                      icon: const Icon(Icons.settings_outlined),
-                      label: const Text('Open Settings'),
-                    ),
-                    const SizedBox(height: 8),
-                  ] else ...[
-                    FilledButton(
-                      onPressed: () {
-                        setState(() {
-                          _cameraDenied = false;
-                          _cameraPermanent = false;
-                          _cameraDeniedMessage = null;
-                        });
-                        unawaited(_retryCameraAfterDenial());
-                      },
-                      child: const Text('Allow camera'),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                  OutlinedButton.icon(
-                    onPressed: _busy
-                        ? null
-                        : () {
-                            setState(() {
-                              _cameraDenied = false;
-                              _cameraPermanent = false;
-                              _cameraDeniedMessage = null;
-                            });
-                            unawaited(_retryCameraAfterDenial());
-                          },
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('Try again'),
-                  ),
-                  const SizedBox(height: 20),
-                  const Divider(),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Without camera',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _FallbackAction(
-                    icon: Icons.photo_outlined,
-                    label: 'Upload barcode photo',
-                    onPressed: _busy ? null : _scanFromImage,
-                  ),
-                  _FallbackAction(
-                    icon: Icons.keyboard,
-                    label: 'Search by name or code',
-                    onPressed: () => _manualFocus.requestFocus(),
-                  ),
-                ],
-              ),
-            )
-          else
-            SizedBox(
-              height: cameraH,
-              child: ColoredBox(
-                color: HexaColors.slate100,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: _useWebDetectorPreview && _webLiveScanner != null
-                          ? _webLiveScanner!.buildPreview()
-                          : _camera != null
-                              ? MobileScanner(
-                                  controller: _camera!,
-                                  onDetect: _onDetect,
-                                )
-                              : Container(
-                              color: Colors.black87,
-                              child: const Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                  SizedBox(height: 12),
-                                  Text(
-                                    'Starting camera…',
-                                    style: TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                    ),
-                    Center(
-                      child: CustomPaint(
-                        painter: ScannerReticlePainter(
-                          color: HexaColors.brandPrimary,
-                          confirmed: _scanConfirmed,
-                        ),
-                        child: Container(
-                          width: math.min(320, size.width - 16),
-                          height: 120,
-                          alignment: Alignment.center,
-                          child: Text(
-                            'Align barcode here',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: HexaColors.brandPrimary,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        return AnimatedBuilder(
-                          animation: _scanLineCtrl,
-                          builder: (context, _) {
-                            final y = 140 * _scanLineCtrl.value;
-                            return Align(
-                              alignment: Alignment.center,
-                              child: Transform.translate(
-                                offset: Offset(0, y - 70),
-                                child: Container(
-                                  width: math.min(
-                                    320,
-                                    MediaQuery.sizeOf(context).width - 16,
-                                  ),
-                                  height: 2,
-                                  color: Colors.redAccent,
-                                ),
-                              ),
-                            );
-                          },
-                        );
-                      },
-                    ),
-                    if (_busy)
-                      Container(
-                        color: Colors.black38,
-                        alignment: Alignment.center,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(
-                              width: 28,
-                              height: 28,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            ),
-                            if (_lookupLabel != null) ...[
-                              const SizedBox(height: 10),
-                              Text(
-                                'Looking up $_lookupLabel',
-                                style: theme.textTheme.labelLarge?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    if (_safariUploadNudgeShown && !_hadDetectThisVisit)
-                      Positioned(
-                        left: 12,
-                        right: 12,
-                        bottom: 12,
-                        child: Material(
-                          elevation: 2,
-                          borderRadius: BorderRadius.circular(12),
-                          color: Colors.orange.shade50,
-                          child: ListTile(
-                            leading: const Icon(
-                              Icons.camera_alt_outlined,
-                              color: Colors.orange,
-                            ),
-                            title: const Text(
-                              'Camera scanning not supported on this browser',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            subtitle: const Text(
-                              'Upload a photo of the barcode, or type the item name below',
-                            ),
-                            trailing: ElevatedButton(
-                              onPressed: _busy
-                                  ? null
-                                  : () => unawaited(_scanFromImage()),
-                              child: const Text('Upload'),
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            child: Text(
-              'Scan item barcode or enter code manually.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          if (_recent.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Text(
-                'Recent scans',
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w800),
-              ),
-            ),
-            SizedBox(
-              height: 44,
-              child: ListView.separated(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                scrollDirection: Axis.horizontal,
-                itemCount: _recent.length.clamp(0, 8),
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (ctx, i) {
-                  final r = _recent[i];
-                  final label = r.name.length > 15
-                      ? '${r.name.substring(0, 15)}…'
-                      : r.name;
-                  return ActionChip(
-                    label: Text(label, maxLines: 1),
-                    onPressed: _busy
-                        ? null
-                        : () {
-                            if (r.id.isNotEmpty) {
-                              context.push('/catalog/item/${r.id}?source=scan');
-                            } else {
-                              _manualCtrl.text = r.code;
-                              unawaited(_lookupAndNavigate(r.code));
-                            }
-                          },
-                  );
-                },
-              ),
-            ),
-          ],
-    ];
+  void _dismissResult() {
+    _scan.readyForNext();
+    unawaited(_camera.ensureRunning());
   }
-
-  Widget _scanManualSection(
-    BuildContext context, {
-    required ThemeData theme,
-    required List<Map<String, dynamic>> manualMatches,
-    bool expanded = false,
-  }) {
-    final child = Padding(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        12,
-        16,
-        16 + MediaQuery.viewPaddingOf(context).bottom,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  focusNode: _manualFocus,
-                  controller: _manualCtrl,
-                  textCapitalization: TextCapitalization.characters,
-                  decoration: InputDecoration(
-                    hintText: 'Search item / barcode / item code',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    isDense: true,
-                  ),
-                  textInputAction: TextInputAction.search,
-                  onSubmitted: _lookupAndNavigate,
-                ),
-              ),
-              const SizedBox(width: 10),
-              FilledButton(
-                onPressed: _busy
-                    ? null
-                    : () => _lookupAndNavigate(_manualCtrl.text),
-                child: const Text('Search'),
-              ),
-            ],
-          ),
-          if (_manualSearching) ...[
-            const SizedBox(height: 8),
-            const LinearProgressIndicator(minHeight: 2),
-          ],
-          if (manualMatches.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            expanded
-                ? Expanded(
-                    child: ListView.separated(
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      itemCount: manualMatches.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 6),
-                      itemBuilder: (context, i) =>
-                          _manualMatchTile(context, theme, manualMatches[i]),
-                    ),
-                  )
-                : SizedBox(
-                    height: 280,
-                    child: ListView.separated(
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      itemCount: manualMatches.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 6),
-                      itemBuilder: (context, i) =>
-                          _manualMatchTile(context, theme, manualMatches[i]),
-                    ),
-                  ),
-          ],
-        ],
-      ),
-    );
-    return expanded ? Expanded(child: child) : child;
-  }
-
-  Widget _manualMatchTile(
-    BuildContext context,
-    ThemeData theme,
-    Map<String, dynamic> item,
-  ) {
-    final id = item['id']?.toString();
-    final name = item['name']?.toString() ?? 'Item';
-    final code = item['item_code']?.toString();
-    final barcode = item['barcode']?.toString();
-    return ListTile(
-      dense: true,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: theme.colorScheme.outlineVariant),
-      ),
-      title: Text(
-        name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-      ),
-      subtitle: Text(
-        [
-          if (code != null && code.isNotEmpty) code,
-          if (barcode != null && barcode.isNotEmpty) 'Barcode $barcode',
-        ].join(' · '),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: const Icon(Icons.chevron_right_rounded),
-      onTap: id == null || id.isEmpty
-          ? null
-          : () => context.push('/catalog/item/$id?source=scan'),
-    );
-  }
-}
-
-class _FallbackAction extends StatelessWidget {
-  const _FallbackAction({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: SizedBox(
-        width: double.infinity,
-        height: HexaOp.buttonHeight,
-        child: OutlinedButton.icon(
-          onPressed: onPressed,
-          icon: Icon(icon),
-          label: Text(label),
-        ),
-      ),
+    return BarcodeScanWorkspace(
+      scan: _scan,
+      camera: _camera,
+      resultActionFocus: _resultActionFocus,
+      actions: _actions,
+      onLookup: _runLookup,
+      onUploadPhoto: () => unawaited(_scanFromImage()),
+      onDismissResult: _dismissResult,
     );
   }
-}
-
-class ScannerReticlePainter extends CustomPainter {
-  ScannerReticlePainter({required this.color, this.confirmed = false});
-  final Color color;
-  final bool confirmed;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = confirmed ? HexaColors.profit : color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = confirmed ? 4.0 : 3.0;
-
-    final length = 16.0;
-    final radius = 8.0;
-
-    // Top-left
-    final pathTL = Path()
-      ..moveTo(0, length)
-      ..lineTo(0, radius)
-      ..arcToPoint(Offset(radius, 0), radius: Radius.circular(radius))
-      ..lineTo(length, 0);
-    canvas.drawPath(pathTL, paint);
-
-    // Top-right
-    final pathTR = Path()
-      ..moveTo(size.width - length, 0)
-      ..lineTo(size.width - radius, 0)
-      ..arcToPoint(Offset(size.width, radius), radius: Radius.circular(radius))
-      ..lineTo(size.width, length);
-    canvas.drawPath(pathTR, paint);
-
-    // Bottom-left
-    final pathBL = Path()
-      ..moveTo(0, size.height - length)
-      ..lineTo(0, size.height - radius)
-      ..arcToPoint(Offset(radius, size.height), radius: Radius.circular(radius))
-      ..lineTo(length, size.height);
-    canvas.drawPath(pathBL, paint);
-
-    // Bottom-right
-    final pathBR = Path()
-      ..moveTo(size.width - length, size.height)
-      ..lineTo(size.width - radius, size.height)
-      ..arcToPoint(Offset(size.width, size.height - radius), radius: Radius.circular(radius))
-      ..lineTo(size.width, size.height - length);
-    canvas.drawPath(pathBR, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant ScannerReticlePainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.confirmed != confirmed;
 }
