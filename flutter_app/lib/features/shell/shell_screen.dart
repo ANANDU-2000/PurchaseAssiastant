@@ -156,9 +156,13 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     );
 
     // Hard-capped width — never let side nav expand into [Expanded] body.
+    final labeledRail =
+        MediaQuery.sizeOf(context).width >= kDesktopMin;
+    final railWidth =
+        labeledRail ? kShellLabeledRailWidth : kShellCompactRailWidth;
     final rail = showRail
         ? SizedBox(
-            width: kShellCompactRailWidth,
+            width: railWidth,
             child: railWidget,
           )
         : const SizedBox.shrink();
@@ -213,9 +217,11 @@ class _WebOwnerSideNav extends ConsumerWidget {
         ? 0
         : ref.watch(notificationsUnreadCountProvider);
     final cs = Theme.of(context).colorScheme;
+    final showLabels = MediaQuery.sizeOf(context).width >= kDesktopMin;
     return WebCompactSideNav(
       selectedIndex: selectedIndex,
       onDestinationSelected: onDestinationSelected,
+      showLabels: showLabels,
       destinations: const [
         WebCompactSideNavItem(
           icon: Icons.grid_view_outlined,

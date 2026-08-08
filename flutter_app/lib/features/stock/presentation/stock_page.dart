@@ -64,9 +64,15 @@ bool _stockShellTabVisible(
   try {
     final shell = StatefulNavigationShell.maybeOf(context);
     if (shell != null) {
-      return staffMode
-          ? shell.currentIndex == StaffShellBranch.stock
-          : shell.currentIndex == ShellBranch.stock;
+      final idx = shell.currentIndex;
+      final onStockTab = staffMode
+          ? idx == StaffShellBranch.stock
+          : idx == ShellBranch.stock;
+      if (onStockTab) return true;
+      // Shell index can lag the route during web branch-sync races (e.g. the
+      // post-save deferred list reload). Do NOT blank /stock here — fall
+      // through to the branch provider + route path so the list stays painted
+      // and the empty off-tab payload cannot win over the real data.
     }
   } catch (_) {}
   if (staffMode) {
@@ -718,7 +724,13 @@ class _StockPageState extends ConsumerState<StockPage>
                   isStaffMode: _isStaffMode,
                   isFirstRow: i == 0,
                   isSelected: isSelected,
-                  onTap: () => unawaited(_openRowActions(row)),
+                  // Desktop (≥ kDesktopMin): select only — actions live in detail pane.
+                  // Mobile (< kDesktopMin): unchanged showStockRowActions modal.
+                  onTap: () {
+                    if (MediaQuery.sizeOf(ctx).width < kDesktopMin) {
+                      unawaited(_openRowActions(row));
+                    }
+                  },
                   onDeliveredDetail: _isStaffMode &&
                           StockRowMetrics.deliveryIndicator(row) ==
                               StockDeliveryIndicator.delivered
@@ -969,7 +981,14 @@ class _StockPageState extends ConsumerState<StockPage>
             incoming: incoming,
             page: q.page,
           );
-          if (_mergedData == merged) {
+          if (q.page == 1 &&
+              _mergedData != null &&
+              !stockListPayloadIsEmpty(_mergedData) &&
+              stockListPayloadIsEmpty(merged)) {
+            // Off-tab / branch-lag reload fabricated an empty payload — keep
+            // the healthy merged list instead of clobbering it with `total: 0`.
+            if (_loadingMore) setState(() => _loadingMore = false);
+          } else if (_mergedData == merged) {
             if (_loadingMore) setState(() => _loadingMore = false);
           } else {
             setState(() {
@@ -1003,9 +1022,17 @@ class _StockPageState extends ConsumerState<StockPage>
     final op = ref.watch(stockOperationalFiltersProvider);
     final filterCount = countWarehouseActiveFilters(listQ, op);
     final ramCache = stockListCachedDataForCurrentQuery(ref);
-    final pageOneRaw = listQ.page <= 1
+    var pageOneRaw = listQ.page <= 1
         ? (listAsync.valueOrNull ?? ramCache)
         : null;
+    if (listQ.page <= 1 &&
+        _mergedData != null &&
+        stockListPayloadIsEmpty(pageOneRaw) &&
+        !stockListPayloadIsEmpty(_mergedData)) {
+      // Off-tab / branch-lag reload fabricated `{items:[], total:0}` — do not
+      // let it blank a healthy list (post-save deferred reload race).
+      pageOneRaw = _mergedData;
+    }
     final data = listQ.page <= 1
         ? (pageOneRaw ?? _mergedData)
         : (_mergedData ?? listAsync.valueOrNull ?? ramCache);

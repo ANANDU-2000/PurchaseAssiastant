@@ -106,6 +106,7 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
     final staffRail = WebCompactSideNav(
       selectedIndex: navSelectedIndex,
       onDestinationSelected: go,
+      showLabels: width >= kDesktopMin,
       destinations: [
         const WebCompactSideNavItem(
           icon: Icons.home_outlined,
@@ -168,7 +169,9 @@ class _StaffShellScreenState extends ConsumerState<StaffShellScreen> {
               children: [
                 if (showRail)
                   SizedBox(
-                    width: kShellCompactRailWidth,
+                    width: width >= kDesktopMin
+                        ? kShellLabeledRailWidth
+                        : kShellCompactRailWidth,
                     child: staffRail,
                   ),
                 Expanded(

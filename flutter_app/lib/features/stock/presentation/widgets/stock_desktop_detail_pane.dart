@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/auth/session_notifier.dart';
+import '../../../../core/design_system/desktop_detail_chrome.dart';
+import '../../../../core/design_system/hexa_desktop_layout.dart';
 import '../../../../core/design_system/hexa_ds_tokens.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/router/post_auth_route.dart' show sessionIsStaff;
@@ -10,7 +12,9 @@ import '../../../../core/providers/stock_providers.dart';
 import '../../../../core/utils/unit_utils.dart';
 import '../quick_stock_action_sheet.dart';
 import '../stock_quick_purchase_sheet.dart';
+import 'staff_delivered_detail_sheet.dart';
 import 'stock_row_metrics.dart';
+import 'stock_update_mode_toggle.dart';
 
 /// Desktop right pane: selected item metrics + recent activity.
 class StockDesktopDetailPane extends ConsumerWidget {
@@ -60,23 +64,93 @@ class StockDesktopDetailPane extends ConsumerWidget {
     final stock = StockRowMetrics.systemQty(item!);
     final physical = StockRowMetrics.physicalQty(item!);
     final diff = StockRowMetrics.diffQty(item!);
+    final delivered = StockRowMetrics.deliveryIndicator(item!) ==
+        StockDeliveryIndicator.delivered;
     final activityAsync = id.isEmpty
         ? const AsyncValue<Map<String, dynamic>>.data({})
         : ref.watch(stockItemActivityProvider(id));
 
-    return ColoredBox(
-      color: HexaColors.panelWarm,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
+    Future<void> updatePhysical() => showQuickStockActionSheet(
+          context: context,
+          ref: ref,
+          item: item!,
+          initialMode: StockUpdateMode.physical,
+        );
+
+    Future<void> updateSystem() => showQuickStockActionSheet(
+          context: context,
+          ref: ref,
+          item: item!,
+          initialMode: StockUpdateMode.system,
+        );
+
+    Future<void> addPurchase() => showStockQuickPurchaseSheet(
+          context: context,
+          ref: ref,
+          item: item!,
+        );
+
+    void viewActivity() {
+      if (id.isEmpty) return;
+      context.push('/catalog/item/$id?tab=activity');
+    }
+
+    final more = <DesktopMoreAction>[
+      if (!isStaff)
+        DesktopMoreAction(
+          icon: Icons.memory_outlined,
+          label: 'Update system stock',
+          onSelected: () => updateSystem(),
+        ),
+      if (isStaff && delivered)
+        DesktopMoreAction(
+          icon: Icons.local_shipping_rounded,
+          label: 'Delivery details',
+          onSelected: () {
+            showStaffDeliveredDetailSheet(
+              context: context,
+              ref: ref,
+              item: item!,
+            );
+          },
+        ),
+      DesktopMoreAction(
+        icon: Icons.info_outline_rounded,
+        label: 'View item activity',
+        onSelected: viewActivity,
+      ),
+      if (!isStaff)
+        DesktopMoreAction(
+          icon: Icons.tune_outlined,
+          label: 'Set reorder',
+          onSelected: () {
+            if (id.isEmpty) return;
+            context.push('/catalog/item/$id/edit');
+          },
+        ),
+      DesktopMoreAction(
+        icon: Icons.open_in_new_rounded,
+        label: 'Full detail',
+        onSelected: () {
+          if (id.isEmpty) return;
+          context.push('/catalog/item/$id');
+        },
+      ),
+    ];
+
+    return DesktopDetailPaneScaffold(
+      header: Text(
+        name,
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+      ),
+      stats: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            name,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 12),
           _metricRow(
             'Opening',
-            opening == null ? '—' : '${formatStockQtyForUnit(unit, opening)} $unit',
+            opening == null
+                ? '—'
+                : '${formatStockQtyForUnit(unit, opening)} $unit',
           ),
           if (!isStaff)
             _metricRow(
@@ -85,106 +159,107 @@ class StockDesktopDetailPane extends ConsumerWidget {
                   ? '—'
                   : '${formatStockQtyForUnit(unit, purchased)} $unit',
             ),
-          _metricRow(
-            'Pending',
-            pending == null || pending < 0.001
-                ? '—'
-                : '${formatStockQtyForUnit(unit, pending)} $unit',
-          ),
-          _metricRow('System', '${formatStockQtyForUnit(unit, stock)} $unit'),
-          _metricRow(
-            'Physical',
-            physical == null
-                ? '—'
-                : '${formatStockQtyForUnit(unit, physical)} $unit',
-          ),
-          _metricRow(
-            'Difference',
-            StockRowMetrics.signedDiffLine(diff, unit).replaceAll('\n', ' '),
-            valueColor: StockRowMetrics.diffColor(diff),
-          ),
-          const SizedBox(height: 16),
-          Wrap(
+          const SizedBox(height: 8),
+          HexaDenseKpiGrid(
+            phoneColumns: 2,
+            desktopColumns: 2,
+            mainAxisExtent: 72,
             spacing: 8,
-            runSpacing: 8,
             children: [
-              FilledButton.tonalIcon(
-                onPressed: () => showQuickStockActionSheet(
-                  context: context,
-                  ref: ref,
-                  item: item!,
-                ),
-                icon: const Icon(Icons.fact_check_outlined, size: 18),
-                label: const Text('Verify physical'),
+              _statTile(
+                label: 'System',
+                value: '${formatStockQtyForUnit(unit, stock)} $unit',
+                accent: HexaDsColors.blue,
               ),
-              if (!isStaff)
-                FilledButton.tonalIcon(
-                  onPressed: () => showStockQuickPurchaseSheet(
-                    context: context,
-                    ref: ref,
-                    item: item!,
-                  ),
-                  icon: const Icon(Icons.add_shopping_cart_outlined, size: 18),
-                  label: const Text('New purchase'),
-                ),
-              if (!isStaff)
-                OutlinedButton.icon(
-                  onPressed: id.isEmpty
-                      ? null
-                      : () => context.push('/catalog/item/$id/edit'),
-                  icon: const Icon(Icons.tune_outlined, size: 18),
-                  label: const Text('Set reorder'),
-                ),
-              OutlinedButton(
-                onPressed:
-                    id.isEmpty ? null : () => context.push('/catalog/item/$id'),
-                child: const Text('Full detail'),
+              _statTile(
+                label: 'Physical',
+                value: physical == null
+                    ? '—'
+                    : '${formatStockQtyForUnit(unit, physical)} $unit',
+                accent: HexaColors.brandTealMid,
+              ),
+              _statTile(
+                label: 'Pending',
+                value: pending == null || pending < 0.001
+                    ? '—'
+                    : '${formatStockQtyForUnit(unit, pending)} $unit',
+                accent: HexaColors.warning,
+              ),
+              _statTile(
+                label: 'Diff',
+                value: StockRowMetrics.signedDiffLine(diff, unit)
+                    .replaceAll('\n', ' '),
+                accent: StockRowMetrics.diffColor(diff),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          Text('Recent activity', style: HexaDsType.label(12)),
-          const SizedBox(height: 8),
-          activityAsync.when(
-            loading: () => const LinearProgressIndicator(minHeight: 2),
-            error: (_, __) => const Text(
-              'Could not load activity',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
+        ],
+      ),
+      actions: DesktopActionBar(
+        primaryActions: [
+          FilledButton.tonalIcon(
+            onPressed: () => updatePhysical(),
+            icon: const Icon(Icons.fact_check_outlined, size: 18),
+            label: const Text('Verify physical'),
+          ),
+          if (!isStaff)
+            FilledButton.tonalIcon(
+              onPressed: () => addPurchase(),
+              icon: const Icon(Icons.add_shopping_cart_outlined, size: 18),
+              label: const Text('New purchase'),
             ),
-            data: (data) {
-              final events = (data['activity'] as List?) ?? [];
-              if (events.isEmpty) {
-                return const Text(
-                  'No recent activity',
-                  style: TextStyle(fontSize: 12, color: Colors.black54),
-                );
-              }
-              return Column(
-                children: [
-                  for (final e in events.take(8))
-                    if (e is Map)
-                      ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          e['title']?.toString() ??
-                              e['kind']?.toString() ??
-                              '—',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        subtitle: Text(
-                          e['actor_name']?.toString() ?? '',
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      ),
-                ],
+        ],
+        moreActions: more,
+      ),
+      bodyTitle: 'Recent activity',
+      body: activityAsync.when(
+        loading: () => const Padding(
+          padding: EdgeInsets.all(12),
+          child: LinearProgressIndicator(minHeight: 2),
+        ),
+        error: (_, __) => const Padding(
+          padding: EdgeInsets.all(12),
+          child: Text(
+            'Could not load activity',
+            style: TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+        ),
+        data: (data) {
+          final events = (data['activity'] as List?) ?? [];
+          if (events.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text(
+                'No recent activity',
+                style: TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            );
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            itemCount: events.length.clamp(0, 8),
+            itemBuilder: (context, i) {
+              final e = events[i];
+              if (e is! Map) return const SizedBox.shrink();
+              return ListTile(
+                dense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                title: Text(
+                  e['title']?.toString() ?? e['kind']?.toString() ?? '—',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  e['actor_name']?.toString() ?? '',
+                  style: const TextStyle(fontSize: 11),
+                ),
               );
             },
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -198,8 +273,7 @@ class StockDesktopDetailPane extends ConsumerWidget {
             width: 100,
             child: Text(
               label,
-              style:
-                  HexaDsType.label(12).copyWith(color: HexaColors.neutral),
+              style: HexaDsType.label(12).copyWith(color: HexaColors.neutral),
             ),
           ),
           Expanded(
@@ -213,6 +287,44 @@ class StockDesktopDetailPane extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _statTile({
+    required String label,
+    required String value,
+    required Color accent,
+  }) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: accent.withValues(alpha: 0.35)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              label,
+              style: HexaDsType.label(11).copyWith(color: accent),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: HexaColors.textOnLightSurface,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

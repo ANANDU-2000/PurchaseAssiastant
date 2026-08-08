@@ -27,12 +27,16 @@ const double kShellBottomNavMax = 600;
 /// Shell: left compact rail from tablet up.
 const double kShellRailMin = 600;
 
-/// Shell: extended rail with labels (unused — compact rail only on web).
+/// Shell: extended rail with labels (legacy; labeled rail now at [kDesktopMin]).
 const double kShellRailExtendedMin = 900;
 
 /// Compact side-nav width (icons only). Keep ≥72 — Material [NavigationRail]
 /// defaults to minWidth 72; narrower caps caused Flutter web shell blanks.
 const double kShellCompactRailWidth = 72;
+
+/// Labeled side-nav width at ≥ [kDesktopMin]. Hard-capped — never grow into
+/// [Expanded] body (unconstrained rail width blanks Flutter web shell).
+const double kShellLabeledRailWidth = 200;
 
 /// Extended rail / branded sidebar width target on desktop.
 const double kDesktopSidebarWidth = 240;
