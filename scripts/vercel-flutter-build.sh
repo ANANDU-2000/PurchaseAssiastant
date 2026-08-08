@@ -51,7 +51,14 @@ echo "Clean + build web (-O2 lowers dart2js memory vs default -O4)..."
 flutter clean
 flutter pub get
 
-API_URL="${API_BASE_URL:-https://my-purchases-api.onrender.com}"
+API_URL="${API_BASE_URL:-https://api.harisreeagency.online}"
+# Vercel Dashboard env values often include a trailing CR/LF from paste —
+# that splits the flutter CLI args and yields: Target file "--dart-define=..." not found.
+API_URL="$(printf '%s' "$API_URL" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+if [ -z "$API_URL" ]; then
+  echo "ERROR: API_BASE_URL is empty after trim."
+  exit 1
+fi
 BUILD_SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
 # Default prod: no source maps (smaller bundle). Set ENABLE_SOURCE_MAPS=1 on a Vercel preview only.
