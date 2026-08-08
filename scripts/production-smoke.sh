@@ -3,7 +3,7 @@
 set -euo pipefail
 
 WEB_URL="${WEB_URL:-https://purchase-assiastant.vercel.app}"
-API_URL="${API_URL:-https://my-purchases-api.onrender.com}"
+API_URL="${API_URL:-https://api.harisreeagency.online}"
 
 fail=0
 
