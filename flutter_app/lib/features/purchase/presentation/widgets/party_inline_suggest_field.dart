@@ -529,7 +529,8 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     return EdgeInsets.only(bottom: kb + 240 + safe);
   }
 
-  /// Pointer-down plus tap-up can both fire `_pick`; blocks the second commit.
+  /// Defense-in-depth only: after fixing dual Semantics+GestureDetector taps,
+  /// a second commit for the same item within 400ms is ignored.
   bool _consumeIfDuplicatePick(InlineSearchItem it) {
     final fp = '${it.id}\u241e${it.label}';
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -611,16 +612,16 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
   Widget _buildSuggestionTile(ColorScheme cs, InlineSearchItem it) {
     void commit() => _pick(it, keepFocus: false);
 
+    // Single gesture path: Semantics for a11y label only — do not set Semantics.onTap
+    // or web/assistive stacks double-fire with GestureDetector/InkWell.
     return Semantics(
       button: true,
       label: it.label,
-      onTap: commit,
       child: Material(
         type: MaterialType.transparency,
         color: cs.surface,
-        child: GestureDetector(
+        child: InkWell(
           onTap: commit,
-          behavior: HitTestBehavior.opaque,
           child: ConstrainedBox(
             constraints: const BoxConstraints(
               minHeight: 44,
@@ -713,19 +714,18 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
     }
 
     final label = widget.addRowLabel ?? 'Add';
+    // Single gesture path — Semantics label only (no Semantics.onTap).
     return Semantics(
       button: true,
       label: label,
-      onTap: invoke,
       child: Material(
         type: MaterialType.transparency,
         color: cs.surface,
-        child: GestureDetector(
+        child: InkWell(
           onTap: invoke,
-          behavior: HitTestBehavior.opaque,
           child: ConstrainedBox(
             constraints:
-                const BoxConstraints(minHeight: 48, minWidth: double.infinity),
+                const BoxConstraints(minHeight: 44, minWidth: double.infinity),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
               child: Align(

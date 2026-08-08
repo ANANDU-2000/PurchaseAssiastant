@@ -4,7 +4,7 @@ Roadmap: [PLAN.md](PLAN.md). Rules: [AGENTS.md](AGENTS.md). Cleanup contract: [d
 
 ---
 
-## Step A — Docs/README cleanup (active → commit)
+## Step A — Docs/README cleanup (done)
 
 | Item | Status | Notes |
 |------|--------|-------|
@@ -13,14 +13,14 @@ Roadmap: [PLAN.md](PLAN.md). Rules: [AGENTS.md](AGENTS.md). Cleanup contract: [d
 | Wizard v1 check | done | Only `PurchaseEntryWizardV2`; no delete |
 | Trim folder READMEs | done | flutter_app + backend/scripts |
 | Delete `scripts/split_hexa_api.py` | done | One-shot splitter |
-| Validate + commit Step A only | done | analyze 0 errors; pytest 295 pass / 12 fail pre-existing |
+| Validate + commit Step A only | done | `6e1a455`; analyze 0 errors |
 
-## Step B — Suggestion double-select (next)
+## Step B — Suggestion double-select (done)
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Fix `PartyInlineSuggestField` dual tap handlers | pending | All pages using shared field |
-| Regression test (onSelected once) | pending | Then stop |
+| Fix `PartyInlineSuggestField` dual tap handlers | done | Semantics label only; InkWell single path |
+| Regression test (onSelected once) | done | `party_inline_suggest_field_on_selected_once_test.dart` |
 
 ---
 
