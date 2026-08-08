@@ -35,6 +35,7 @@ from app.routers import (
     health,
     me,
     media,
+    owner_ops,
     public_items,
     realtime,
     reports_trade,
@@ -255,6 +256,24 @@ async def lifespan(app: FastAPI):
             except Exception as e:  # noqa: BLE001
                 logger.warning("db_keepalive failed: %s", e, exc_info=True)
 
+        async def _nightly_backup_tick() -> None:
+            """02:00 IST — JSON backup per business (staggered vs due_soon / evening)."""
+            from app.models import Business
+            from app.services.backup_ops import apply_retention, write_scheduled_backup
+            from sqlalchemy import select as sa_select
+
+            try:
+                async with async_session_factory() as sess:
+                    ids = list(
+                        (await sess.execute(sa_select(Business.id))).scalars().all()
+                    )
+                    for bid in ids:
+                        await write_scheduled_backup(sess, bid, run_type="scheduled")
+                        await apply_retention(sess, bid)
+                    logger.info("nightly_backup: processed %s businesses", len(ids))
+            except Exception as e:  # noqa: BLE001
+                logger.warning("nightly_backup failed: %s", e, exc_info=True)
+
         scheduler.add_job(
             _due_soon_tick, "cron", hour=8, minute=0, id="due_soon_scan", replace_existing=True
         )
@@ -273,8 +292,16 @@ async def lifespan(app: FastAPI):
             id="db_keepalive",
             replace_existing=True,
         )
+        scheduler.add_job(
+            _nightly_backup_tick,
+            "cron",
+            hour=2,
+            minute=0,
+            id="nightly_backup",
+            replace_existing=True,
+        )
         scheduler.start()
-        logger.info("APScheduler: due_soon and db_keepalive jobs registered")
+        logger.info("APScheduler: due_soon, evening, keepalive, nightly_backup registered")
     except Exception as e:  # noqa: BLE001
         logger.warning("APScheduler not started: %s", e)
 
@@ -675,6 +702,9 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(exports.router)
+app.include_router(owner_ops.credentials_router)
+app.include_router(owner_ops.staff_router)
+app.include_router(owner_ops.owner_router)
 app.include_router(trade_purchases.router)
 app.include_router(damage_reports.router)
 app.include_router(reports_trade.router)

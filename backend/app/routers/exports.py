@@ -436,3 +436,103 @@ async def get_backup_export_json(
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
+
+
+class RestoreDryRunBody(BaseModel):
+    payload: dict[str, Any]
+
+
+@router.get("/backup/logs")
+async def list_backup_logs(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_permission("export_access"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.owner_ops import BackupLog
+
+    del _m
+    rows = (
+        await db.execute(
+            select(BackupLog)
+            .where(BackupLog.business_id == business_id)
+            .order_by(BackupLog.created_at.desc())
+            .limit(50)
+        )
+    ).scalars().all()
+    return {
+        "items": [
+            {
+                "id": str(r.id),
+                "run_type": r.run_type,
+                "status": r.status,
+                "file_path": r.file_path,
+                "size_bytes": r.size_bytes,
+                "row_counts": r.row_counts,
+                "duration_ms": r.duration_ms,
+                "error_message": r.error_message,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.post("/backup/run")
+async def run_backup_now(
+    business_id: uuid.UUID,
+    _m: Annotated[Membership, Depends(require_permission("export_access"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.services.backup_ops import apply_retention, write_scheduled_backup
+
+    del _m
+    log = await write_scheduled_backup(db, business_id, run_type="manual")
+    await apply_retention(db, business_id)
+    return {
+        "id": str(log.id),
+        "status": log.status,
+        "file_path": log.file_path,
+        "size_bytes": log.size_bytes,
+        "row_counts": log.row_counts,
+        "error_message": log.error_message,
+    }
+
+
+@router.post("/restore/dry-run")
+async def restore_dry_run(
+    business_id: uuid.UUID,
+    body: RestoreDryRunBody,
+    m: Annotated[Membership, Depends(require_permission("export_access"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Owner restore dry-run — validates payload; never writes."""
+    from app.services.backup_ops import dry_run_restore
+
+    if m.role != "owner":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Owner role required")
+    payload_biz = (body.payload or {}).get("business_id")
+    if payload_biz and payload_biz != str(business_id):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Backup business_id does not match path",
+        )
+    return dry_run_restore(body.payload)
+
+
+@router.post("/restore/commit")
+async def restore_commit(
+    business_id: uuid.UUID,
+    body: RestoreDryRunBody,
+    m: Annotated[Membership, Depends(require_permission("export_access"))],
+):
+    """Commit restore intentionally blocked until production import is approved."""
+    del business_id, body
+    if m.role != "owner":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Owner role required")
+    raise HTTPException(
+        status.HTTP_501_NOT_IMPLEMENTED,
+        detail=(
+            "Restore commit is intentionally disabled until dry-run + "
+            "transactional import is signed off against a production copy."
+        ),
+    )

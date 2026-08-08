@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/auth/session_notifier.dart';
+import '../../../../core/design_system/desktop_detail_chrome.dart';
 import '../../../../core/models/trade_purchase_models.dart';
 import '../../../../core/router/post_auth_route.dart' show sessionCanSeeFinancials;
+import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/widgets/friendly_load_error.dart';
 import '../../../../core/widgets/list_skeleton.dart';
 import '../../providers/trade_purchase_detail_provider.dart'
@@ -12,7 +14,6 @@ import '../../providers/trade_purchase_detail_provider.dart'
         tradePurchaseDeliveryOptimisticProvider;
 import '../purchase_detail_page.dart';
 
-import '../../../../core/theme/hexa_colors.dart';
 /// Desktop purchase history right pane — embeds [PurchaseDetailBody].
 class PurchaseDesktopDetailPane extends ConsumerWidget {
   const PurchaseDesktopDetailPane({
@@ -47,6 +48,25 @@ class PurchaseDesktopDetailPane extends ConsumerWidget {
       tradePurchaseDeliveryOptimisticProvider(purchaseId!),
     );
 
+    Widget paneFor(TradePurchase p) {
+      return DesktopDetailPaneScaffold(
+        header: Text(
+          p.supplierName?.trim().isNotEmpty == true
+              ? p.supplierName!
+              : (p.invoiceNumber?.trim().isNotEmpty == true
+                  ? p.invoiceNumber!
+                  : 'Purchase'),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        bodyTitle: 'Bill detail',
+        body: PurchaseDetailBody(
+          p: p,
+          hideFinancials: hideFinancials,
+          embedded: true,
+        ),
+      );
+    }
+
     return ColoredBox(
       color: HexaColors.panelWarm,
       child: async.when(
@@ -57,11 +77,7 @@ class PurchaseDesktopDetailPane extends ConsumerWidget {
             final p = optim == null
                 ? seedPurchase!
                 : seedPurchase!.withDelivered(optim);
-            return PurchaseDetailBody(
-              p: p,
-              hideFinancials: hideFinancials,
-              embedded: true,
-            );
+            return paneFor(p);
           }
           return const Center(child: ListSkeleton());
         },
@@ -72,11 +88,7 @@ class PurchaseDesktopDetailPane extends ConsumerWidget {
         ),
         data: (p) {
           final displayP = optim == null ? p : p.withDelivered(optim);
-          return PurchaseDetailBody(
-            p: displayP,
-            hideFinancials: hideFinancials,
-            embedded: true,
-          );
+          return paneFor(displayP);
         },
       ),
     );

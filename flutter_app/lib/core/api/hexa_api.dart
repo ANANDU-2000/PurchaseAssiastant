@@ -2295,6 +2295,67 @@ class HexaApi {
     return Uint8List.fromList(raw);
   }
 
+  Future<Map<String, dynamic>> listServerBackupLogs({
+    required String businessId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/exports/backup/logs',
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> runServerBackupNow({
+    required String businessId,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/exports/backup/run',
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> listProviderCredentials({
+    required String businessId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/settings/credentials',
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> putProviderCredential({
+    required String businessId,
+    required String credentialType,
+    required String value,
+  }) async {
+    final res = await _dio.put<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/settings/credentials/$credentialType',
+      data: {'value': value},
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> fetchOwnerDashboard({
+    required String businessId,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/owner/dashboard',
+    );
+    return res.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> listStaffTasks({
+    required String businessId,
+    String? status,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/v1/businesses/$businessId/staff/tasks',
+      queryParameters: {
+        if (status != null && status.isNotEmpty) 'status_filter': status,
+      },
+    );
+    return res.data ?? {};
+  }
+
   /// ZIP: purchase summary PDF, per-bill PDFs, supplier ledger PDFs, stock Excel.
   Future<Uint8List> downloadBusinessBackup({
     required String businessId,

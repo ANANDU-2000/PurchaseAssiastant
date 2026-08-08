@@ -37,6 +37,7 @@ from app.models.operations import (
     StaffChecklistCompletion,
     StaffChecklistTemplate,
 )
+from app.models.owner_ops import BackupLog, ProviderCredential, StaffTask
 
 __all__ = [
     "Base",
@@ -82,4 +83,7 @@ __all__ = [
     "DailyUsageLog",
     "StaffChecklistTemplate",
     "StaffChecklistCompletion",
+    "BackupLog",
+    "ProviderCredential",
+    "StaffTask",
 ]

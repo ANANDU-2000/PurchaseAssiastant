@@ -67,6 +67,9 @@ import '../../features/settings/presentation/user_profile_page.dart';
 import '../../features/staff/presentation/staff_home_page.dart';
 import '../../features/settings/presentation/backup_page.dart';
 import '../../features/settings/presentation/help_guide_page.dart';
+import '../../features/settings/presentation/owner_command_center_page.dart';
+import '../../features/settings/presentation/owner_credentials_page.dart';
+import '../../features/staff/presentation/staff_tasks_page.dart';
 import '../../features/search/presentation/search_page.dart';
 import '../../features/barcode/presentation/barcode_print_page.dart';
 import '../../features/barcode/presentation/bulk_barcode_print_page.dart';
@@ -814,6 +817,30 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => iosPushPage(
           key: state.pageKey,
           child: const BackupPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/credentials',
+        name: 'settings_credentials',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const OwnerCredentialsPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/owner-dashboard',
+        name: 'settings_owner_dashboard',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const OwnerCommandCenterPage(),
+        ),
+      ),
+      GoRoute(
+        path: '/staff/tasks-board',
+        name: 'staff_tasks_board',
+        pageBuilder: (context, state) => iosPushPage(
+          key: state.pageKey,
+          child: const StaffTasksPage(),
         ),
       ),
       GoRoute(

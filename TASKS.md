@@ -93,3 +93,20 @@ Report: `docs/ai/15_diagnostic_report_slowness_refresh.md`
 **Done via MCP (2026-07-29):** Render `CORS_ORIGINS`/`ADMIN_URL` updated for `purchase-assiastant` + typo hosts; Vercel prod = `4925d8b` on `prj_ubxhNkOxAG2tM7o00u7ZBEjZ0VMM`.
 
 Do not invent parallel status docs.
+
+## Owner-critical FOD (2026-08-08)
+
+Program: `context/` briefs — one wave at a time. HEAD at start: `fffc710`.
+
+| Wave | Status | Evidence |
+|------|--------|----------|
+| W0 Baseline | done | Live `GET /health` → 200 (`app_env=development`); Vercel HTML has `api.harisreeagency.online`, no onrender; alembic head `068` then added `069_owner_ops_tables`; no tracked `.env` secrets |
+| W1 Live smoke | done | `smoke_production_api` initially **403** without UA (Cloudflare); fixed script UA → **PASS** health/live, ready, CORS, preflight. Schema version field null in ready body but `schema_ok` true |
+| W2 Deadcode map | done | Report: `docs/debug/WAVE2_DEADCODE_SWEEP.md` — read-only; renames/deletes **blocked** pending sign-off |
+| W3 Backup/restore | done | `backup_logs` + nightly 02:00 IST job; `POST …/exports/backup/run`, `GET …/backup/logs`, dry-run restore; **commit restore = 501** until production-copy sign-off |
+| W4 API credentials | done | `provider_credentials` encrypted; `GET/PUT …/settings/credentials`; Flutter `OwnerCredentialsPage` |
+| W5–6 Staff + owner CC | done | `staff_tasks` + endpoints; `GET …/owner/dashboard`; Flutter tasks + command center |
+| UX Purchases pane | done | `PurchaseDesktopDetailPane` uses `DesktopDetailPaneScaffold` |
+| UX Reports pane | deferred | Same scaffold ready; Reports page pass next after deploy/migration |
+
+**Deploy note:** run `alembic upgrade head` on Windows API host before using new tables.

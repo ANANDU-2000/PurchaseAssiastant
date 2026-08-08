@@ -22,8 +22,17 @@ CORS_ORIGIN = os.environ.get(
 ).strip()
 
 
+# Cloudflare Tunnel may 403 bare urllib clients without a browser-like UA.
+_DEFAULT_UA = (
+    "Mozilla/5.0 (compatible; HarisreeSmoke/1.0; +https://api.harisreeagency.online)"
+)
+
+
 def _get(path: str, *, origin: str | None = None) -> tuple[int, dict[str, str], str]:
-    headers = {"Accept": "application/json"}
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": os.environ.get("SMOKE_UA", _DEFAULT_UA),
+    }
     if origin:
         headers["Origin"] = origin
     req = urllib.request.Request(f"{API_BASE}{path}", headers=headers, method="GET")
@@ -49,6 +58,7 @@ def _options(
         "Origin": origin,
         "Access-Control-Request-Method": request_method,
         "Access-Control-Request-Headers": request_headers,
+        "User-Agent": os.environ.get("SMOKE_UA", _DEFAULT_UA),
     }
     req = urllib.request.Request(f"{API_BASE}{path}", headers=headers, method="OPTIONS")
     try:

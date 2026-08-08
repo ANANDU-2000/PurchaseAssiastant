@@ -129,6 +129,8 @@ class Settings(BaseSettings):
     jwt_refresh_secret: str = "change-me-min-32-chars-refresh-dev"
     jwt_access_ttl_minutes: int = 15
     jwt_refresh_ttl_days: int = 30
+    # Optional Fernet material for provider_credentials; defaults to hash(jwt_secret).
+    credential_encryption_key: str | None = None
 
     dev_return_otp: bool = True
     dev_otp_code: str = "000000"
