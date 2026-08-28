@@ -134,9 +134,15 @@ class _RootOverlayHostState extends State<_RootOverlayHost> {
 
     const overlayHeight = 240.0;
     const gap = 8.0;
+    final topSafe = media.padding.top;
 
-    final showAbove = fieldBottom > visibleHeight * 0.55 ||
-        (fieldBottom + gap + overlayHeight > visibleHeight - gap);
+    // Decide above/below: prefer below, but flip above when the field is
+    // in the lower half of the visible area or the overlay would overflow
+    // the bottom. However, if the overlay would clip above the safe area
+    // when shown above, keep it below to avoid hiding behind the appbar.
+    final fitsBelow = fieldBottom + gap + overlayHeight <= visibleHeight - gap;
+    final fitsAbove = fieldOffset.dy - gap - overlayHeight >= topSafe;
+    final showAbove = !fitsBelow && fitsAbove;
 
     return Stack(
       children: [

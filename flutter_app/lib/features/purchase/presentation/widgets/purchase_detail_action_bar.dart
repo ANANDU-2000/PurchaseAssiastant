@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/hexa_inline_button.dart';
+import '../../../../core/design_system/hexa_responsive.dart';
 import '../../../../core/models/trade_purchase_models.dart';
 
 /// Bottom action bar: primary Mark as Paid + wrapping secondary actions.
@@ -30,6 +31,7 @@ class PurchaseDetailActionBar extends StatelessWidget {
 
     final cs = Theme.of(context).colorScheme;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final mobile = context.isMobileLayout;
     final showMarkPaid = !hideFinancials &&
         purchase.statusEnum != PurchaseStatus.paid &&
         purchase.statusEnum != PurchaseStatus.cancelled;
@@ -64,6 +66,27 @@ class PurchaseDetailActionBar extends StatelessWidget {
       ],
     ];
 
+    // On mobile (<600px), use a horizontal scrollable row to prevent chips
+    // from wrapping into 2-3 rows on narrow screens (e.g. 360dp phones).
+    final secondaryWidget = secondary.isEmpty
+        ? const SizedBox.shrink()
+        : mobile
+            ? SizedBox(
+                height: 36,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  itemCount: secondary.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) => secondary[i],
+                ),
+              )
+            : Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: secondary,
+              );
+
     return Material(
       elevation: 10,
       color: cs.surface,
@@ -87,12 +110,7 @@ class PurchaseDetailActionBar extends StatelessWidget {
               ),
               const SizedBox(height: 10),
             ],
-            if (secondary.isNotEmpty)
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: secondary,
-              ),
+            secondaryWidget,
           ],
         ),
       ),

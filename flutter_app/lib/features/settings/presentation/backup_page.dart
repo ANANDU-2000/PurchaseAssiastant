@@ -366,8 +366,10 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Restore dry-run'),
-          content: SizedBox(
-            width: 480,
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.sizeOf(ctx).width * 0.9,
+            ),
             child: AppTextField(
               controller: ctrl,
               maxLines: 12,
@@ -428,10 +430,10 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     }
     if (!kIsWeb && _autoDaily) {
       return 'Daily auto-backup saves to Desktop/Harisree_Backups when you open the app. '
-          'Manual downloads also go to Downloads/warehouse_exports.';
+          'Manual downloads open the share sheet so you can save or send the file.';
     }
-    return 'On phone, files are saved under warehouse_exports in app storage. '
-        'On desktop, under Downloads/warehouse_exports when possible.';
+    return 'Manual exports open the share sheet — save the file to any folder, '
+        'send via WhatsApp, or store in Google Drive.';
   }
 
   @override
@@ -580,12 +582,12 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           const SizedBox(height: 20),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: Text(kIsWeb ? 'Daily auto-backup (web)' : 'Daily auto-backup (desktop)'),
+            title: Text(kIsWeb ? 'Daily auto-backup (web)' : 'Daily auto-backup'),
             subtitle: Text(
               kIsWeb
                   ? 'Once per day when you open the app: JSON backup → browser Downloads'
                   : 'Once per day when you open the app: ZIP (PDFs + stock Excel) '
-                      'and monthly purchases PDF → Desktop/Harisree_Backups',
+                      'and monthly purchases PDF → Downloads/HarisreeWarehouse',
               style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
             ),
             value: _autoDaily,

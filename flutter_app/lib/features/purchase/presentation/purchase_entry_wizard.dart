@@ -2611,7 +2611,7 @@ class _PurchaseEntryWizardState extends ConsumerState<PurchaseEntryWizard>
           ),
         if (_wizStep == 0 || _wizStep == 1) ...[
           SizedBox(
-            height: kbInset > 0 ? 44 : 52,
+            height: 48,
             width: double.infinity,
             child: FilledButton(
               onPressed: _isSaving ? null : _wizNext,
@@ -2635,7 +2635,7 @@ class _PurchaseEntryWizardState extends ConsumerState<PurchaseEntryWizard>
               ),
             ),
           SizedBox(
-            height: kbInset > 0 ? 44 : 52,
+            height: 48,
             width: double.infinity,
             child: FilledButton(
               style: FilledButton.styleFrom(
@@ -2748,7 +2748,7 @@ class _PurchaseEntryWizardState extends ConsumerState<PurchaseEntryWizard>
                   controller: _wizardBodyScrollController,
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.manual,
-                  padding: EdgeInsets.fromLTRB(16, 12, 16, kbInset > 0 ? 250 : 100),
+                  padding: EdgeInsets.fromLTRB(16, 12, 16, kbInset > 0 ? (kbInset * 0.6).clamp(120.0, 300.0) : 100),
                   child: stepContent,
                 );
           return Column(

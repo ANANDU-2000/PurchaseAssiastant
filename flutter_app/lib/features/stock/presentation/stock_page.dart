@@ -654,7 +654,7 @@ class _StockPageState extends ConsumerState<StockPage>
     final chipAll = chipCounts['all'] ?? 0;
     final total = coerceToInt(data['total']);
     final maxPage = stockListMaxPage(total, listQ.perPage);
-    final bottomPad = 24.0;
+    final bottomPad = 24.0 + MediaQuery.viewPaddingOf(context).bottom;
     final op = ref.watch(stockOperationalFiltersProvider);
     final filterCount = countWarehouseActiveFilters(listQ, op);
 

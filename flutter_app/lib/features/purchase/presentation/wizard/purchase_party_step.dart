@@ -717,7 +717,7 @@ class PurchasePartyStep extends ConsumerWidget {
                     focusNode: brokerFocusNode,
                     hintText: 'Search broker by name…',
                     prefixIcon: const Icon(Icons.person_outline_rounded),
-                    minQueryLength: 0,
+                    minQueryLength: 1,
                     maxMatches: 8,
                     dense: true,
                     fieldBorderRadius: desktop ? 4 : 12,

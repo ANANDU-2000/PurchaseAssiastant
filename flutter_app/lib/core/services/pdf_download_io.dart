@@ -15,16 +15,27 @@ String _supplierFolderSlug(String filename) {
   return parts.sublist(1, dateIdx - 2).join('_');
 }
 
-/// Saves PDF under app documents:
-/// `warehouse_exports/{year}/{month}/{supplier_slug}/{filename}`.
+/// Saves PDF under the user-visible Downloads directory:
+/// `Downloads/HarisreeWarehouse/{year}/{month}/{supplier_slug}/{filename}`.
+///
+/// Falls back to app documents directory if Downloads is unavailable.
 Future<bool> downloadPdfBytes(Uint8List bytes, String filename) async {
   try {
     final now = DateTime.now();
-    final root = await getApplicationDocumentsDirectory();
     final supplier = _supplierFolderSlug(filename);
+
+    // Prefer user-visible Downloads directory.
+    Directory? root;
+    try {
+      root = await getDownloadsDirectory();
+    } catch (_) {
+      root = null;
+    }
+    root ??= await getApplicationDocumentsDirectory();
+
     final dirPath = [
       root.path,
-      'warehouse_exports',
+      'HarisreeWarehouse',
       now.year.toString(),
       now.month.toString().padLeft(2, '0'),
       supplier,

@@ -4,9 +4,11 @@ import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 
 /// Saves export bytes under:
-/// - Android/iOS: app documents `warehouse_exports/{year}/{month}/{category}/`
-/// - Windows/macOS/Linux: Downloads `warehouse_exports/{year}/{month}/{category}/`
+/// - Android/iOS: user-visible Downloads `HarisreeWarehouse/{year}/{month}/{category}/`
+/// - Windows/macOS/Linux: Downloads `HarisreeWarehouse/{year}/{month}/{category}/`
 /// - When [useDesktopFolder] on Windows: `Desktop/Harisree_Backups/{year}/{month}/{category}/`
+///
+/// Falls back to app documents directory when Downloads is unavailable.
 Future<String?> saveBackupExportBytes({
   required Uint8List bytes,
   required String filename,
@@ -28,6 +30,7 @@ Future<String?> saveBackupExportBytes({
     }
     final dirPath = [
       root.path,
+      'HarisreeWarehouse',
       now.year.toString(),
       now.month.toString().padLeft(2, '0'),
       category,
@@ -45,14 +48,12 @@ Future<String?> saveBackupExportBytes({
 }
 
 Future<Directory> _defaultExportRoot() async {
-  if (Platform.isAndroid || Platform.isIOS) {
-    return getApplicationDocumentsDirectory();
-  }
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+  // Prefer user-visible Downloads directory on all platforms.
+  try {
     final downloads = await getDownloadsDirectory();
-    if (downloads != null) {
-      return Directory('${downloads.path}${Platform.pathSeparator}warehouse_exports');
-    }
+    if (downloads != null) return downloads;
+  } catch (_) {
+    // getDownloadsDirectory not available — fall through.
   }
   return getApplicationDocumentsDirectory();
 }

@@ -63,13 +63,15 @@ Future<BackupDeliverResult> deliverBackupFile({
       );
       return BackupDeliverResult(
         ok: true,
-        message: 'Saved and ready to share',
+        message: 'Ready to share',
         savedPath: savedPath,
       );
     } catch (_) {
+      // Share sheet failed — file is saved locally but user can't browse
+      // app-private storage, so give an actionable message.
       return BackupDeliverResult(
         ok: true,
-        message: 'Saved to $savedPath',
+        message: 'File saved. Use Share to send it.',
         savedPath: savedPath,
       );
     }
