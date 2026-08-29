@@ -27,6 +27,7 @@ import '../../../core/providers/stock_providers.dart'
         clearStockListRowPatchesForIds,
         stockChangesFeedProvider,
         stockItemActivityProvider,
+        stockListProvider,
         stockStatusCountsProvider;
 import '../stock_list_row_patch.dart'
     show
@@ -561,12 +562,17 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
       debugPrint('[STOCK_STORM] RESYNC_AFTER_SAVE itemId=$itemId reorder=$reorderAlert → invalidateStockRowSaveSurfaces + changesFeed + activity');
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Immediately invalidate the stock list so the user sees updated values
+      // without waiting for the 5s deferred reconcile. The optimistic overlay
+      // stays until server data arrives and reconcileStockListRowPatches clears it.
+      parentRef.invalidate(stockListProvider);
       // Always refresh detail + activity history after a system/physical save.
       invalidateStockRowSaveSurfaces(
         parentRef,
         itemId: itemId,
         reorderAlert: reorderAlert,
         refreshItemDetail: true,
+        deferFullList: false,
       );
       parentRef.invalidate(stockChangesFeedProvider);
       if (itemId.isNotEmpty) {

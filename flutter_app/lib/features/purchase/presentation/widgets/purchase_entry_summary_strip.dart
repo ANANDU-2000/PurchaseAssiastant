@@ -48,12 +48,10 @@ class _PurchaseEntrySummaryStripState
     super.dispose();
   }
 
+  final _inrFmt0 = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+  final _inrFmt2 = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 2);
   String _inr(num n, {int decimals = 0}) =>
-      NumberFormat.currency(
-        locale: 'en_IN',
-        symbol: '₹',
-        decimalDigits: decimals,
-      ).format(n);
+      (decimals == 0 ? _inrFmt0 : _inrFmt2).format(n);
 
   String _qtyLine() {
     final qt = ref.read(purchaseQuantityTotalsProvider);

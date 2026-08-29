@@ -10,9 +10,8 @@ import '../../state/purchase_draft_provider.dart';
 import '../widgets/purchase_line_actions.dart';
 import '../wizard/purchase_fast_items_step.dart' show OpenAdvancedItemSheet;
 
-String _inr2(num n) =>
-    NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 2)
-        .format(n);
+final _inrFmt = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 2);
+String _inr2(num n) => _inrFmt.format(n);
 
 TradeCalcLine _lineToCalc(PurchaseLineDraft l) => TradeCalcLine(
       qty: l.qty,

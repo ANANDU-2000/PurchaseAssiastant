@@ -56,11 +56,10 @@ import '../../../core/widgets/list_skeleton.dart';
 import '../providers/trade_purchase_detail_provider.dart';
 
 import '../../../core/design_system/hexa_ds_tokens.dart';
-String _inr(num n, {int fractionDigits = 2}) => NumberFormat.currency(
-      locale: 'en_IN',
-      symbol: '₹',
-      decimalDigits: fractionDigits,
-    ).format(n);
+final _inrFmt2 = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 2);
+final _inrFmt0 = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+String _inr(num n, {int fractionDigits = 2}) =>
+    (fractionDigits == 0 ? _inrFmt0 : _inrFmt2).format(n);
 
 double _lineInclusive(TradePurchaseLine l) {
   return l.lineTotal ?? lineMoney(tradeLineToCalc(l));

@@ -393,12 +393,13 @@ class _PartyInlineSuggestFieldState extends State<PartyInlineSuggestField> {
       _scheduleOverlaySync();
       return;
     }
-    // Tab / focus away: close overlay so keyboard traversal stays predictable.
+    // Tab / focus away: keep overlay visible during grace period so mobile
+    // taps on suggestion rows complete before the panel unmounts.
     _flushFilterToLive();
     if (widget.suggestionsAsOverlay) {
-      _overlayStayOpenUntilDismiss = false;
       _keyboardHighlightIndex = -1;
-      _hideSuggestionOverlay();
+      // Do NOT hide the overlay here — the grace timer or a pending _pick
+      // will dismiss it. Hiding immediately races with mobile tap events.
     }
     _armSuggestPanelGraceIfNeeded();
     if (mounted) setState(() {});

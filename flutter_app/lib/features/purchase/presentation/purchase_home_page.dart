@@ -237,9 +237,8 @@ _HistPeriodPreset _purchaseHistInferPreset(({DateTime from, DateTime to}) r) {
   return _HistPeriodPreset.custom;
 }
 
-String _inr(num n) =>
-    NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
-        .format(n);
+final _inrFmt = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+String _inr(num n) => _inrFmt.format(n);
 
 String _compactInrLakh(num n) {
   if (n >= 1e7) return '₹${(n / 1e7).toStringAsFixed(1)}Cr';

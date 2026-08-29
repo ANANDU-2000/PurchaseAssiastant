@@ -13,9 +13,8 @@ import '../../mapping/purchase_line_display_adapter.dart';
 import '../../state/purchase_draft_provider.dart';
 import '../../state/purchase_trade_preview_provider.dart';
 
-String _inr(num n) =>
-    NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
-        .format(n);
+final _inrFmt = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+String _inr(num n) => _inrFmt.format(n);
 
 TradeCalcLine _lineToCalc(PurchaseLineDraft l) {
   return TradeCalcLine(

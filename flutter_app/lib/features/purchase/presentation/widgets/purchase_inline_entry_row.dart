@@ -8,9 +8,8 @@ import '../../../../shared/widgets/inline_search_field.dart';
 import '../../domain/purchase_draft.dart';
 import 'item_entry/purchase_inline_line_builder.dart';
 
-String _inr0(num n) =>
-    NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
-        .format(n);
+final _inrFmt = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+String _inr0(num n) => _inrFmt.format(n);
 
 /// Dense spreadsheet-style purchase line editor (desktop / wide tablet).
 ///

@@ -10,9 +10,8 @@ import '../../../../core/services/purchase_pdf.dart';
 import '../../../../core/theme/hexa_colors.dart';
 import '../../../../core/design_system/hexa_responsive.dart';
 
-String _inr(num n) =>
-    NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
-        .format(n);
+final _inrFmt = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+String _inr(num n) => _inrFmt.format(n);
 
 /// Merges wizard-local display fields when the create/update payload omits them
 /// (e.g. minimal API rows) so PDF filename and email stay accurate.
