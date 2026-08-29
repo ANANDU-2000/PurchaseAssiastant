@@ -912,12 +912,13 @@ class _StockPageState extends ConsumerState<StockPage>
     ref.listen(businessWriteEventProvider, (prev, next) {
       if (prev == null || prev.revision == next.revision) return;
       if (kDebugMode) {
-        debugPrint('[STOCK_STORM] WRITE_EVENT rev=${next.revision} affected=${next.affectedItemIds} → invalidate changesFeed${next.affectedItemIds.isEmpty ? ' + stockList' : ''}');
+        debugPrint('[STOCK_STORM] WRITE_EVENT rev=${next.revision} affected=${next.affectedItemIds} → invalidate changesFeed only (list via coordinator)');
       }
+      // Only invalidate changesFeed here — list is handled by StockWriteCoordinator
+      // which debounces and dedupes per itemId.
       ref.invalidate(stockChangesFeedProvider);
-      if (next.affectedItemIds.isEmpty) {
-        ref.invalidate(stockListProvider);
-      }
+      // NOTE: Removed the `if (next.affectedItemIds.isEmpty) ref.invalidate(stockListProvider);`
+      // The coordinator handles list invalidation based on actual affected items.
     });
     // Warehouse realtime fan-out lives in [ShellRealtimeListener] — avoid double invalidation here.
 

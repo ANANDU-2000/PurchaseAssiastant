@@ -278,12 +278,54 @@ class BarcodePdfService {
         expanded.add(data);
       }
     }
+
+    final payload = <String, dynamic>{
+      'labels': [for (final e in expanded) e.toJson()],
+      'size': size.index,
+      'showLastPurchase': showLastPurchase,
+      'hideFinancials': hideFinancials,
+      'showStockOnLabel': showStockOnLabel,
+      'labelsPerRow': labelsPerRow.clamp(1, 3),
+      'symbol': symbol.index,
+    };
+
+    try {
+      if (kIsWeb) {
+        // Yield once so the UI can paint progress before the sync PDF build.
+        await Future<void>.delayed(Duration.zero);
+        return await _barcodeBatchFromPayload(payload);
+      }
+      return await compute(_barcodeBatchFromPayload, payload);
+    } catch (e, st) {
+      logBarcodeOperationError(e, stack: st, site: 'generateBatch');
+      rethrow;
+    }
+  }
+
+  /// Internal static method that builds the batch PDF from a payload.
+  /// Used by both the direct web path and the isolate compute path.
+  static Future<Uint8List> _buildBatchPdf(Map<String, dynamic> payload) async {
+    final rawList = payload['labels'] as List<dynamic>;
+    final labels = <BarcodeLabelData>[
+      for (final e in rawList)
+        BarcodeLabelData.fromJson(Map<String, dynamic>.from(e as Map)),
+    ];
+    final sizeIdx = (payload['size'] as int?) ?? 0;
+    final size = LabelSize.values[sizeIdx.clamp(0, LabelSize.values.length - 1)];
+    final showLastPurchase = payload['showLastPurchase'] as bool? ?? true;
+    final hideFinancials = payload['hideFinancials'] as bool? ?? false;
+    final showStockOnLabel = payload['showStockOnLabel'] as bool? ?? true;
+    final labelsPerRow = (payload['labelsPerRow'] as int?) ?? 1;
+    final symbolIdx = (payload['symbol'] as int?) ?? 0;
+    final symbol = BarcodeSymbolMode.values[
+        symbolIdx.clamp(0, BarcodeSymbolMode.values.length - 1)];
+
     final perRow = labelsPerRow.clamp(1, 3);
     final doc = pw.Document();
 
     if (perRow <= 1) {
       final fmt = _pageFormat(size);
-      for (final data in expanded) {
+      for (final data in labels) {
         doc.addPage(
           pw.Page(
             pageFormat: fmt,
@@ -306,8 +348,8 @@ class BarcodePdfService {
 
     final labelFmt = _pageFormat(size);
     const sheet = PdfPageFormat.a4;
-    for (var i = 0; i < expanded.length; i += perRow) {
-      final row = expanded.skip(i).take(perRow).toList();
+    for (var i = 0; i < labels.length; i += perRow) {
+      final row = labels.skip(i).take(perRow).toList();
       doc.addPage(
         pw.Page(
           pageFormat: sheet,
@@ -1322,4 +1364,9 @@ class BarcodePdfService {
 /// Top-level for [compute] (must be a library function).
 Future<Uint8List> _barcodeA4DenseFromPayload(Map<String, dynamic> payload) {
   return BarcodePdfService.buildA4DenseGridPdf(payload);
+}
+
+/// Top-level for [compute] — thermal roll batch PDF generation.
+Future<Uint8List> _barcodeBatchFromPayload(Map<String, dynamic> payload) {
+  return BarcodePdfService._buildBatchPdf(payload);
 }

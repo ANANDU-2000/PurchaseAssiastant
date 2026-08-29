@@ -47,6 +47,97 @@ Timer? _invalidateTier2;
 Timer? _invalidateTier3;
 const _invalidateDebounceMs = 250;
 
+/// StockWriteCoordinator — single source of truth for "invalidate after stock write".
+///
+/// All paths (QuickStockActionSheet save, realtime push, tab return) must call
+/// this coordinator instead of directly invalidating stockListProvider.
+///
+/// Guarantees:
+/// - One save = one deferred list refetch (5s default), not N
+/// - Optimistic patch stays visible until the single deferred refetch completes
+/// - Realtime updates for single items patch only; list invalidation is debounced
+/// - Multiple calls within the debounce window for the same itemId = 1 refetch
+class StockWriteCoordinator {
+  StockWriteCoordinator._();
+  static final StockWriteCoordinator _instance = StockWriteCoordinator._();
+  factory StockWriteCoordinator() => _instance;
+
+  final Map<String, Timer> _pendingTimers = {};
+  final Set<String> _pendingItems = {};
+
+  /// Called when a stock write completes (from QuickStockActionSheet or similar).
+  /// Schedules a single deferred list reconcile for the given itemId.
+  void noteStockWrite(WidgetRef ref, String itemId, {bool reorderAlert = false}) {
+    if (itemId.isEmpty) return;
+    _pendingItems.add(itemId);
+    _cancelTimer(itemId);
+    _pendingTimers[itemId] = Timer(const Duration(seconds: 5), () {
+      _pendingTimers.remove(itemId);
+      _pendingItems.remove(itemId);
+      if (kDebugMode) {
+        debugPrint('[STOCK_STORM] COORDINATOR deferred reconcile itemId=$itemId → invalidate stockListProvider');
+      }
+      ref.invalidate(stockListProvider);
+      ref.invalidate(stockStatusCountsProvider);
+      ref.invalidate(stockFilteredStatusCountsProvider);
+      ref.invalidate(stockDeliveryIndicatorCountsProvider);
+      _invalidateStockAuditFeeds(ref);
+      if (reorderAlert) {
+        ref.invalidate(homeInventorySummaryProvider);
+        ref.invalidate(homeStockAttentionCountProvider);
+        ref.invalidate(staffLowStockAlertsProvider);
+        ref.invalidate(warehouseAlertsProvider);
+      }
+    });
+  }
+
+  /// Called when a realtime update arrives for an item.
+  /// Schedules a deferred list reconcile (same as noteStockWrite) but does NOT
+  /// invalidate immediately — the item patch is handled by the caller.
+  void noteRealtimeUpdate(WidgetRef ref, String itemId) {
+    if (itemId.isEmpty) return;
+    _pendingItems.add(itemId);
+    _cancelTimer(itemId);
+    _pendingTimers[itemId] = Timer(const Duration(seconds: 5), () {
+      _pendingTimers.remove(itemId);
+      _pendingItems.remove(itemId);
+      if (kDebugMode) {
+        debugPrint('[STOCK_STORM] COORDINATOR realtime deferred reconcile itemId=$itemId → invalidate stockListProvider');
+      }
+      ref.invalidate(stockListProvider);
+      ref.invalidate(stockStatusCountsProvider);
+      ref.invalidate(stockFilteredStatusCountsProvider);
+      ref.invalidate(stockDeliveryIndicatorCountsProvider);
+      _invalidateStockAuditFeeds(ref);
+    });
+  }
+
+  /// Immediately invalidate the list (for cases where we need instant refresh).
+  void flushStockWrite(WidgetRef ref, String itemId) {
+    _cancelTimer(itemId);
+    _pendingItems.remove(itemId);
+    if (kDebugMode) {
+      debugPrint('[STOCK_STORM] COORDINATOR flush itemId=$itemId → immediate invalidate stockListProvider');
+    }
+    ref.invalidate(stockListProvider);
+    ref.invalidate(stockStatusCountsProvider);
+    ref.invalidate(stockFilteredStatusCountsProvider);
+    ref.invalidate(stockDeliveryIndicatorCountsProvider);
+    _invalidateStockAuditFeeds(ref);
+  }
+
+  void _cancelTimer(String itemId) {
+    final timer = _pendingTimers[itemId];
+    if (timer != null) {
+      timer.cancel();
+      _pendingTimers.remove(itemId);
+    }
+  }
+}
+
+/// Singleton accessor for the coordinator.
+StockWriteCoordinator get stockWriteCoordinator => StockWriteCoordinator();
+
 /// Immediate owner home refresh after writes (bypasses debounced aggregate gap).
 void forceRefreshOwnerHomeDashboard(dynamic ref) {
   bustHomeDashboardVolatileCaches();
@@ -489,6 +580,9 @@ void invalidateOpeningStockSaveSurfaces(
 /// feedback, with a deferred full list reconcile for eventual consistency.
 /// Avoids the race where a full refetch returns stale data before the DB
 /// write propagates, which would clear the optimistic patch.
+///
+/// NOW DELEGATES TO StockWriteCoordinator for list invalidation to prevent
+/// multiple concurrent invalidations from different sources.
 void invalidateStockRowSaveSurfaces(
   dynamic ref, {
   required String itemId,
@@ -515,16 +609,20 @@ void invalidateStockRowSaveSurfaces(
   ref.invalidate(stockFilteredStatusCountsProvider);
   ref.invalidate(stockDeliveryIndicatorCountsProvider);
   if (itemId.isNotEmpty) {
+    // Apply item-scoped patch immediately (no list flash)
+    unawaited(patchStockItemInCache(ref, itemId: itemId));
+    invalidateWarehouseItemSurfacesLight(ref, itemId: itemId);
+
+    // Delegate list invalidation to coordinator — ensures only ONE deferred
+    // refetch per itemId within the 5s window, even if called from multiple sources.
     if (immediateListReconcile) {
-      ref.invalidate(stockListProvider);
+      stockWriteCoordinator.flushStockWrite(ref, itemId);
     } else {
-      unawaited(patchStockItemInCache(ref, itemId: itemId));
-      deferInvalidateDelayed(ref, stockListProvider, delay: const Duration(seconds: 5));
+      stockWriteCoordinator.noteStockWrite(ref, itemId, reorderAlert: reorderAlert);
     }
-  } else if (immediateListReconcile) {
-    ref.invalidate(stockListProvider);
-  } else if (deferFullList) {
-    ref.invalidate(stockListProvider);
+  } else if (immediateListReconcile || deferFullList) {
+    // No itemId — fall back to immediate list invalidate (rare)
+    stockWriteCoordinator.flushStockWrite(ref, '');
   }
   if (reorderAlert) {
     ref.invalidate(homeInventorySummaryProvider);

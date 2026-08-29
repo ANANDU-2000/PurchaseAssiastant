@@ -27,7 +27,7 @@ import '../../../core/providers/stock_providers.dart'
         clearStockListRowPatchesForIds,
         stockChangesFeedProvider,
         stockItemActivityProvider,
-        stockListProvider,
+        stockItemDetailProvider,
         stockStatusCountsProvider;
 import '../stock_list_row_patch.dart'
     show
@@ -553,31 +553,33 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
 
   /// Reconcile list/detail caches with the server after any save attempt
   /// (success or failure) so the UI converges without a manual refresh.
+  ///
+  /// NOW DELEGATES TO StockWriteCoordinator — only invalidates activity feeds
+  /// and detail here; list invalidation is handled by the coordinator (single
+  /// deferred refetch per itemId).
   static void _resyncStockAfterSave({
     required WidgetRef parentRef,
     required String itemId,
     bool reorderAlert = false,
   }) {
     if (kDebugMode) {
-      debugPrint('[STOCK_STORM] RESYNC_AFTER_SAVE itemId=$itemId reorder=$reorderAlert → invalidateStockRowSaveSurfaces + changesFeed + activity');
+      debugPrint('[STOCK_STORM] RESYNC_AFTER_SAVE itemId=$itemId reorder=$reorderAlert → changesFeed + activity (list via coordinator)');
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Immediately invalidate the stock list so the user sees updated values
-      // without waiting for the 5s deferred reconcile. The optimistic overlay
-      // stays until server data arrives and reconcileStockListRowPatches clears it.
-      parentRef.invalidate(stockListProvider);
-      // Always refresh detail + activity history after a system/physical save.
+      // Invalidate activity feeds and detail — list is handled by coordinator
+      parentRef.invalidate(stockChangesFeedProvider);
+      if (itemId.isNotEmpty) {
+        parentRef.invalidate(stockItemActivityProvider(itemId));
+        // Also invalidate detail so the detail pane/sheet updates
+        parentRef.invalidate(stockItemDetailProvider(itemId));
+      }
+      // Let the coordinator handle list invalidate (deferred, deduped)
       invalidateStockRowSaveSurfaces(
         parentRef,
         itemId: itemId,
         reorderAlert: reorderAlert,
         refreshItemDetail: true,
-        deferFullList: false,
       );
-      parentRef.invalidate(stockChangesFeedProvider);
-      if (itemId.isNotEmpty) {
-        parentRef.invalidate(stockItemActivityProvider(itemId));
-      }
     });
   }
 

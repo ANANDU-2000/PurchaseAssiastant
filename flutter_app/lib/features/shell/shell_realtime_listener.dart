@@ -5,7 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/auth/provider_api_guard.dart';
-import '../../core/providers/business_aggregates_invalidation.dart';
+import '../../core/providers/business_aggregates_invalidation.dart'
+    show
+        stockWriteCoordinator,
+        invalidateNotificationSurfaces,
+        invalidateStaffDeliverySurfacesLight,
+        invalidateWarehouseSurfacesLight,
+        invalidateWarehouseItemSurfacesLight;
 import '../../core/providers/business_write_revision.dart'
     show
         bumpRemoteBusinessDataRevision,
@@ -113,14 +119,19 @@ class _ShellRealtimeListenerState extends ConsumerState<ShellRealtimeListener> {
     markWarehouseGlobalInvalidated(ref);
     final ids = signal.affectedItemIds.where((id) => id.isNotEmpty).toSet();
     if (kDebugMode) {
-      debugPrint('[STOCK_STORM] REALTIME_WAREHOUSE ids=$ids → ${ids.length == 1 ? 'patchStockItemInCache' : 'invalidateWarehouseSurfacesLight'}');
+      debugPrint('[STOCK_STORM] REALTIME_WAREHOUSE ids=$ids → ${ids.length == 1 ? 'patchStockItemInCache + coordinator' : 'invalidateWarehouseSurfacesLight + coordinator per-item'}');
     }
     if (ids.length == 1) {
-      unawaited(patchStockItemInCache(ref, itemId: ids.first));
+      final id = ids.first;
+      unawaited(patchStockItemInCache(ref, itemId: id));
+      invalidateWarehouseItemSurfacesLight(ref, itemId: id);
+      // Delegate list invalidation to coordinator (deferred, deduped)
+      stockWriteCoordinator.noteRealtimeUpdate(ref, id);
     } else {
       invalidateWarehouseSurfacesLight(ref, forRealtimePoll: true);
       for (final id in ids) {
         invalidateWarehouseItemSurfacesLight(ref, itemId: id);
+        stockWriteCoordinator.noteRealtimeUpdate(ref, id);
       }
     }
     ref.invalidate(homeRecentActivityFeedProvider);
