@@ -224,6 +224,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final authCircuit = container.read(auth401CircuitOpenProvider);
       // No session → only public auth/onboarding routes. (JWT may still be restoring in main(); splash handles that.)
       if (session == null || authExpired || authCircuit) {
+        // If session is null but restore is still in flight, preserve the
+        // current route — do NOT flash the login screen during cold start.
+        if (session == null && !authExpired && !authCircuit) {
+          try {
+            final notifier = container.read(sessionProvider.notifier);
+            if (notifier.isRestoring) {
+              return null; // let the current page render with loading state
+            }
+          } catch (_) {}
+        }
         if (!public) {
           try {
             final prefs = container.read(sharedPreferencesProvider);

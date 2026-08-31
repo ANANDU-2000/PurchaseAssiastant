@@ -2315,14 +2315,17 @@ class _PurchaseEntryWizardState extends ConsumerState<PurchaseEntryWizard>
     );
   }
 
-  /// Desktop voucher: compact header + Expanded items table + summary strip.
+  /// Desktop voucher: single scroll viewport — header, items table, summary.
+  /// The save bar lives OUTSIDE this scroll (in _buildWizardBody).
   Widget _desktopSingleScrollPage(
     BuildContext context,
     List<Map<String, dynamic>> catalog,
     bool isEdit,
   ) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+    return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
+      // Bottom padding reserves space for the fixed _tabletSaveChrome (~80px).
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
@@ -2334,24 +2337,23 @@ class _PurchaseEntryWizardState extends ConsumerState<PurchaseEntryWizard>
               const SizedBox(height: 8),
               Divider(height: 1, color: Colors.grey.shade300),
               const SizedBox(height: 4),
-              Expanded(
-                child: PurchaseFastItemsTable(
-                  catalog: catalog,
-                  fillHeight: true,
-                  preferredSupplierId:
-                      ref.read(purchaseDraftProvider).supplierId,
-                  onDraftChanged: _onDraftChanged,
-                  openAdvancedItemEditor: ({editIndex, initialOverride}) =>
-                      _openItemSheet(
-                    catalog,
-                    editIndex: editIndex,
-                    initialOverride: initialOverride,
-                  ),
-                  lineJustAdded: _lineJustAdded,
-                  onDismissLineJustAdded: () =>
-                      setState(() => _lineJustAdded = null),
+              PurchaseFastItemsTable(
+                catalog: catalog,
+                fillHeight: false,
+                preferredSupplierId:
+                    ref.read(purchaseDraftProvider).supplierId,
+                onDraftChanged: _onDraftChanged,
+                openAdvancedItemEditor: ({editIndex, initialOverride}) =>
+                    _openItemSheet(
+                  catalog,
+                  editIndex: editIndex,
+                  initialOverride: initialOverride,
                 ),
+                lineJustAdded: _lineJustAdded,
+                onDismissLineJustAdded: () =>
+                    setState(() => _lineJustAdded = null),
               ),
+              const SizedBox(height: 16),
               PurchaseEntrySummaryStrip(
                 onDraftChanged: _onDraftChanged,
                 compact: true,
@@ -2374,9 +2376,10 @@ class _PurchaseEntryWizardState extends ConsumerState<PurchaseEntryWizard>
     final supplierId = ref.read(purchaseDraftProvider).supplierId;
 
     if (useInlineTable) {
-      // Same voucher chrome as desktop — table fills remaining height.
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      // Same voucher chrome as desktop — single scroll viewport.
+      return SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 88),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -2384,23 +2387,22 @@ class _PurchaseEntryWizardState extends ConsumerState<PurchaseEntryWizard>
             const SizedBox(height: 8),
             Divider(height: 1, color: Colors.grey.shade300),
             const SizedBox(height: 4),
-            Expanded(
-              child: PurchaseFastItemsTable(
-                catalog: catalog,
-                fillHeight: true,
-                preferredSupplierId: supplierId,
-                onDraftChanged: _onDraftChanged,
-                openAdvancedItemEditor: ({editIndex, initialOverride}) =>
-                    _openItemSheet(
-                  catalog,
-                  editIndex: editIndex,
-                  initialOverride: initialOverride,
-                ),
-                lineJustAdded: _lineJustAdded,
-                onDismissLineJustAdded: () =>
-                    setState(() => _lineJustAdded = null),
+            PurchaseFastItemsTable(
+              catalog: catalog,
+              fillHeight: false,
+              preferredSupplierId: supplierId,
+              onDraftChanged: _onDraftChanged,
+              openAdvancedItemEditor: ({editIndex, initialOverride}) =>
+                  _openItemSheet(
+                catalog,
+                editIndex: editIndex,
+                initialOverride: initialOverride,
               ),
+              lineJustAdded: _lineJustAdded,
+              onDismissLineJustAdded: () =>
+                  setState(() => _lineJustAdded = null),
             ),
+            const SizedBox(height: 16),
             PurchaseEntrySummaryStrip(
               onDraftChanged: _onDraftChanged,
               compact: true,
@@ -2441,6 +2443,86 @@ class _PurchaseEntryWizardState extends ConsumerState<PurchaseEntryWizard>
 
   Widget _tabletSaveChrome({required bool isEdit}) {
     final saveVal = ref.watch(purchaseSaveValidationProvider);
+    final isDesktop = context.isDesktopLayout;
+
+    // Validation / error messages (shared by desktop & tablet).
+    Widget? errorSection;
+    if (_inlineSaveError != null || !saveVal.isOk) {
+      errorSection = Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(
+          _inlineSaveError ??
+              (saveVal.isOk
+                  ? ''
+                  : (saveVal.errorMessage ??
+                      (saveVal.lineErrors.isNotEmpty
+                          ? saveVal.lineErrors.values.first
+                          : ''))),
+          style: TextStyle(
+            color: _inlineSaveError != null ? Colors.red[900] : Colors.red[800],
+            fontSize: 12,
+          ),
+        ),
+      );
+    }
+
+    final saveButton = SizedBox(
+      height: isDesktop ? 40 : 48,
+      child: FilledButton(
+        style: FilledButton.styleFrom(
+          backgroundColor: HexaColors.brandAccent,
+        ),
+        onPressed: _isSaving ? null : _validateAndSave,
+        child: _isSaving
+            ? const SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : Text(
+                isEdit ? 'Update purchase' : 'Save purchase',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: isDesktop ? 13 : 15,
+                ),
+              ),
+      ),
+    );
+
+    // Desktop: compact bar, button right-aligned, max-width, not full-width.
+    if (isDesktop) {
+      return Material(
+        color: Colors.white,
+        elevation: 4,
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (errorSection != null) ...[
+                  Align(alignment: Alignment.centerLeft, child: errorSection),
+                ],
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 220),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: saveButton,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Tablet: full-width sticky save bar (unchanged).
     return Material(
       color: Colors.white,
       elevation: 6,
@@ -2452,50 +2534,8 @@ class _PurchaseEntryWizardState extends ConsumerState<PurchaseEntryWizard>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (_inlineSaveError != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    _inlineSaveError!,
-                    style: TextStyle(color: Colors.red[900], fontSize: 12),
-                  ),
-                ),
-              if (!saveVal.isOk)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    saveVal.errorMessage ??
-                        (saveVal.lineErrors.isNotEmpty
-                            ? saveVal.lineErrors.values.first
-                            : ''),
-                    style: TextStyle(color: Colors.red[800], fontSize: 11),
-                  ),
-                ),
-              SizedBox(
-                height: 48,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: HexaColors.brandAccent,
-                  ),
-                  onPressed: _isSaving ? null : _validateAndSave,
-                  child: _isSaving
-                      ? const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text(
-                          isEdit ? 'Update purchase' : 'Save purchase',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                          ),
-                        ),
-                ),
-              ),
+              if (errorSection != null) errorSection,
+              saveButton,
             ],
           ),
         ),

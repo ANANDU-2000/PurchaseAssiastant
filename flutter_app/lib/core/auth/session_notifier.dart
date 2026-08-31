@@ -288,10 +288,19 @@ final activeSessionProvider = Provider<Session?>((ref) {
   return ref.watch(sessionProvider);
 });
 
+/// True while [SessionNotifier.restore] is in flight. The router uses this
+/// to distinguish "still restoring" from "genuinely logged out" so a cold
+/// start does not flash the login screen.
 class SessionNotifier extends Notifier<Session?> {
   /// Tracked manually because Riverpod 2.6 does not expose `ref.mounted` on
   /// `NotifierProviderRef`. Flipped by [Ref.onDispose] in [build].
   bool _disposed = false;
+
+  /// True while [restore] is in flight. Set to false when restore completes.
+  bool _isRestoring = false;
+
+  /// Public read-only accessor for [sessionIsRestoringProvider].
+  bool get isRestoring => _isRestoring;
 
   /// Business id last warmed — skip re-warm on Session identity rewrite.
   String? _warmedWorkspaceBusinessId;
@@ -548,6 +557,7 @@ class SessionNotifier extends Notifier<Session?> {
   Future<void> restore() => _withAuthSerial(_restoreImpl);
 
   Future<void> _restoreImpl() async {
+    _isRestoring = true;
     final restoreSw = Stopwatch()..start();
     // #region agent log
     agentDebugLog(
@@ -563,11 +573,13 @@ class SessionNotifier extends Notifier<Session?> {
     try {
       t = await store.read();
     } catch (_) {
+      _isRestoring = false;
       state = null;
       authRefresh.value++;
       return;
     }
     if (t.access == null || t.refresh == null) {
+      _isRestoring = false;
       state = null;
       authRefresh.value++;
       return;
@@ -744,6 +756,8 @@ class SessionNotifier extends Notifier<Session?> {
       }
       state = null;
       authRefresh.value++;
+    } finally {
+      _isRestoring = false;
     }
   }
 

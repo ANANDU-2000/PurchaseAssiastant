@@ -18,7 +18,7 @@ import 'core/providers/reports_provider.dart';
 import 'core/auth/session_notifier.dart';
 import 'core/config/app_config.dart';
 import 'core/providers/trade_purchases_provider.dart'
-    show invalidateTradePurchaseCaches, tradePurchasesListProvider;
+    show invalidateTradePurchaseCaches;
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/hexa_colors.dart';
@@ -300,7 +300,6 @@ class HexaApp extends ConsumerWidget {
                                     ref.invalidate(homeDashboardDataProvider);
                                     ref.invalidate(homeShellReportsProvider);
                                     invalidateTradePurchaseCaches(ref);
-                                    ref.invalidate(tradePurchasesListProvider);
                                     ref.invalidate(reportsPurchasesPayloadProvider);
                                   });
                                 },
