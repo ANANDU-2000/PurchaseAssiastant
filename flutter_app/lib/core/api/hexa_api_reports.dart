@@ -361,9 +361,9 @@ mixin HexaApiReportsMethods on HexaApiBase {
       if (data is Map) {
         return Map<String, dynamic>.from(data);
       }
-      return const {};
+      return const <String, dynamic>{};
     } on DioException catch (e) {
-      if (e.response?.statusCode == 404) return const {};
+      if (e.response?.statusCode == 404) return const <String, dynamic>{};
       rethrow;
     }
   }

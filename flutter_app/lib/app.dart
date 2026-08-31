@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 
 import 'core/debug/hexa_debug_mq_banner.dart';
+import 'core/debug/hexa_perf_frame_monitor.dart';
 import 'core/notifications/post_login_notification_prompt.dart';
 import 'core/platform/launcher_quick_actions.dart';
 import 'core/platform/app_foreground_listener.dart';
@@ -230,7 +231,8 @@ class HexaApp extends ConsumerWidget {
     final title = session?.primaryBusiness.effectiveDisplayTitle ??
         AppConfig.appName;
     // Harisree: light iOS-style surfaces only (gray / white / teal) — no dark mode in product UI.
-    return MaterialApp.router(
+    return HexaPerfFrameMonitor(
+      child: MaterialApp.router(
       debugShowCheckedModeBanner: false,
       title: title,
       theme: buildHexaTheme(Brightness.light),
@@ -358,6 +360,7 @@ class HexaApp extends ConsumerWidget {
         );
       },
       scrollBehavior: _HexaScrollBehavior(),
+      ),
     );
   }
 }

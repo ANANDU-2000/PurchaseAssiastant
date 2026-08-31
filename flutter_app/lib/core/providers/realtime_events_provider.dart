@@ -28,7 +28,7 @@ void invalidateAfterPurchaseWrite(WidgetRef ref) {
 
 @visibleForTesting
 Set<String> itemIdsFromRealtimePayload(Map<String, dynamic>? payload) {
-  if (payload == null || payload.isEmpty) return const {};
+  if (payload == null || payload.isEmpty) return const <String>{};
   final out = <String>{};
   final single = payload['item_id']?.toString();
   if (single != null && single.isNotEmpty) out.add(single);

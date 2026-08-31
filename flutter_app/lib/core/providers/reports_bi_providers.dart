@@ -14,10 +14,10 @@ final reportsPeriodComparisonProvider =
   final link = ref.keepAlive();
   final t = Timer(const Duration(minutes: 3), link.close);
   ref.onDispose(t.cancel);
-  if (!shellBranchIsVisible(ref, ShellBranch.reports)) return {};
+  if (!shellBranchIsVisible(ref, ShellBranch.reports)) return <String, dynamic>{};
   final session = ref.watch(activeSessionProvider);
   final range = ref.watch(analyticsDateRangeProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
   final fmt = DateFormat('yyyy-MM-dd');
   return ref.read(hexaApiProvider).tradeReportPeriodComparison(
         businessId: session.primaryBusiness.id,
@@ -31,10 +31,10 @@ final reportsMovementSummaryProvider =
   final link = ref.keepAlive();
   final t = Timer(const Duration(minutes: 3), link.close);
   ref.onDispose(t.cancel);
-  if (!shellBranchIsVisible(ref, ShellBranch.reports)) return {};
+  if (!shellBranchIsVisible(ref, ShellBranch.reports)) return <String, dynamic>{};
   final session = ref.watch(activeSessionProvider);
   final range = ref.watch(analyticsDateRangeProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
   final fmt = DateFormat('yyyy-MM-dd');
   return ref.read(hexaApiProvider).tradeReportMovementSummary(
         businessId: session.primaryBusiness.id,

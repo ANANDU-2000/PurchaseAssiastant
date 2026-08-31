@@ -42,10 +42,10 @@ class HexaErrorSink {
   static Future<void> _send(Object error, StackTrace stack) async {
     _inFlight = true;
     try {
-      final type = error.runtimeType.toString();
+      final type = _truncate(error.runtimeType.toString(), 120);
       final message = _sanitiseMessage(error.toString());
       final stackStr = _sanitiseStack(stack.toString());
-      final route = CurrentRoute.path;
+      final route = _truncate(CurrentRoute.path, 200);
       final platform = _detectPlatform();
 
       await _dio.post<void>(
@@ -69,6 +69,11 @@ class HexaErrorSink {
     } finally {
       _inFlight = false;
     }
+  }
+
+  /// Truncate string to [maxLen] chars to satisfy backend Pydantic max_length.
+  static String _truncate(String s, int maxLen) {
+    return s.length <= maxLen ? s : '${s.substring(0, maxLen)}…';
   }
 
   /// Strip PII-like content: email addresses, phone numbers, JWT-like tokens.

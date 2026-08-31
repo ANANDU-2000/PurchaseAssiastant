@@ -75,7 +75,7 @@ mixin HexaApiContactsMethods on HexaApiBase {
       '/v1/businesses/$businessId/suppliers',
       data: data,
     );
-    return res.data ?? {};
+    return res.data ?? <String, dynamic>{};
   }
 
 
@@ -94,7 +94,7 @@ mixin HexaApiContactsMethods on HexaApiBase {
         .get<dynamic>('/v1/businesses/$businessId/suppliers/$supplierId');
     final d = res.data;
     if (d is Map) return Map<String, dynamic>.from(d);
-    return {};
+    return <String, dynamic>{};
   }
 
 
@@ -104,7 +104,7 @@ mixin HexaApiContactsMethods on HexaApiBase {
         await _dio.get<dynamic>('/v1/businesses/$businessId/brokers/$brokerId');
     final d = res.data;
     if (d is Map) return Map<String, dynamic>.from(d);
-    return {};
+    return <String, dynamic>{};
   }
 
 
@@ -158,7 +158,7 @@ mixin HexaApiContactsMethods on HexaApiBase {
         if (preferences != null) 'preferences': preferences,
       },
     );
-    return res.data ?? {};
+    return res.data ?? <String, dynamic>{};
   }
 
 
@@ -203,7 +203,7 @@ mixin HexaApiContactsMethods on HexaApiBase {
         if (preferences != null) 'preferences': preferences,
       },
     );
-    return res.data ?? {};
+    return res.data ?? <String, dynamic>{};
   }
 
 
@@ -250,7 +250,7 @@ mixin HexaApiContactsMethods on HexaApiBase {
         if (preferences != null) 'preferences': preferences,
       },
     );
-    return res.data ?? {};
+    return res.data ?? <String, dynamic>{};
   }
 
 
@@ -268,7 +268,7 @@ mixin HexaApiContactsMethods on HexaApiBase {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/catalog-items/$itemId/trade-supplier-prices',
     );
-    return res.data ?? {};
+    return res.data ?? <String, dynamic>{};
   }
 
 
@@ -285,7 +285,7 @@ mixin HexaApiContactsMethods on HexaApiBase {
       '/v1/businesses/$businessId/contacts/search',
       queryParameters: qp,
     );
-    return res.data ?? {};
+    return res.data ?? <String, dynamic>{};
   }
 
 
@@ -299,7 +299,7 @@ mixin HexaApiContactsMethods on HexaApiBase {
       '/v1/businesses/$businessId/brokers/$brokerId/metrics',
       queryParameters: {'from': from, 'to': to},
     );
-    return res.data ?? {};
+    return res.data ?? <String, dynamic>{};
   }
 
 }

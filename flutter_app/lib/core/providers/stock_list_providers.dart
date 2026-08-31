@@ -397,11 +397,11 @@ final stockOnHandTotalsProvider =
   final disposed = registerProviderDisposeGuard(ref);
   registerProviderKeepAliveTimer(ref, const Duration(minutes: 3));
   final session = ref.watch(sessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
   final totals = await ref.read(hexaApiProvider).getStockTotals(
         businessId: session.primaryBusiness.id,
       ).timeout(const Duration(seconds: 15));
-  if (providerWasDisposed(disposed)) return {};
+  if (providerWasDisposed(disposed)) return <String, dynamic>{};
   return totals;
 });
 
@@ -412,13 +412,13 @@ final stockTotalsProvider =
     final disposed = registerProviderDisposeGuard(ref);
     registerProviderKeepAliveTimer(ref, const Duration(minutes: 3));
     final session = ref.watch(sessionProvider);
-    if (session == null) return {};
+    if (session == null) return <String, dynamic>{};
     final totals = await ref.read(hexaApiProvider).getStockTotals(
           businessId: session.primaryBusiness.id,
           periodStart: appPeriodApiDateFrom(ref, period),
           periodEnd: appPeriodApiDateTo(ref, period),
         ).timeout(const Duration(seconds: 15));
-    if (providerWasDisposed(disposed)) return {};
+    if (providerWasDisposed(disposed)) return <String, dynamic>{};
     return totals;
   },
 );
@@ -433,12 +433,12 @@ final stockShellBundleProvider =
   registerProviderKeepAliveTimer(ref, const Duration(seconds: 30));
   // IndexedStack keeps Stock mounted off-tab — skip network until visible.
   if (!stockShellTabIsVisible(ref)) {
-    return const {};
+    return const <String, dynamic>{};
   }
   final session = ref.watch(sessionProvider);
-  if (session == null || providerSkipApi(ref)) return const {};
+  if (session == null || providerSkipApi(ref)) return const <String, dynamic>{};
   final query = ref.watch(stockListQueryProvider);
-  if (query.page != 1) return const {};
+  if (query.page != 1) return const <String, dynamic>{};
   final op = ref.watch(stockOperationalFiltersProvider);
   final purchasedInPeriod = query.purchasedInPeriod || op.purchasedInPeriodOnly;
   final api = ref.read(hexaApiProvider);
@@ -460,7 +460,7 @@ final stockShellBundleProvider =
     reorderOnly: op.reorderOnly,
     unit: op.unit,
   ).timeout(const Duration(seconds: 30));
-  if (providerWasDisposed(disposed)) return const {};
+  if (providerWasDisposed(disposed)) return const <String, dynamic>{};
   return bundle;
 });
 
@@ -597,7 +597,7 @@ final stockListProvider = FutureProvider<Map<String, dynamic>>((ref) async {
       return Map<String, dynamic>.from(cachedBody);
     }
     // Prefer empty payload over a blocking exception so IndexedStack paint stays calm.
-    return const <String, dynamic>{
+    return <String, dynamic>{
       'items': <dynamic>[],
       'total': 0,
       'page': 1,
@@ -846,7 +846,7 @@ final bulkStockListProvider =
 
 /// Optimistic list-row overlays until the next `/stock/list` fetch replaces them.
 final stockListRowPatchProvider =
-    StateProvider<Map<String, Map<String, dynamic>>>((ref) => const {});
+    StateProvider<Map<String, Map<String, dynamic>>>((ref) => const <String, Map<String, dynamic>>{});
 
 void _patchStockListSnapshot(
   dynamic ref,
@@ -1033,7 +1033,7 @@ final stockStatusCountsProvider =
   if (shellBranchIsVisible(ref, ShellBranch.home)) {
     final dash = ref.watch(homeDashboardDataProvider);
     if (dash.refreshing) {
-      return const {};
+      return const <String, int>{};
     }
     final afterReady = homeBundledStockStatusCounts(ref);
     if (afterReady != null) return afterReady;
@@ -1041,12 +1041,12 @@ final stockStatusCountsProvider =
 
   registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = ref.watch(sessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, int>{};
   final api = ref.read(hexaApiProvider);
   final bid = session.primaryBusiness.id;
 
   final summary = await ref.watch(stockAlertsSummaryProvider.future);
-  if (providerWasDisposed(disposed)) return {};
+  if (providerWasDisposed(disposed)) return <String, int>{};
   final allTotal = (summary['total_items'] as num?)?.toInt();
   if (allTotal != null && allTotal > 0) {
     return _stockStatusCountsFromAlertsSummary(summary, allTotal: allTotal);
@@ -1059,7 +1059,7 @@ final stockStatusCountsProvider =
     status: 'all',
     sort: 'recent',
   ).timeout(const Duration(seconds: 15));
-  if (providerWasDisposed(disposed)) return {};
+  if (providerWasDisposed(disposed)) return <String, int>{};
   return _stockStatusCountsFromAlertsSummary(
     summary,
     allTotal: (res['total'] as num?)?.toInt() ?? 0,
@@ -1135,7 +1135,7 @@ final stockFilteredStatusCountsProvider =
   }
 
   final session = ref.watch(sessionProvider);
-  if (session == null || providerSkipApi(ref)) return {};
+  if (session == null || providerSkipApi(ref)) return <String, int>{};
   final api = ref.read(hexaApiProvider);
   final bid = session.primaryBusiness.id;
 
@@ -1170,7 +1170,7 @@ final stockFilteredStatusCountsProvider =
     _ => 'all',
   };
   final n = await totalFor(fetchStatus);
-  if (providerWasDisposed(disposed)) return {};
+  if (providerWasDisposed(disposed)) return <String, int>{};
   return switch (fetchStatus) {
     'shortage' => {'all': 0, 'low': n, 'critical': 0, 'out': 0},
     'critical' => {'all': 0, 'low': 0, 'critical': n, 'out': 0},
@@ -1234,12 +1234,12 @@ final lowStockByCategoryProvider =
   if (shellBranchIsVisible(ref, ShellBranch.home) &&
       mounted < 1 &&
       !ref.watch(homeLowStockDetailFetchEnabledProvider)) {
-    return {};
+    return <String, Map<String, List<Map<String, dynamic>>>>{};
   }
   final disposed = registerProviderDisposeGuard(ref);
   registerProviderKeepAliveTimer(ref, const Duration(minutes: 2));
   final session = ref.watch(sessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, Map<String, List<Map<String, dynamic>>>>{};
   final api = ref.read(hexaApiProvider);
   final bid = session.primaryBusiness.id;
   final periods = _lowStockOpsPeriodStrings(ref);
@@ -1249,7 +1249,7 @@ final lowStockByCategoryProvider =
     periodStart: periods.periodStart,
     periodEnd: periods.periodEnd,
   );
-  if (providerWasDisposed(disposed)) return {};
+  if (providerWasDisposed(disposed)) return <String, Map<String, List<Map<String, dynamic>>>>{};
   final byId = <String, Map<String, dynamic>>{};
   for (final item in lowRows) {
     final id = item['id']?.toString();
@@ -1280,7 +1280,7 @@ final stockAlertsSummaryProvider =
   final disposed = registerProviderDisposeGuard(ref);
   registerProviderKeepAliveTimer(ref, const Duration(seconds: 30));
   final session = ref.watch(sessionProvider);
-  if (session == null || providerSkipApi(ref)) return const {};
+  if (session == null || providerSkipApi(ref)) return const <String, dynamic>{};
   final query = ref.watch(stockListQueryProvider);
   if (query.page == 1) {
     final bundle = ref.watch(stockShellBundleProvider);
@@ -1291,7 +1291,7 @@ final stockAlertsSummaryProvider =
       }
     }
   }
-  if (providerWasDisposed(disposed)) return const {};
+  if (providerWasDisposed(disposed)) return const <String, dynamic>{};
   final bid = session.primaryBusiness.id;
   final summary = await _stockAlertsSummaryInflight.putIfAbsent(
     bid,
@@ -1300,6 +1300,6 @@ final stockAlertsSummaryProvider =
         .getStockAlertsSummary(businessId: bid)
         .whenComplete(() => _stockAlertsSummaryInflight.remove(bid)),
   );
-  if (providerWasDisposed(disposed)) return const {};
+  if (providerWasDisposed(disposed)) return const <String, dynamic>{};
   return summary;
 });

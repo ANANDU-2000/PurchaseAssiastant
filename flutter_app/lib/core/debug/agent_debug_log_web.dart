@@ -12,7 +12,7 @@ void agentDebugLogImpl({
   // #region agent log
   try {
     final payload = <String, Object?>{
-      'sessionId': '2a33ed',
+      'sessionId': '9910c7',
       'runId': runId,
       'hypothesisId': hypothesisId,
       'location': location,
@@ -25,7 +25,7 @@ void agentDebugLogImpl({
       method: 'POST',
       requestHeaders: {
         'Content-Type': 'application/json',
-        'X-Debug-Session-Id': '2a33ed',
+        'X-Debug-Session-Id': '9910c7',
       },
       sendData: jsonEncode(payload),
     ).catchError((_) => html.HttpRequest());

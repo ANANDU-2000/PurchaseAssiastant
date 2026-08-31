@@ -53,7 +53,7 @@ Map<String, dynamic> stockListPatchFromPhysicalCount(
   final system = coerceToDoubleNullable(out['system_qty']) ??
       coerceToDoubleNullable(out['current_stock']) ??
       fallbackSystemQty?.toDouble();
-  if (counted == null) return const {};
+  if (counted == null) return const <String, dynamic>{};
   final sys = system ?? 0.0;
   final diff = coerceToDoubleNullable(out['physical_stock_difference_qty']) ??
       coerceToDoubleNullable(out['difference_qty']) ??

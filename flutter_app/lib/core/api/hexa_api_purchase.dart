@@ -133,10 +133,10 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
       if (d == null) return null;
       return Map<String, dynamic>.from(Map<Object?, Object?>.from(d));
     } on DioException catch (e) {
-      if (e.response?.statusCode == 404) return null;
+      if (e.response?.statusCode == 404) return <String, dynamic>{};
       // Draft is optional UX convenience — avoid hard failures when API is
       // temporarily unreachable or slow.
-      if (e.response == null) return null;
+      if (e.response == null) return <String, dynamic>{};
       rethrow;
     }
   }
@@ -151,7 +151,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
       '/v1/businesses/$businessId/trade-purchases/draft',
       data: {'step': step, 'payload': payload},
     );
-    return res.data ?? {};
+    return res.data ?? <String, dynamic>{};
   }
 
 
@@ -170,7 +170,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
       '/v1/businesses/$businessId/trade-purchases/check-duplicate',
       data: body,
     );
-    return res.data ?? {};
+    return res.data ?? <String, dynamic>{};
   }
 
   /// SSOT line + header totals (non-mutating). Same math as create/persist.
@@ -184,7 +184,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
       '/v1/businesses/$businessId/trade-purchases/preview-lines',
       data: body,
     );
-    return Map<String, dynamic>.from(res.data ?? const {});
+    return Map<String, dynamic>.from(res.data ?? <String, dynamic>{});
   }
 
   /// Full create validation without persisting (`ok` + `errors` + `warnings`).
@@ -198,7 +198,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
       '/v1/businesses/$businessId/trade-purchases/validate',
       data: body,
     );
-    return Map<String, dynamic>.from(res.data ?? const {});
+    return Map<String, dynamic>.from(res.data ?? <String, dynamic>{});
   }
 
 
@@ -225,7 +225,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
     );
     final d = res.data;
     if (d is Map) return Map<String, dynamic>.from(d);
-    return {};
+    return <String, dynamic>{};
   }
 
 
@@ -240,7 +240,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
           ? Options(extra: const {'skipAutoRetry': true})
           : null,
     );
-    return Map<String, dynamic>.from(res.data ?? {});
+    return Map<String, dynamic>.from(res.data ?? <String, dynamic>{});
   }
 
 
@@ -255,7 +255,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
     );
     final d = res.data;
     if (d is Map) return Map<String, dynamic>.from(d);
-    return {};
+    return <String, dynamic>{};
   }
 
 
@@ -272,7 +272,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
         if (paidAtIso != null && paidAtIso.isNotEmpty) 'paid_at': paidAtIso,
       },
     );
-    return Map<String, dynamic>.from(res.data ?? {});
+    return Map<String, dynamic>.from(res.data ?? <String, dynamic>{});
   }
 
 
@@ -282,7 +282,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
     final res = await _dio.get<Map<String, dynamic>>(
       '/v1/businesses/$businessId/trade-purchases/delivery-pipeline',
     );
-    return Map<String, dynamic>.from(res.data ?? {});
+    return Map<String, dynamic>.from(res.data ?? <String, dynamic>{});
   }
 
 
@@ -306,7 +306,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
         'mark_in_transit': markInTransit,
       },
     );
-    return Map<String, dynamic>.from(res.data ?? {});
+    return Map<String, dynamic>.from(res.data ?? <String, dynamic>{});
   }
 
 
@@ -334,7 +334,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
       },
       options: _stockWriteOptions,
     );
-    return Map<String, dynamic>.from(res.data ?? {});
+    return Map<String, dynamic>.from(res.data ?? <String, dynamic>{});
   }
 
 
@@ -345,7 +345,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/trade-purchases/$purchaseId/commit-stock',
     );
-    return Map<String, dynamic>.from(res.data ?? {});
+    return Map<String, dynamic>.from(res.data ?? <String, dynamic>{});
   }
 
   /// Marks delivery pending (reverts stock when previously committed).
@@ -370,7 +370,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
     );
     final d = resp.data;
     if (d is Map) return Map<String, dynamic>.from(d);
-    return {};
+    return <String, dynamic>{};
   }
 
 
@@ -388,7 +388,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
         if (paidAtIso != null && paidAtIso.isNotEmpty) 'paid_at': paidAtIso,
       },
     );
-    return Map<String, dynamic>.from(res.data ?? {});
+    return Map<String, dynamic>.from(res.data ?? <String, dynamic>{});
   }
 
 
@@ -407,7 +407,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
         if (brokerId != null && brokerId.isNotEmpty) 'broker_id': brokerId,
       },
     );
-    return Map<String, dynamic>.from(res.data ?? {});
+    return Map<String, dynamic>.from(res.data ?? <String, dynamic>{});
   }
 
 
@@ -418,7 +418,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/businesses/$businessId/trade-purchases/$purchaseId/cancel',
     );
-    return Map<String, dynamic>.from(res.data ?? {});
+    return Map<String, dynamic>.from(res.data ?? <String, dynamic>{});
   }
 
 
@@ -558,7 +558,7 @@ mixin HexaApiPurchaseMethods on HexaApiBase {
       '/v1/businesses/$businessId/reports/trade-last-supplier-autofill',
       queryParameters: {'supplier_id': supplierId},
     );
-    return Map<String, dynamic>.from(res.data ?? {});
+    return Map<String, dynamic>.from(res.data ?? <String, dynamic>{});
   }
 
 

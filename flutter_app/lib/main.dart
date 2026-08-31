@@ -32,6 +32,7 @@ import 'core/services/offline_store.dart';
 import 'core/services/prefs_helper.dart';
 import 'core/services/offline_sync_service.dart';
 import 'core/services/pdf_locale.dart';
+import 'core/debug/agent_debug_log.dart';
 
 class _AppProviderObserver extends ProviderObserver {
   @override
@@ -266,6 +267,15 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
   }
 
   Future<void> _prepare() async {
+    final bootSw = Stopwatch()..start();
+    // #region agent log
+    agentDebugLog(
+      hypothesisId: 'H1',
+      location: 'main.dart:_prepare',
+      message: 'bootstrap_start',
+      data: {'kIsWeb': kIsWeb},
+    );
+    // #endregion
     setState(() {
       _error = null;
       _errorStackTrace = null;
@@ -284,6 +294,14 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
       ]);
       PrefsHelper.init(prefs);
       _bootstrapLog('OfflineStore + SharedPreferences OK');
+      // #region agent log
+      agentDebugLog(
+        hypothesisId: 'H1',
+        location: 'main.dart:_prepare',
+        message: 'local_init_done',
+        data: {'ms': bootSw.elapsedMilliseconds},
+      );
+      // #endregion
 
       final container = ProviderContainer(
         observers: [_AppProviderObserver()],
@@ -299,6 +317,14 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
       _bootstrapLog('starting HexaApp (restore deferred)');
       setState(() => _container = container);
       _scheduleBootOverlayRelease(force: true);
+      // #region agent log
+      agentDebugLog(
+        hypothesisId: 'H1',
+        location: 'main.dart:_prepare',
+        message: 'hexa_app_mounted',
+        data: {'ms': bootSw.elapsedMilliseconds},
+      );
+      // #endregion
 
       unawaited(() async {
         try {
@@ -320,6 +346,14 @@ class _HexaBootstrapState extends State<_HexaBootstrap> {
                     : const Duration(seconds: 25),
               );
           _bootstrapLog('session.restore OK (background)');
+          // #region agent log
+          agentDebugLog(
+            hypothesisId: 'H2',
+            location: 'main.dart:_prepare',
+            message: 'session_restore_done',
+            data: {'ms': bootSw.elapsedMilliseconds},
+          );
+          // #endregion
         } catch (_) {
           _bootstrapLog('session.restore skipped or failed (non-fatal)');
         }

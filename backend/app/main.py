@@ -23,6 +23,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from app.config import get_settings
+from app.agent_debug_log import agent_debug_log
+from app.agent_debug_log import agent_debug_log
 from app.db_resilience import is_sa_infrastructure_failure
 
 from app.database import async_session_factory, engine, is_sqlite_runtime
@@ -441,6 +443,20 @@ async def harisree_request_monitor_middleware(request: Request, call_next):
             rid or "-",
         )
     if slow_ms > 0 and ms >= slow_ms:
+        # #region agent log
+        if ms >= 500 and path.startswith("/v1/"):
+            agent_debug_log(
+                hypothesis_id="H3",
+                location="main.py:harisree_request_monitor_middleware",
+                message="slow_http",
+                data={
+                    "method": request.method,
+                    "path": path,
+                    "ms": ms,
+                    "status": response.status_code,
+                },
+            )
+        # #endregion
         logger.warning(
             "SLOW_HTTP %sms | %s %s status=%s business_id=%s request_id=%s",
             ms,

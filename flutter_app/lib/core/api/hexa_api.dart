@@ -9,6 +9,7 @@ import 'package:http_parser/http_parser.dart';
 import 'dio_auto_retry_interceptor.dart';
 import '../auth/auth_error_messages.dart' show dioIsAutoRetryableTransport;
 import '../config/app_config.dart';
+import '../debug/agent_debug_log.dart';
 import '../debug/stock_api_storm_monitor.dart';
 import '../json_coerce.dart';
 import '../models/session.dart';
@@ -209,6 +210,25 @@ class HexaApiBase {
         },
         onResponse: (response, handler) {
           _noteStockStormTiming(response.requestOptions, ok: true);
+          // #region agent log
+          final started = response.requestOptions.extra['_stock_storm_sw'];
+          if (started is int) {
+            final ms = DateTime.now().millisecondsSinceEpoch - started;
+            if (ms >= 400) {
+              agentDebugLog(
+                hypothesisId: 'H3',
+                location: 'hexa_api.dart:onResponse',
+                message: 'slow_api',
+                data: {
+                  'path': response.requestOptions.uri.path,
+                  'method': response.requestOptions.method,
+                  'ms': ms,
+                  'status': response.statusCode,
+                },
+              );
+            }
+          }
+          // #endregion
           return handler.next(response);
         },
         onError: (DioException err, ErrorInterceptorHandler handler) {
@@ -243,8 +263,23 @@ class HexaApiBase {
           if (existing == null || existing.isEmpty) {
             final resolver = _resolveAccessToken;
             if (resolver != null) {
+              final tokenSw = Stopwatch()..start();
               try {
                 final token = await resolver();
+                // #region agent log
+                if (tokenSw.elapsedMilliseconds >= 80) {
+                  agentDebugLog(
+                    hypothesisId: 'H4',
+                    location: 'hexa_api.dart:onRequest',
+                    message: 'slow_token_resolve',
+                    data: {
+                      'path': path,
+                      'ms': tokenSw.elapsedMilliseconds,
+                      'hadToken': token != null && token.isNotEmpty,
+                    },
+                  );
+                }
+                // #endregion
                 if (token != null && token.isNotEmpty) {
                   final h = 'Bearer $token';
                   _dio.options.headers['Authorization'] = h;

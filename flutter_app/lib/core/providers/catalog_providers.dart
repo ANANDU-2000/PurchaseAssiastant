@@ -76,12 +76,12 @@ final categoryTypesIndexProvider =
 final catalogItemInsightsProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, key) async {
   final parts = key.split('|');
-  if (parts.length != 3) return {};
+  if (parts.length != 3) return <String, dynamic>{};
   final itemId = parts[0];
   final from = parts[1];
   final to = parts[2];
   final session = ref.watch(sessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
   return ref.read(hexaApiProvider).catalogItemInsights(
         businessId: session.primaryBusiness.id,
         itemId: itemId,
@@ -93,12 +93,12 @@ final catalogItemInsightsProvider = FutureProvider.autoDispose
 final categoryInsightsProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, key) async {
   final parts = key.split('|');
-  if (parts.length != 3) return {};
+  if (parts.length != 3) return <String, dynamic>{};
   final categoryId = parts[0];
   final from = parts[1];
   final to = parts[2];
   final session = ref.watch(sessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
   return ref.read(hexaApiProvider).categoryInsights(
         businessId: session.primaryBusiness.id,
         categoryId: categoryId,
@@ -110,7 +110,7 @@ final categoryInsightsProvider = FutureProvider.autoDispose
 final catalogItemLinesProvider = FutureProvider.autoDispose
     .family<List<Map<String, dynamic>>, String>((ref, key) async {
   final parts = key.split('|');
-  if (parts.length != 3) return [];
+  if (parts.length != 3) return <Map<String, dynamic>>[];
   final itemId = parts[0];
   final from = parts[1];
   final to = parts[2];
@@ -127,7 +127,7 @@ final catalogItemLinesProvider = FutureProvider.autoDispose
 final catalogVariantsProvider = FutureProvider.autoDispose
     .family<List<Map<String, dynamic>>, String>((ref, itemId) async {
   final session = ref.watch(sessionProvider);
-  if (session == null) return [];
+  if (session == null) return <Map<String, dynamic>>[];
   return ref.read(hexaApiProvider).listCatalogVariants(
         businessId: session.primaryBusiness.id,
         itemId: itemId,
@@ -163,7 +163,7 @@ final catalogItemDetailProvider = FutureProvider.autoDispose
 final categoryTradeSummaryProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, categoryId) async {
   final session = ref.watch(sessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
   return ref.read(hexaApiProvider).categoryTradeSummary(
         businessId: session.primaryBusiness.id,
         categoryId: categoryId,
@@ -174,7 +174,7 @@ final categoryTradeSummaryProvider = FutureProvider.autoDispose
 final catalogItemTradeSupplierPricesProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, itemId) async {
   final session = ref.watch(sessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
   return ref.read(hexaApiProvider).catalogItemTradeSupplierPrices(
         businessId: session.primaryBusiness.id,
         itemId: itemId,
@@ -185,12 +185,12 @@ final catalogItemTradeSupplierPricesProvider = FutureProvider.autoDispose
 final catalogItemPriceIntelProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, key) async {
   final session = ref.watch(sessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
   final sep = key.indexOf('|');
   final name = sep < 0 ? key : key.substring(0, sep);
   final curStr = sep < 0 ? '' : key.substring(sep + 1);
   final cur = curStr.isEmpty ? null : double.tryParse(curStr);
-  if (name.trim().length < 2) return {};
+  if (name.trim().length < 2) return <String, dynamic>{};
   try {
     return await ref.read(hexaApiProvider).priceIntelligence(
           businessId: session.primaryBusiness.id,
@@ -199,6 +199,6 @@ final catalogItemPriceIntelProvider =
           priceField: 'landing',
         );
   } catch (_) {
-    return {};
+    return <String, dynamic>{};
   }
 });

@@ -129,7 +129,7 @@ final stockItemDetailProvider =
       clearStockItemDetailPatch(ref, itemId: itemId);
       return normalizeStockDetailMap(row);
     } on DioException catch (e) {
-      if (e.response?.statusCode == 404) return {};
+      if (e.response?.statusCode == 404) return <String, dynamic>{};
       if (providerWasDisposed(disposed)) {
         throw const ProviderFetchAborted();
       }

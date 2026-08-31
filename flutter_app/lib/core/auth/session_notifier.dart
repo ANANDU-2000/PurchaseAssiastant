@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/hexa_api.dart';
+import '../debug/agent_debug_log.dart';
 import '../models/session.dart';
 import '../providers/api_degraded_provider.dart';
 import '../providers/brokers_list_provider.dart';
@@ -547,6 +548,14 @@ class SessionNotifier extends Notifier<Session?> {
   Future<void> restore() => _withAuthSerial(_restoreImpl);
 
   Future<void> _restoreImpl() async {
+    final restoreSw = Stopwatch()..start();
+    // #region agent log
+    agentDebugLog(
+      hypothesisId: 'H2',
+      location: 'session_notifier.dart:_restoreImpl',
+      message: 'restore_start',
+    );
+    // #endregion
     final store = ref.read(tokenStoreProvider);
     final api = ref.read(hexaApiProvider);
     final cache = SessionCache(ref.read(sharedPreferencesProvider));
@@ -601,6 +610,17 @@ class SessionNotifier extends Notifier<Session?> {
       invalidateStaffHomeCaches(ref);
       _scheduleWorkspaceBootstrap();
       _warmWorkspaceListCaches();
+      // #region agent log
+      agentDebugLog(
+        hypothesisId: 'H2',
+        location: 'session_notifier.dart:finishOk',
+        message: 'restore_ok',
+        data: {
+          'ms': restoreSw.elapsedMilliseconds,
+          'businessCount': businesses.length,
+        },
+      );
+      // #endregion
     }
 
     try {

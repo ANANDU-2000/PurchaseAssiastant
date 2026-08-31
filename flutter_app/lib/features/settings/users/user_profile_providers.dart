@@ -6,7 +6,7 @@ final businessUserProfileProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>, String>(
   (ref, userId) async {
     final session = ref.watch(sessionProvider);
-    if (session == null) return {};
+    if (session == null) return <String, dynamic>{};
     return ref.read(hexaApiProvider).getBusinessUser(
           businessId: session.primaryBusiness.id,
           userId: userId,
@@ -55,7 +55,7 @@ final userPermissionsProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>, String>(
   (ref, userId) async {
     final session = ref.watch(sessionProvider);
-    if (session == null) return {};
+    if (session == null) return <String, dynamic>{};
     return ref.read(hexaApiProvider).getUserPermissions(
           businessId: session.primaryBusiness.id,
           userId: userId,
@@ -79,7 +79,7 @@ final userLedgerGroupedProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>, String>(
   (ref, userId) async {
     final session = ref.watch(sessionProvider);
-    if (session == null) return {};
+    if (session == null) return <String, dynamic>{};
     return ref.read(hexaApiProvider).listUserLedgerGrouped(
           businessId: session.primaryBusiness.id,
           userId: userId,

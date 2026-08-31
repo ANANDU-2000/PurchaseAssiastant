@@ -12,20 +12,20 @@ import 'home_dashboard_provider.dart'
 /// Owner dashboard: counts per delivery_status from API.
 final deliveryPipelineProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
-  if (providerSkipApi(ref)) return {};
+  if (providerSkipApi(ref)) return <String, dynamic>{};
   if (homeTabHasOperationalBundle(ref)) {
     return Map<String, dynamic>.from(
       ref.watch(homeDashboardDataProvider).snapshot.data.operational!.deliveryPipeline,
     );
   }
   if (!homeOverviewReadyForSatellites(ref)) {
-    return {};
+    return <String, dynamic>{};
   }
   final disposed = registerProviderDisposeGuard(ref);
   registerProviderKeepAliveTimer(ref, const Duration(minutes: 3));
 
   final session = ref.watch(activeSessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
   try {
     final result = await ref
         .read(hexaApiProvider)
@@ -33,10 +33,10 @@ final deliveryPipelineProvider =
           businessId: session.primaryBusiness.id,
         )
         .timeout(const Duration(seconds: 15));
-    if (providerWasDisposed(disposed)) return {};
+    if (providerWasDisposed(disposed)) return <String, dynamic>{};
     return result;
   } on TimeoutException {
-    return {};
+    return <String, dynamic>{};
   }
 });
 

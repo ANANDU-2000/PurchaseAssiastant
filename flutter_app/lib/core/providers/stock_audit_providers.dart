@@ -14,7 +14,7 @@ final activeStockAuditProvider =
 final stockAuditKpisProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final session = ref.watch(sessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
   return ref.read(hexaApiProvider).getStockAuditKpis(
         businessId: session.primaryBusiness.id,
       );

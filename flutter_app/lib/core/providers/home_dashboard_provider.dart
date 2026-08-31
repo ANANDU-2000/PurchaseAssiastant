@@ -8,6 +8,7 @@ import 'package:dio/dio.dart';
 
 import '../../features/shell/shell_branch_provider.dart';
 import '../api/hexa_api.dart';
+import '../debug/agent_debug_log.dart';
 import '../auth/auth_failure_policy.dart'
     show
         auth401CircuitOpenProvider,
@@ -791,6 +792,15 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
   required DateTime rangeStart,
   required DateTime lastInclusive,
 }) async {
+  final dashSw = Stopwatch()..start();
+  // #region agent log
+  agentDebugLog(
+    hypothesisId: 'H3',
+    location: 'home_dashboard_provider.dart:_homeDashboardPullFresh',
+    message: 'dashboard_fetch_start',
+    data: {'bid': bid, 'from': from, 'to': to},
+  );
+  // #endregion
   HomeDashboardPayload ok(
     HomeDashboardData d, {
     String? readDegradedBanner,
@@ -944,6 +954,19 @@ Future<HomeDashboardPayload> _homeDashboardPullFresh({
         '($from..$to)',
       );
     }
+    // #region agent log
+    agentDebugLog(
+      hypothesisId: 'H3',
+      location: 'home_dashboard_provider.dart:_homeDashboardPullFresh',
+      message: 'dashboard_overview_done',
+      data: {
+        'overviewMs': overviewSw.elapsedMilliseconds,
+        'totalMs': dashSw.elapsedMilliseconds,
+        'from': from,
+        'to': to,
+      },
+    );
+    // #endregion
     if (bustGenerationAtStart != _homeDashBustGeneration) {
       throw StaleHomeDashboardFetch();
     }

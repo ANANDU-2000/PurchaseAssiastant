@@ -82,7 +82,7 @@ String _periodEndString({required ({DateTime start, DateTime end}) range}) =>
 final lowStockOperationsSummaryProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final session = ref.watch(sessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
 
   final query = ref.watch(lowStockOperationsQueryProvider);
   final api = ref.read(hexaApiProvider);
@@ -114,7 +114,7 @@ final lowStockOperationsSummaryProvider =
 final lowStockOperationsPageProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final session = ref.watch(sessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
 
   final query = ref.watch(lowStockOperationsQueryProvider);
   final api = ref.read(hexaApiProvider);
@@ -174,7 +174,7 @@ final lowStockOperationsGroupedProvider =
 final lowStockItemTimelineProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, itemId) async {
   final session = ref.watch(sessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
   try {
     return ref.read(hexaApiProvider).getStockItemActivity(
           businessId: session.primaryBusiness.id,

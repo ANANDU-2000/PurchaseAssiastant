@@ -10,7 +10,7 @@ import '../../../shared/widgets/hexa_empty_state.dart';
 final ownerChecklistSummaryProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final s = ref.watch(sessionProvider);
-  if (s == null) return {};
+  if (s == null) return <String, dynamic>{};
   return ref.read(hexaApiProvider).getChecklistSummary(
         businessId: s.primaryBusiness.id,
       );

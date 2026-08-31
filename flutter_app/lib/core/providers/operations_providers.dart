@@ -25,18 +25,18 @@ bool _checklistSessionActive(Ref ref) {
 final checklistTodayProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final disposed = registerProviderDisposeGuard(ref);
-  if (!_checklistSessionActive(ref)) return {};
+  if (!_checklistSessionActive(ref)) return <String, dynamic>{};
   if (shellBranchIsVisible(ref, ShellBranch.home) &&
       !ref.watch(homeChecklistFetchEnabledProvider)) {
-    return {};
+    return <String, dynamic>{};
   }
   final session = ref.read(sessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
   try {
     final result = await ref.read(hexaApiProvider).getChecklistToday(
           businessId: session.primaryBusiness.id,
         );
-    if (providerWasDisposed(disposed)) return {};
+    if (providerWasDisposed(disposed)) return <String, dynamic>{};
     return result;
   } catch (e) {
     if (_isAuthFailure(e)) rethrow;
@@ -46,7 +46,7 @@ final checklistTodayProvider =
 
 final checklistTemplatesProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  if (!_checklistSessionActive(ref)) return [];
+  if (!_checklistSessionActive(ref)) return <Map<String, dynamic>>[];
   final session = ref.read(sessionProvider);
   if (session == null) return [];
   return ref.read(hexaApiProvider).getChecklistTemplates(
@@ -56,9 +56,9 @@ final checklistTemplatesProvider =
 
 final usageTodayProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
-  if (!_checklistSessionActive(ref)) return {};
+  if (!_checklistSessionActive(ref)) return <String, dynamic>{};
   final session = ref.read(sessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
   return ref.read(hexaApiProvider).getUsageToday(
         businessId: session.primaryBusiness.id,
       );
@@ -85,11 +85,11 @@ final operationalReportsProvider =
   final link = ref.keepAlive();
   final t = Timer(const Duration(minutes: 3), link.close);
   ref.onDispose(t.cancel);
-  if (!_checklistSessionActive(ref)) return {};
+  if (!_checklistSessionActive(ref)) return <String, dynamic>{};
   // IndexedStack mounts Reports off-screen — only fetch when Reports is visible.
-  if (!shellBranchIsVisible(ref, ShellBranch.reports)) return {};
+  if (!shellBranchIsVisible(ref, ShellBranch.reports)) return <String, dynamic>{};
   final session = ref.read(sessionProvider);
-  if (session == null) return {};
+  if (session == null) return <String, dynamic>{};
   return ref
       .read(hexaApiProvider)
       .getOperationalReports(

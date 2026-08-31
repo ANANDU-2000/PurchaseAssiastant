@@ -116,7 +116,7 @@ class _BulkBarcodePrintPageState extends ConsumerState<BulkBarcodePrintPage> {
   Map<String, Map<String, dynamic>> _stockRowsById() {
     final data = ref.read(bulkStockListProvider).valueOrNull;
     final items = data?['items'];
-    if (items is! List) return const {};
+    if (items is! List) return const <String, Map<String, dynamic>>{};
     return stockRowsByIdFromList([
       for (final e in items)
         if (e is Map) Map<String, dynamic>.from(e),

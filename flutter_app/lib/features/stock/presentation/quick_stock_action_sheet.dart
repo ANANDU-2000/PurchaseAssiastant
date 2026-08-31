@@ -566,20 +566,27 @@ class _QuickStockActionBodyState extends ConsumerState<_QuickStockActionBody> {
       debugPrint('[STOCK_STORM] RESYNC_AFTER_SAVE itemId=$itemId reorder=$reorderAlert → changesFeed + activity (list via coordinator)');
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Invalidate activity feeds and detail — list is handled by coordinator
-      parentRef.invalidate(stockChangesFeedProvider);
-      if (itemId.isNotEmpty) {
-        parentRef.invalidate(stockItemActivityProvider(itemId));
-        // Also invalidate detail so the detail pane/sheet updates
-        parentRef.invalidate(stockItemDetailProvider(itemId));
+      try {
+        // Invalidate activity feeds and detail — list is handled by coordinator
+        parentRef.invalidate(stockChangesFeedProvider);
+        if (itemId.isNotEmpty) {
+          parentRef.invalidate(stockItemActivityProvider(itemId));
+          // Also invalidate detail so the detail pane/sheet updates
+          parentRef.invalidate(stockItemDetailProvider(itemId));
+        }
+        // Let the coordinator handle list invalidate (deferred, deduped)
+        invalidateStockRowSaveSurfaces(
+          parentRef,
+          itemId: itemId,
+          reorderAlert: reorderAlert,
+          refreshItemDetail: true,
+        );
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('[STOCK_STORM] RESYNC_AFTER_SAVE error (caught): $e\n$st');
+        }
+        // Don't rethrow — this is background reconciliation, not user-facing
       }
-      // Let the coordinator handle list invalidate (deferred, deduped)
-      invalidateStockRowSaveSurfaces(
-        parentRef,
-        itemId: itemId,
-        reorderAlert: reorderAlert,
-        refreshItemDetail: true,
-      );
     });
   }
 
