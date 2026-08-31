@@ -14,12 +14,14 @@ class AppPrimaryButton extends StatefulWidget {
     required this.onPressed,
     this.loading = false,
     this.enabled = true,
+    this.icon,
   });
 
   final String label;
   final VoidCallback onPressed;
   final bool loading;
   final bool enabled;
+  final Widget? icon;
 
   @override
   State<AppPrimaryButton> createState() => _AppPrimaryButtonState();
@@ -96,11 +98,20 @@ class _AppPrimaryButtonState extends State<AppPrimaryButton> {
                                 color: Colors.white,
                               ),
                             )
-                          : Text(
+                          : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (widget.icon != null) ...[
+                              widget.icon!,
+                              const SizedBox(width: 8),
+                            ],
+                            Text(
                               key: const ValueKey('t'),
                               widget.label,
                               style: HexaDsType.button(),
                             ),
+                          ],
+                        ),
                     ),
                   ),
                 ),
@@ -195,6 +206,65 @@ class AppSecondaryButton extends StatelessWidget {
         ),
         ),
       ),
+    );
+  }
+}
+
+/// Text button for cancel / dismiss / secondary actions.
+/// Replaces raw TextButton usage in features/.
+class AppTextButton extends StatelessWidget {
+  const AppTextButton({
+    super.key,
+    required this.label,
+    this.onPressed,
+    this.icon,
+    this.dense = false,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final Widget? icon;
+  final bool dense;
+
+  @override
+  Widget build(BuildContext context) {
+    final hx = context.hx;
+    return SizedBox(
+      height: dense ? 36 : 44,
+      child: icon == null
+          ? TextButton(
+              onPressed: onPressed,
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.symmetric(
+                  horizontal: HexaDsSpace.s2,
+                  vertical: dense ? 6 : 10,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: HexaDsRadii.button,
+                ),
+              ),
+              child: Text(
+                label,
+                style: HexaDsType.label(15).copyWith(color: hx.textPrimary),
+              ),
+            )
+          : TextButton.icon(
+              onPressed: onPressed,
+              icon: icon!,
+              label: Text(
+                label,
+                style: HexaDsType.label(15).copyWith(color: hx.textPrimary),
+              ),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.symmetric(
+                  horizontal: HexaDsSpace.s2,
+                  vertical: dense ? 6 : 10,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: HexaDsRadii.button,
+                ),
+              ),
+            ),
     );
   }
 }

@@ -237,8 +237,7 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
 
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-                    child: SingleChildScrollView(
-                      child: Column(
+                    child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -387,7 +386,6 @@ class _CatalogTypeItemsPageState extends ConsumerState<CatalogTypeItemsPage> {
                           ),
                         ],
                       ),
-                    ),
                   );
                 },
               );

@@ -126,8 +126,8 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
             }
           }
 
-          return SingleChildScrollView(
-            child: Column(
+          return Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text('Add user', style: HexaDsType.formSectionLabel),
@@ -200,8 +200,7 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
                   onPressed: () => unawaited(submit()),
                 ),
               ],
-            ),
-          );
+            );
         },
       ),
     );
