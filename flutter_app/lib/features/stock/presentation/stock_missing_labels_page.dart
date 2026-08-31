@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../shared/widgets/desktop_page_shell.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -94,7 +96,9 @@ class _StockMissingLabelsPageState extends ConsumerState<StockMissingLabelsPage>
           ],
         ),
       ),
-      body: listAsync.when(
+      body: DesktopPageShell(
+        padding: EdgeInsets.zero,
+        child: listAsync.when(
         loading: () => const ListSkeleton(rowCount: 10, rowHeight: 64),
         error: (_, __) => StockMissingLabelsLoadError(
           onRetry: () => ref.invalidate(bulkStockListProvider),
@@ -165,6 +169,7 @@ class _StockMissingLabelsPageState extends ConsumerState<StockMissingLabelsPage>
             ],
           );
         },
+      ),
       ),
     );
   }

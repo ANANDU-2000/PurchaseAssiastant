@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../shared/widgets/desktop_page_shell.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -298,7 +300,9 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
         backgroundColor: HexaColors.brandBackground,
         elevation: 0,
       ),
-      body: profileAsync.when(
+      body: DesktopPageShell(
+        padding: EdgeInsets.zero,
+        child: profileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => HexaErrorCard.fromError(
           error: e,
@@ -363,6 +367,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage>
             ],
           );
         },
+      ),
       ),
     );
   }

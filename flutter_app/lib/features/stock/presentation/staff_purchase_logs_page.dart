@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../shared/widgets/desktop_page_shell.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -30,7 +32,9 @@ class StaffPurchaseLogsPage extends ConsumerWidget {
     final df = DateFormat('d MMM, h:mm a');
     return Scaffold(
       appBar: AppBar(title: const Text('Staff cash purchases')),
-      body: async.when(
+      body: DesktopPageShell(
+        padding: EdgeInsets.zero,
+        child: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => StaffPurchaseLogsLoadError(
           subtitle: loadStateErrorSubtitle(e),
@@ -77,6 +81,7 @@ class StaffPurchaseLogsPage extends ConsumerWidget {
             ),
           );
         },
+      ),
       ),
     );
   }

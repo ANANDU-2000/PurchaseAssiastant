@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../shared/widgets/desktop_page_shell.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -100,7 +102,9 @@ class _ReorderListPageState extends ConsumerState<ReorderListPage>
           ],
         ),
       ),
-      body: TabBarView(
+      body: DesktopPageShell(
+        padding: EdgeInsets.zero,
+        child: TabBarView(
         controller: _tabs,
         children: [
           for (final st in _statuses)
@@ -112,6 +116,7 @@ class _ReorderListPageState extends ConsumerState<ReorderListPage>
               onRemove: _remove,
             ),
         ],
+      ),
       ),
       bottomNavigationBar: SafeArea(
         top: false,

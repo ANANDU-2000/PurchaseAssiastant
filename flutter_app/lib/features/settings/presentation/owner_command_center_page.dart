@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../shared/widgets/desktop_page_shell.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -104,19 +106,22 @@ class _OwnerCommandCenterPageState extends ConsumerState<OwnerCommandCenterPage>
           ),
         ],
       ),
-      body: _loading
-          ? const LinearProgressIndicator(minHeight: 2)
-          : _error != null
-              ? OwnerCommandCenterLoadError(
-                  title: _error!,
-                  onRetry: _load,
-                )
-              : OwnerCommandCenterBody(
-                  data: _data ?? const {},
-                  waItems: _waItems,
-                  onRefreshWa: _loadWa,
-                  onResendWa: _resendWa,
-                ),
+      body: DesktopPageShell(
+        padding: EdgeInsets.zero,
+        child: _loading
+            ? const LinearProgressIndicator(minHeight: 2)
+            : _error != null
+                ? OwnerCommandCenterLoadError(
+                    title: _error!,
+                    onRetry: _load,
+                  )
+                : OwnerCommandCenterBody(
+                    data: _data ?? const {},
+                    waItems: _waItems,
+                    onRefreshWa: _loadWa,
+                    onResendWa: _resendWa,
+                  ),
+      ),
     );
   }
 }

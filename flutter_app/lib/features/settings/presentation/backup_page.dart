@@ -9,7 +9,6 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
-import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/design_system/widgets/app_button.dart';
 import '../../../core/design_system/widgets/app_text_field.dart';
 import '../../../core/router/navigation_ext.dart';
@@ -18,7 +17,6 @@ import '../../../core/services/backup_deliver.dart';
 import '../../../core/services/prefs_helper.dart';
 import '../../../core/theme/theme_context_ext.dart';
 import '../../../core/utils/snack.dart';
-import '../../../shared/widgets/desktop_page_shell.dart';
 
 const _kLastZipBackupKey = 'backup_last_zip_at';
 const _kLastJsonBackupKey = 'backup_last_json_at';
@@ -33,7 +31,9 @@ class BackupPage extends ConsumerStatefulWidget {
   ConsumerState<BackupPage> createState() => _BackupPageState();
 }
 
-class _BackupPageState extends ConsumerState<BackupPage> {
+class _BackupPageState extends ConsumerState<BackupPage>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabCtrl;
   String _preset = 'month';
   bool _busyZip = false;
   bool _busyJson = false;
@@ -52,8 +52,15 @@ class _BackupPageState extends ConsumerState<BackupPage> {
   @override
   void initState() {
     super.initState();
+    _tabCtrl = TabController(length: 4, vsync: this);
     _loadTimestamps();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadBackupLogs());
+  }
+
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadTimestamps() async {
@@ -321,9 +328,6 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     }
   }
 
-  String _fmt(DateTime? t) =>
-      t == null ? 'Never on this device' : DateFormat('dd MMM yyyy, HH:mm').format(t);
-
   bool get _anyBusy =>
       _busyZip || _busyJson || _busyStock || _busyPdf || _busyServer || _busyDryRun;
 
@@ -438,40 +442,162 @@ class _BackupPageState extends ConsumerState<BackupPage> {
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
     final monthLabel = DateFormat('MMMM yyyy').format(DateTime.now());
-    final isDesktop = MediaQuery.sizeOf(context).width >= 720;
 
-    final body = ListView(
+    return Scaffold(
+      backgroundColor: context.adaptiveScaffold,
+      appBar: AppBar(
+        backgroundColor: context.adaptiveAppBarBg,
+        surfaceTintColor: Colors.transparent,
+        title: const Text('Export & Backup'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => context.popOrGo('/settings'),
+        ),
+        bottom: TabBar(
+          controller: _tabCtrl,
+          isScrollable: true,
+          tabs: const [
+            Tab(text: 'Exports'),
+            Tab(text: 'Full backup'),
+            Tab(text: 'Automatic backup'),
+            Tab(text: 'Restore'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabCtrl,
+        children: [
+          _ExportsTab(
+            monthLabel: monthLabel,
+            lastStockAt: _lastStockAt,
+            lastPdfAt: _lastPdfAt,
+            lastJsonAt: _lastJsonAt,
+            lastZipAt: _lastZipAt,
+            busyStock: _busyStock,
+            busyPdf: _busyPdf,
+            busyJson: _busyJson,
+            busyZip: _busyZip,
+            preset: _preset,
+            anyBusy: _anyBusy,
+            storageHint: _storageHint,
+            onDownloadStock: _downloadStockExcel,
+            onDownloadPdf: _downloadPurchasesPdf,
+            onDownloadJson: _downloadJson,
+            onPresetChanged: (v) => setState(() => _preset = v),
+            onDownloadZip: _downloadZip,
+          ),
+          _FullBackupTab(
+            backupLogs: _backupLogs,
+            busyServer: _busyServer,
+            anyBusy: _anyBusy,
+            onRunServerBackup: _runServerBackup,
+            onRefreshLogs: _loadBackupLogs,
+          ),
+          _AutoBackupTab(
+            autoDaily: _autoDaily,
+            anyBusy: _anyBusy,
+            onToggle: (v) async {
+              final prefs = PrefsHelper.prefs;
+              await prefs.setBool(kAutoDailyBackupEnabledKey, v);
+              if (!mounted) return;
+              setState(() => _autoDaily = v);
+              if (v) {
+                unawaited(maybeRunDailyAutoBackup(ref));
+                showTopSnack(
+                  context,
+                  'Auto-backup enabled — runs once daily when the app opens.',
+                );
+              }
+            },
+          ),
+          _RestoreTab(
+            dryRunResult: _dryRunResult,
+            busyDryRun: _busyDryRun,
+            anyBusy: _anyBusy,
+            onDryRunRestore: _dryRunRestore,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Tab 1: Exports ──
+
+class _ExportsTab extends StatelessWidget {
+  const _ExportsTab({
+    required this.monthLabel,
+    required this.lastStockAt,
+    required this.lastPdfAt,
+    required this.lastJsonAt,
+    required this.lastZipAt,
+    required this.busyStock,
+    required this.busyPdf,
+    required this.busyJson,
+    required this.busyZip,
+    required this.preset,
+    required this.anyBusy,
+    required this.storageHint,
+    required this.onDownloadStock,
+    required this.onDownloadPdf,
+    required this.onDownloadJson,
+    required this.onPresetChanged,
+    required this.onDownloadZip,
+  });
+
+  final String monthLabel;
+  final DateTime? lastStockAt;
+  final DateTime? lastPdfAt;
+  final DateTime? lastJsonAt;
+  final DateTime? lastZipAt;
+  final bool busyStock;
+  final bool busyPdf;
+  final bool busyJson;
+  final bool busyZip;
+  final String preset;
+  final bool anyBusy;
+  final String storageHint;
+  final VoidCallback onDownloadStock;
+  final VoidCallback onDownloadPdf;
+  final VoidCallback onDownloadJson;
+  final ValueChanged<String> onPresetChanged;
+  final VoidCallback onDownloadZip;
+
+  String _fmt(DateTime? t) => t == null
+      ? 'Never on this device'
+      : DateFormat('dd MMM yyyy, HH:mm').format(t);
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return ListView(
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
       ),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
+        // Info hint
         Text(
-          _storageHint,
-          style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant, height: 1.4),
+          storageHint,
+          style:
+              tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant, height: 1.4),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
 
-        // ── Export Data ──
-        _ZoneHeader('Export Data'),
-        Text(
-          'Download reports for your records.',
-          style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
-        ),
-        const SizedBox(height: 12),
+        // ── Quick Downloads ──
+        _ZoneHeader('Quick Downloads'),
         _ExportCard(
           children: [
             ListTile(
               leading: Icon(Icons.table_chart_outlined, color: cs.primary),
               title: const Text('Stock Excel'),
               subtitle: Text(
-                'Last: ${_fmt(_lastStockAt)}',
+                'Last: ${_fmt(lastStockAt)}',
                 style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
               ),
-              trailing: _busyStock
+              trailing: busyStock
                   ? const SizedBox(
                       width: 20,
                       height: 20,
@@ -484,10 +610,10 @@ class _BackupPageState extends ConsumerState<BackupPage> {
               leading: Icon(Icons.picture_as_pdf_outlined, color: cs.primary),
               title: const Text('Purchases PDF'),
               subtitle: Text(
-                '$monthLabel · Last: ${_fmt(_lastPdfAt)}',
+                '$monthLabel · Last: ${_fmt(lastPdfAt)}',
                 style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
               ),
-              trailing: _busyPdf
+              trailing: busyPdf
                   ? const SizedBox(
                       width: 20,
                       height: 20,
@@ -500,10 +626,10 @@ class _BackupPageState extends ConsumerState<BackupPage> {
               leading: Icon(Icons.data_object_outlined, color: cs.primary),
               title: const Text('JSON backup'),
               subtitle: Text(
-                'Catalog, suppliers, 90-day purchases, stock audit · Last: ${_fmt(_lastJsonAt)}',
+                'Catalog, suppliers, 90-day purchases, stock audit · Last: ${_fmt(lastJsonAt)}',
                 style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
               ),
-              trailing: _busyJson
+              trailing: busyJson
                   ? const SizedBox(
                       width: 20,
                       height: 20,
@@ -513,43 +639,43 @@ class _BackupPageState extends ConsumerState<BackupPage> {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: [
             AppPrimaryButton(
-              label: _busyStock ? 'Preparing…' : 'Download Stock Excel',
-              loading: _busyStock,
-              enabled: !_anyBusy || _busyStock,
-              onPressed: _downloadStockExcel,
+              label: busyStock ? 'Preparing…' : 'Download Stock Excel',
+              loading: busyStock,
+              enabled: !anyBusy || busyStock,
+              onPressed: onDownloadStock,
             ),
             AppSecondaryButton(
-              label: _busyPdf ? 'Preparing…' : 'Download Purchases PDF',
-              loading: _busyPdf,
-              enabled: !_anyBusy || _busyPdf,
+              label: busyPdf ? 'Preparing…' : 'Download Purchases PDF',
+              loading: busyPdf,
+              enabled: !anyBusy || busyPdf,
               icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-              onPressed: _downloadPurchasesPdf,
+              onPressed: onDownloadPdf,
             ),
             AppSecondaryButton(
-              label: _busyJson ? 'Preparing…' : 'Download JSON',
-              loading: _busyJson,
-              enabled: !_anyBusy || _busyJson,
+              label: busyJson ? 'Preparing…' : 'Download JSON',
+              loading: busyJson,
+              enabled: !anyBusy || busyJson,
               icon: const Icon(Icons.data_object_outlined, size: 18),
-              onPressed: _downloadJson,
+              onPressed: onDownloadJson,
             ),
           ],
         ),
 
-        const SizedBox(height: 28),
+        const SizedBox(height: 24),
 
-        // ── Full Backup ──
+        // ── ZIP Backup (native only) ──
         if (!kIsWeb) ...[
-          _ZoneHeader('Full Backup'),
+          _ZoneHeader('ZIP Backup'),
           Text(
             'ZIP contains purchase summary PDF, one PDF per bill, supplier ledger PDFs, and stock Excel.',
-            style:
-                tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
+            style: tt.bodySmall
+                ?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
           ),
           const SizedBox(height: 12),
           _ExportCard(
@@ -558,10 +684,10 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                 leading: Icon(Icons.folder_zip_outlined, color: cs.primary),
                 title: const Text('ZIP backup'),
                 subtitle: Text(
-                  'Last: ${_fmt(_lastZipAt)}',
+                  'Last: ${_fmt(lastZipAt)}',
                   style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                 ),
-                trailing: _busyZip
+                trailing: busyZip
                     ? const SizedBox(
                         width: 20,
                         height: 20,
@@ -571,99 +697,82 @@ class _BackupPageState extends ConsumerState<BackupPage> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
               ChoiceChip(
                 label: const Text('This month'),
-                selected: _preset == 'month',
-                onSelected: (_) => setState(() => _preset = 'month'),
+                selected: preset == 'month',
+                onSelected: (_) => onPresetChanged('month'),
               ),
               ChoiceChip(
                 label: const Text('90 days'),
-                selected: _preset == 'quarter',
-                onSelected: (_) => setState(() => _preset = 'quarter'),
+                selected: preset == 'quarter',
+                onSelected: (_) => onPresetChanged('quarter'),
               ),
               ChoiceChip(
                 label: const Text('All'),
-                selected: _preset == 'all',
-                onSelected: (_) => setState(() => _preset = 'all'),
+                selected: preset == 'all',
+                onSelected: (_) => onPresetChanged('all'),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           AppSecondaryButton(
-            label: _busyZip ? 'Preparing…' : 'Download ZIP backup',
-            loading: _busyZip,
-            enabled: !_anyBusy || _busyZip,
+            label: busyZip ? 'Preparing…' : 'Download ZIP backup',
+            loading: busyZip,
+            enabled: !anyBusy || busyZip,
             icon: const Icon(Icons.folder_zip_outlined, size: 18),
-            onPressed: _downloadZip,
+            onPressed: onDownloadZip,
           ),
-          const SizedBox(height: 28),
         ],
+      ],
+    );
+  }
+}
 
-        // ── Automatic Backup ──
-        _ZoneHeader('Automatic Backup'),
-        Text(
-          kIsWeb
-              ? 'Once per day when you open the app: JSON backup → browser Downloads'
-              : 'Once per day when you open the app: ZIP (PDFs + stock Excel) '
-                  'and monthly purchases PDF → Downloads/HarisreeWarehouse',
-          style:
-              tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
-        ),
-        const SizedBox(height: 12),
-        _ExportCard(
-          children: [
-            SwitchListTile(
-              secondary: Icon(
-                Icons.autorenew_rounded,
-                color: _autoDaily ? cs.primary : cs.onSurfaceVariant,
-              ),
-              title: Text(kIsWeb ? 'Daily auto-backup (web)' : 'Daily auto-backup'),
-              subtitle: Text(
-                _autoDaily ? 'Enabled — runs once daily when app opens' : 'Disabled',
-                style: tt.bodySmall?.copyWith(
-                  color: _autoDaily ? cs.primary : cs.onSurfaceVariant,
-                ),
-              ),
-              value: _autoDaily,
-              onChanged: _anyBusy
-                  ? null
-                  : (v) async {
-                      final prefs = PrefsHelper.prefs;
-                      await prefs.setBool(kAutoDailyBackupEnabledKey, v);
-                      if (!mounted) return;
-                      setState(() => _autoDaily = v);
-                      if (v) {
-                        unawaited(maybeRunDailyAutoBackup(ref));
-                        showTopSnack(
-                          context,
-                          'Auto-backup enabled — runs once daily when the app opens.',
-                        );
-                      }
-                    },
-            ),
-          ],
-        ),
+// ── Tab 2: Full Backup (Server) ──
 
-        const SizedBox(height: 28),
+class _FullBackupTab extends StatelessWidget {
+  const _FullBackupTab({
+    required this.backupLogs,
+    required this.busyServer,
+    required this.anyBusy,
+    required this.onRunServerBackup,
+    required this.onRefreshLogs,
+  });
 
-        // ── Server Backup ──
-        _ZoneHeader('Server Backup'),
+  final List<dynamic> backupLogs;
+  final bool busyServer;
+  final bool anyBusy;
+  final VoidCallback onRunServerBackup;
+  final VoidCallback onRefreshLogs;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return ListView(
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      children: [
         Text(
           'Nightly JSON on the API host. Credentials are never included. '
           'Restore commit stays blocked until production-copy sign-off — dry-run only.',
           style:
               tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
+
+        _ZoneHeader('Server Backup Logs'),
         _ExportCard(
           children: [
-            if (_backupLogs.isNotEmpty)
-              for (final log in _backupLogs.take(5))
+            if (backupLogs.isNotEmpty)
+              for (final log in backupLogs.take(10))
                 if (log is Map)
                   ListTile(
                     dense: true,
@@ -674,12 +783,14 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                     subtitle: Text(
                       '${log['created_at'] ?? ''}'
                       '${log['size_bytes'] != null ? ' · ${log['size_bytes']} B' : ''}',
-                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                      style:
+                          tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                     ),
                   ),
-            if (_backupLogs.isEmpty)
+            if (backupLogs.isEmpty)
               ListTile(
-                leading: Icon(Icons.cloud_done_outlined, color: cs.onSurfaceVariant),
+                leading:
+                    Icon(Icons.cloud_done_outlined, color: cs.onSurfaceVariant),
                 title: const Text('No backup logs yet'),
                 subtitle: Text(
                   'Run a server backup to see history here.',
@@ -688,49 +799,135 @@ class _BackupPageState extends ConsumerState<BackupPage> {
               ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 16),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: [
             AppSecondaryButton(
-              label: _busyServer ? 'Running…' : 'Run server backup now',
-              loading: _busyServer,
-              enabled: !_anyBusy || _busyServer,
+              label: busyServer ? 'Running…' : 'Run server backup now',
+              loading: busyServer,
+              enabled: !anyBusy || busyServer,
               icon: const Icon(Icons.cloud_upload_outlined, size: 18),
-              onPressed: _runServerBackup,
+              onPressed: onRunServerBackup,
             ),
             AppSecondaryButton(
               label: 'Refresh logs',
-              enabled: !_anyBusy,
+              enabled: !anyBusy,
               icon: const Icon(Icons.history, size: 18),
-              onPressed: _loadBackupLogs,
+              onPressed: onRefreshLogs,
             ),
           ],
         ),
+      ],
+    );
+  }
+}
 
-        const SizedBox(height: 28),
+// ── Tab 3: Automatic Backup ──
 
-        // ── Restore ──
-        _ZoneHeader('Restore'),
+class _AutoBackupTab extends StatelessWidget {
+  const _AutoBackupTab({
+    required this.autoDaily,
+    required this.anyBusy,
+    required this.onToggle,
+  });
+
+  final bool autoDaily;
+  final bool anyBusy;
+  final ValueChanged<bool> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return ListView(
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      children: [
         Text(
-          'Dry-run to preview changes before restoring. Paste a backup JSON — nothing is committed.',
+          kIsWeb
+              ? 'Once per day when you open the app: JSON backup → browser Downloads'
+              : 'Once per day when you open the app: ZIP (PDFs + stock Excel) '
+                  'and monthly purchases PDF → Downloads/HarisreeWarehouse',
           style:
               tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
+        _ExportCard(
+          children: [
+            SwitchListTile(
+              secondary: Icon(
+                Icons.autorenew_rounded,
+                color: autoDaily ? cs.primary : cs.onSurfaceVariant,
+              ),
+              title: Text(
+                  kIsWeb ? 'Daily auto-backup (web)' : 'Daily auto-backup'),
+              subtitle: Text(
+                autoDaily
+                    ? 'Enabled — runs once daily when app opens'
+                    : 'Disabled',
+                style: tt.bodySmall?.copyWith(
+                  color: autoDaily ? cs.primary : cs.onSurfaceVariant,
+                ),
+              ),
+              value: autoDaily,
+              onChanged: anyBusy ? null : onToggle,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ── Tab 4: Restore ──
+
+class _RestoreTab extends StatelessWidget {
+  const _RestoreTab({
+    required this.dryRunResult,
+    required this.busyDryRun,
+    required this.anyBusy,
+    required this.onDryRunRestore,
+  });
+
+  final Map<String, dynamic>? dryRunResult;
+  final bool busyDryRun;
+  final bool anyBusy;
+  final VoidCallback onDryRunRestore;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return ListView(
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      children: [
+        Text(
+          'Dry-run to preview changes before restoring. '
+          'Paste a backup JSON — nothing is committed.',
+          style:
+              tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
+        ),
+        const SizedBox(height: 16),
+        _ZoneHeader('Restore Dry-Run'),
         _ExportCard(
           children: [
             ListTile(
               leading: Icon(Icons.rule_folder_outlined, color: cs.primary),
               title: const Text('Restore dry-run'),
-              subtitle: _dryRunResult != null
+              subtitle: dryRunResult != null
                   ? Text(
-                      _dryRunResult!['ok'] == true
-                          ? 'Last dry-run: OK — would add: ${_dryRunResult!['would_add']}'
-                          : 'Last dry-run: Failed — ${_dryRunResult!['error'] ?? 'unknown'}',
+                      dryRunResult!['ok'] == true
+                          ? 'Last dry-run: OK — would add: ${dryRunResult!['would_add']}'
+                          : 'Last dry-run: Failed — ${dryRunResult!['error'] ?? 'unknown'}',
                       style: tt.bodySmall?.copyWith(
-                        color: _dryRunResult!['ok'] == true
+                        color: dryRunResult!['ok'] == true
                             ? cs.primary
                             : cs.error,
                       ),
@@ -739,7 +936,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                       'Validate a backup JSON without committing changes.',
                       style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                     ),
-              trailing: _busyDryRun
+              trailing: busyDryRun
                   ? const SizedBox(
                       width: 20,
                       height: 20,
@@ -749,51 +946,33 @@ class _BackupPageState extends ConsumerState<BackupPage> {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         AppSecondaryButton(
-          label: _busyDryRun ? 'Validating…' : 'Run dry-run restore',
-          loading: _busyDryRun,
-          enabled: !_anyBusy || _busyDryRun,
+          label: busyDryRun ? 'Validating…' : 'Run dry-run restore',
+          loading: busyDryRun,
+          enabled: !anyBusy || busyDryRun,
           icon: const Icon(Icons.rule_folder_outlined, size: 18),
-          onPressed: _dryRunRestore,
+          onPressed: onDryRunRestore,
         ),
       ],
-    );
-
-    return Scaffold(
-      backgroundColor: context.adaptiveScaffold,
-      appBar: AppBar(
-        backgroundColor: context.adaptiveAppBarBg,
-        surfaceTintColor: Colors.transparent,
-        title: const Text('Export & Backup'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.popOrGo('/settings'),
-        ),
-      ),
-      body: isDesktop
-          ? DesktopPageShell(
-              maxContentWidth: HexaResponsive.maxFormWidth,
-              padding: EdgeInsets.zero,
-              child: body,
-            )
-          : body,
     );
   }
 }
 
-class _ZoneHeader extends StatelessWidget {
-  const _ZoneHeader(this.label);
+// ── Shared Widgets ──
 
-  final String label;
+class _ZoneHeader extends StatelessWidget {
+  const _ZoneHeader(this.text);
+
+  final String text;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Text(
-        label,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+        text,
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w800,
             ),
       ),

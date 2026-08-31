@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+
+import '../../../shared/widgets/desktop_page_shell.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/session_notifier.dart';
-import '../../../core/design_system/widgets/app_button.dart';
 import '../../../core/design_system/widgets/app_text_field.dart';
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/utils/snack.dart';
@@ -32,24 +33,11 @@ class _OwnerCredentialsPageState extends ConsumerState<OwnerCredentialsPage> {
   Map<String, dynamic> _byType = {};
   bool _loading = true;
   String? _error;
-  final _controllers = <String, TextEditingController>{};
-  String? _saving;
 
   @override
   void initState() {
     super.initState();
-    for (final t in _credentialTypes) {
-      _controllers[t] = TextEditingController();
-    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-  }
-
-  @override
-  void dispose() {
-    for (final c in _controllers.values) {
-      c.dispose();
-    }
-    super.dispose();
   }
 
   Future<void> _load() async {
@@ -90,19 +78,16 @@ class _OwnerCredentialsPageState extends ConsumerState<OwnerCredentialsPage> {
     }
   }
 
-  Future<void> _save(String type) async {
+  Future<void> _save(String type, String value) async {
     final session = ref.read(sessionProvider);
     final bid = session?.primaryBusiness.id;
-    final value = _controllers[type]?.text.trim() ?? '';
     if (bid == null || bid.isEmpty || value.isEmpty) return;
-    setState(() => _saving = type);
     try {
       final res = await ref.read(hexaApiProvider).putProviderCredential(
         businessId: bid,
         credentialType: type,
         value: value,
       );
-      _controllers[type]?.clear();
       if (!mounted) return;
       showTopSnack(
         context,
@@ -112,64 +97,162 @@ class _OwnerCredentialsPageState extends ConsumerState<OwnerCredentialsPage> {
     } catch (e) {
       if (!mounted) return;
       showTopSnack(context, loadStateErrorSubtitle(e));
-    } finally {
-      if (mounted) setState(() => _saving = null);
     }
+  }
+
+  void _showEditDialog(String type) {
+    final ctrl = TextEditingController();
+    final isPhoneId = type == 'whatsapp_phone_number_id';
+    final isStaffNum = type == 'whatsapp_staff_number';
+    final isPlain = isPhoneId || isStaffNum;
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(_labelFor(type)),
+        content: AppTextField(
+          controller: ctrl,
+          label: 'New value',
+          obscureText: !isPlain,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final value = ctrl.text.trim();
+              if (value.isEmpty) return;
+              Navigator.pop(ctx);
+              await _save(type, value);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    ).then((_) => ctrl.dispose());
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
     return Scaffold(
       appBar: AppBar(title: const Text('API credentials')),
-      body: _loading
-          ? const LinearProgressIndicator(minHeight: 2)
-          : _error != null
-              ? OwnerCredentialsLoadError(
-                  title: _error!,
-                  onRetry: _load,
-                )
-              : ListView(
-                  padding: const EdgeInsets.all(16),
+      body: DesktopPageShell(
+        padding: EdgeInsets.zero,
+        child: _loading
+            ? const LinearProgressIndicator(minHeight: 2)
+            : _error != null
+                ? OwnerCredentialsLoadError(
+                    title: _error!,
+                    onRetry: _load,
+                  )
+                : ListView(
+                    padding: const EdgeInsets.all(16),
                   children: [
-                    const Text(
+                    Text(
                       'Owner and admin can update WhatsApp and AI keys. '
                       'Stored encrypted — values are never shown again, only last 4 after save. '
                       'Runtime uses DB value first, then server env.',
-                      style: TextStyle(color: HexaColors.neutral, height: 1.35),
+                      style: tt.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                        height: 1.35,
+                      ),
                     ),
                     const SizedBox(height: 16),
-                    for (final type in _credentialTypes) ...[
-                      Text(
-                        _labelFor(type),
-                        style: const TextStyle(fontWeight: FontWeight.w800),
+                    Card(
+                      clipBehavior: Clip.antiAlias,
+                      child: Table(
+                        columnWidths: const {
+                          0: FlexColumnWidth(2),
+                          1: FlexColumnWidth(2),
+                          2: FlexColumnWidth(1),
+                        },
+                        children: [
+                          TableRow(
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerHighest,
+                            ),
+                            children: [
+                              _tableHeader('Provider', cs, tt),
+                              _tableHeader('Status', cs, tt),
+                              _tableHeader('Action', cs, tt),
+                            ],
+                          ),
+                          for (final type in _credentialTypes)
+                            TableRow(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                  child: Text(
+                                    _labelFor(type),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                  child: Text(
+                                    _byType[type] == null
+                                        ? 'Not configured'
+                                        : '•••• ${_byType[type]?['last_4_chars'] ?? ''}',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: _byType[type] == null
+                                          ? cs.onSurfaceVariant
+                                          : HexaColors.brandPrimary,
+                                    ),
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 8,
+                                  ),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: IconButton(
+                                      tooltip: 'Update',
+                                      icon: Icon(
+                                        Icons.edit_outlined,
+                                        size: 20,
+                                        color: cs.primary,
+                                      ),
+                                      onPressed: () => _showEditDialog(type),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _byType[type] == null
-                            ? 'Not configured (env fallback if set)'
-                            : '•••• ${_byType[type]?['last_4_chars'] ?? ''}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: HexaColors.neutral,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      AppTextField(
-                        controller: _controllers[type]!,
-                        label: 'New value',
-                        obscureText: type != 'whatsapp_phone_number_id' &&
-                            type != 'whatsapp_staff_number',
-                      ),
-                      const SizedBox(height: 8),
-                      AppPrimaryButton(
-                        label: _saving == type ? 'Saving…' : 'Save',
-                        loading: _saving == type,
-                        onPressed: () => _save(type),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
+                    ),
                   ],
                 ),
+      ),
+    );
+  }
+
+  Widget _tableHeader(String text, ColorScheme cs, TextTheme tt) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Text(
+        text,
+        style: tt.labelMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: cs.onSurfaceVariant,
+        ),
+      ),
     );
   }
 
