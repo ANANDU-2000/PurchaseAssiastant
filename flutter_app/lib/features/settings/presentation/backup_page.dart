@@ -9,13 +9,16 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/auth_error_messages.dart';
 import '../../../core/auth/session_notifier.dart';
+import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/design_system/widgets/app_button.dart';
 import '../../../core/design_system/widgets/app_text_field.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/services/backup_auto_service.dart';
 import '../../../core/services/backup_deliver.dart';
 import '../../../core/services/prefs_helper.dart';
+import '../../../core/theme/theme_context_ext.dart';
 import '../../../core/utils/snack.dart';
+import '../../../shared/widgets/desktop_page_shell.dart';
 
 const _kLastZipBackupKey = 'backup_last_zip_at';
 const _kLastJsonBackupKey = 'backup_last_json_at';
@@ -289,7 +292,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           );
       if (bytes.isEmpty) {
         if (mounted) {
-          showTopSnack(context, 'Nothing to export for this range.', isError: true);
+          showTopSnack(context, 'Nothing to export for this range.',
+              isError: true);
         }
         return;
       }
@@ -426,11 +430,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
   String get _storageHint {
     if (kIsWeb) {
       return 'On web, files download to your browser Downloads folder. '
-          'Allow downloads for this site. Daily auto-backup saves JSON once per day.';
-    }
-    if (!kIsWeb && _autoDaily) {
-      return 'Daily auto-backup saves to Desktop/Harisree_Backups when you open the app. '
-          'Manual downloads open the share sheet so you can save or send the file.';
+          'Allow downloads for this site.';
     }
     return 'Manual exports open the share sheet — save the file to any folder, '
         'send via WhatsApp, or store in Google Drive.';
@@ -441,182 +441,137 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     final monthLabel = DateFormat('MMMM yyyy').format(DateTime.now());
+    final isDesktop = MediaQuery.sizeOf(context).width >= 720;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Export & Backup'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.popOrGo('/settings'),
-        ),
+    final body = ListView(
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text(
-            'Download reports for your records. $_storageHint',
-            style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant, height: 1.4),
-          ),
-          const SizedBox(height: 20),
-          Text('Server backup',
-              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 4),
-          Text(
-            'Nightly JSON on the API host. Credentials are never included. '
-            'Restore commit stays blocked until production-copy sign-off — dry-run only.',
-            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
-          ),
-          const SizedBox(height: 8),
-          AppSecondaryButton(
-            label: _busyServer ? 'Running…' : 'Run server backup now',
-            loading: _busyServer,
-            enabled: !_anyBusy || _busyServer,
-            icon: const Icon(Icons.cloud_upload_outlined, size: 18),
-            onPressed: _runServerBackup,
-          ),
-          const SizedBox(height: 8),
-          AppSecondaryButton(
-            label: 'Refresh backup logs',
-            enabled: !_anyBusy,
-            icon: const Icon(Icons.history, size: 18),
-            onPressed: _loadBackupLogs,
-          ),
-          if (_backupLogs.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            for (final log in _backupLogs.take(8))
-              if (log is Map)
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    '${log['run_type'] ?? '—'} · ${log['status'] ?? '—'}',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: Text(
-                    '${log['created_at'] ?? ''}'
-                    '${log['size_bytes'] != null ? ' · ${log['size_bytes']} B' : ''}',
-                    style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                  ),
-                ),
-          ],
-          const SizedBox(height: 8),
-          AppSecondaryButton(
-            label: _busyDryRun ? 'Validating…' : 'Restore dry-run (pick JSON)',
-            loading: _busyDryRun,
-            enabled: !_anyBusy || _busyDryRun,
-            icon: const Icon(Icons.rule_folder_outlined, size: 18),
-            onPressed: _dryRunRestore,
-          ),
-          if (_dryRunResult != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              _dryRunResult!['ok'] == true
-                  ? 'Dry-run OK — would add: ${_dryRunResult!['would_add']}. '
-                      'Commit restore is not available yet.'
-                  : 'Dry-run failed: ${_dryRunResult!['error'] ?? 'unknown'}',
-              style: tt.bodySmall?.copyWith(
-                color: _dryRunResult!['ok'] == true
-                    ? cs.primary
-                    : cs.error,
-                height: 1.35,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      children: [
+        Text(
+          _storageHint,
+          style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant, height: 1.4),
+        ),
+        const SizedBox(height: 24),
+
+        // ── Export Data ──
+        _ZoneHeader('Export Data'),
+        Text(
+          'Download reports for your records.',
+          style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
+        ),
+        const SizedBox(height: 12),
+        _ExportCard(
+          children: [
+            ListTile(
+              leading: Icon(Icons.table_chart_outlined, color: cs.primary),
+              title: const Text('Stock Excel'),
+              subtitle: Text(
+                'Last: ${_fmt(_lastStockAt)}',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
               ),
+              trailing: _busyStock
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : null,
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: Icon(Icons.picture_as_pdf_outlined, color: cs.primary),
+              title: const Text('Purchases PDF'),
+              subtitle: Text(
+                '$monthLabel · Last: ${_fmt(_lastPdfAt)}',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+              trailing: _busyPdf
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : null,
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: Icon(Icons.data_object_outlined, color: cs.primary),
+              title: const Text('JSON backup'),
+              subtitle: Text(
+                'Catalog, suppliers, 90-day purchases, stock audit · Last: ${_fmt(_lastJsonAt)}',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+              trailing: _busyJson
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : null,
             ),
           ],
-          const SizedBox(height: 20),
-          Text('Export & Backup',
-              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            AppPrimaryButton(
+              label: _busyStock ? 'Preparing…' : 'Download Stock Excel',
+              loading: _busyStock,
+              enabled: !_anyBusy || _busyStock,
+              onPressed: _downloadStockExcel,
+            ),
+            AppSecondaryButton(
+              label: _busyPdf ? 'Preparing…' : 'Download Purchases PDF',
+              loading: _busyPdf,
+              enabled: !_anyBusy || _busyPdf,
+              icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+              onPressed: _downloadPurchasesPdf,
+            ),
+            AppSecondaryButton(
+              label: _busyJson ? 'Preparing…' : 'Download JSON',
+              loading: _busyJson,
+              enabled: !_anyBusy || _busyJson,
+              icon: const Icon(Icons.data_object_outlined, size: 18),
+              onPressed: _downloadJson,
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 28),
+
+        // ── Full Backup ──
+        if (!kIsWeb) ...[
+          _ZoneHeader('Full Backup'),
+          Text(
+            'ZIP contains purchase summary PDF, one PDF per bill, supplier ledger PDFs, and stock Excel.',
+            style:
+                tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
+          ),
           const SizedBox(height: 12),
-          AppPrimaryButton(
-            label: _busyStock ? 'Preparing…' : 'Download Stock Excel',
-            loading: _busyStock,
-            enabled: !_anyBusy || _busyStock,
-            onPressed: _downloadStockExcel,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(top: 4, left: 4),
-            child: Text(
-              'Last: ${_fmt(_lastStockAt)}',
-              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-            ),
-          ),
-          const SizedBox(height: 8),
-          AppSecondaryButton(
-            label: _busyPdf
-                ? 'Preparing…'
-                : 'Download Purchases PDF (this month)',
-            loading: _busyPdf,
-            enabled: !_anyBusy || _busyPdf,
-            icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-            onPressed: _downloadPurchasesPdf,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(top: 4, left: 4),
-            child: Text(
-              '$monthLabel · Last: ${_fmt(_lastPdfAt)}',
-              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text('JSON backup',
-              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 4),
-          Text(
-            'Catalog, suppliers, 90-day purchases, and stock audit history as JSON.',
-            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
+          _ExportCard(
+            children: [
+              ListTile(
+                leading: Icon(Icons.folder_zip_outlined, color: cs.primary),
+                title: const Text('ZIP backup'),
+                subtitle: Text(
+                  'Last: ${_fmt(_lastZipAt)}',
+                  style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                ),
+                trailing: _busyZip
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : null,
+              ),
+            ],
           ),
           const SizedBox(height: 8),
-          AppSecondaryButton(
-            label: _busyJson ? 'Preparing…' : 'Download JSON backup',
-            loading: _busyJson,
-            enabled: !_anyBusy || _busyJson,
-            icon: const Icon(Icons.data_object_outlined, size: 18),
-            onPressed: _downloadJson,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(top: 4, left: 4),
-            child: Text(
-              'Last JSON: ${_fmt(_lastJsonAt)}',
-              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-            ),
-          ),
-          const SizedBox(height: 20),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(kIsWeb ? 'Daily auto-backup (web)' : 'Daily auto-backup'),
-            subtitle: Text(
-              kIsWeb
-                  ? 'Once per day when you open the app: JSON backup → browser Downloads'
-                  : 'Once per day when you open the app: ZIP (PDFs + stock Excel) '
-                      'and monthly purchases PDF → Downloads/HarisreeWarehouse',
-              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
-            ),
-            value: _autoDaily,
-            onChanged: _anyBusy
-                ? null
-                : (v) async {
-                    final prefs = PrefsHelper.prefs;
-                    await prefs.setBool(kAutoDailyBackupEnabledKey, v);
-                    if (!mounted) return;
-                    setState(() => _autoDaily = v);
-                    if (v) {
-                      unawaited(maybeRunDailyAutoBackup(ref));
-                      showTopSnack(
-                        context,
-                        'Auto-backup enabled — runs once daily when the app opens.',
-                      );
-                    }
-                  },
-          ),
-          const SizedBox(height: 20),
-          if (!kIsWeb) ...[
-            Text('ZIP — purchases + stock (PDF)',
-                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 4),
-          Text(
-            'ZIP contains purchase summary PDF, one PDF per bill, supplier ledger PDFs, '
-            'and stock Excel.',
-            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
-          ),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -646,16 +601,217 @@ class _BackupPageState extends ConsumerState<BackupPage> {
             icon: const Icon(Icons.folder_zip_outlined, size: 18),
             onPressed: _downloadZip,
           ),
-          Padding(
-            padding: const EdgeInsets.only(top: 4, left: 4),
-            child: Text(
-              'Last ZIP: ${_fmt(_lastZipAt)}',
-              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-            ),
-          ),
-          ],
+          const SizedBox(height: 28),
         ],
+
+        // ── Automatic Backup ──
+        _ZoneHeader('Automatic Backup'),
+        Text(
+          kIsWeb
+              ? 'Once per day when you open the app: JSON backup → browser Downloads'
+              : 'Once per day when you open the app: ZIP (PDFs + stock Excel) '
+                  'and monthly purchases PDF → Downloads/HarisreeWarehouse',
+          style:
+              tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
+        ),
+        const SizedBox(height: 12),
+        _ExportCard(
+          children: [
+            SwitchListTile(
+              secondary: Icon(
+                Icons.autorenew_rounded,
+                color: _autoDaily ? cs.primary : cs.onSurfaceVariant,
+              ),
+              title: Text(kIsWeb ? 'Daily auto-backup (web)' : 'Daily auto-backup'),
+              subtitle: Text(
+                _autoDaily ? 'Enabled — runs once daily when app opens' : 'Disabled',
+                style: tt.bodySmall?.copyWith(
+                  color: _autoDaily ? cs.primary : cs.onSurfaceVariant,
+                ),
+              ),
+              value: _autoDaily,
+              onChanged: _anyBusy
+                  ? null
+                  : (v) async {
+                      final prefs = PrefsHelper.prefs;
+                      await prefs.setBool(kAutoDailyBackupEnabledKey, v);
+                      if (!mounted) return;
+                      setState(() => _autoDaily = v);
+                      if (v) {
+                        unawaited(maybeRunDailyAutoBackup(ref));
+                        showTopSnack(
+                          context,
+                          'Auto-backup enabled — runs once daily when the app opens.',
+                        );
+                      }
+                    },
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 28),
+
+        // ── Server Backup ──
+        _ZoneHeader('Server Backup'),
+        Text(
+          'Nightly JSON on the API host. Credentials are never included. '
+          'Restore commit stays blocked until production-copy sign-off — dry-run only.',
+          style:
+              tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
+        ),
+        const SizedBox(height: 12),
+        _ExportCard(
+          children: [
+            if (_backupLogs.isNotEmpty)
+              for (final log in _backupLogs.take(5))
+                if (log is Map)
+                  ListTile(
+                    dense: true,
+                    title: Text(
+                      '${log['run_type'] ?? '—'} · ${log['status'] ?? '—'}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Text(
+                      '${log['created_at'] ?? ''}'
+                      '${log['size_bytes'] != null ? ' · ${log['size_bytes']} B' : ''}',
+                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  ),
+            if (_backupLogs.isEmpty)
+              ListTile(
+                leading: Icon(Icons.cloud_done_outlined, color: cs.onSurfaceVariant),
+                title: const Text('No backup logs yet'),
+                subtitle: Text(
+                  'Run a server backup to see history here.',
+                  style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            AppSecondaryButton(
+              label: _busyServer ? 'Running…' : 'Run server backup now',
+              loading: _busyServer,
+              enabled: !_anyBusy || _busyServer,
+              icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+              onPressed: _runServerBackup,
+            ),
+            AppSecondaryButton(
+              label: 'Refresh logs',
+              enabled: !_anyBusy,
+              icon: const Icon(Icons.history, size: 18),
+              onPressed: _loadBackupLogs,
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 28),
+
+        // ── Restore ──
+        _ZoneHeader('Restore'),
+        Text(
+          'Dry-run to preview changes before restoring. Paste a backup JSON — nothing is committed.',
+          style:
+              tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
+        ),
+        const SizedBox(height: 12),
+        _ExportCard(
+          children: [
+            ListTile(
+              leading: Icon(Icons.rule_folder_outlined, color: cs.primary),
+              title: const Text('Restore dry-run'),
+              subtitle: _dryRunResult != null
+                  ? Text(
+                      _dryRunResult!['ok'] == true
+                          ? 'Last dry-run: OK — would add: ${_dryRunResult!['would_add']}'
+                          : 'Last dry-run: Failed — ${_dryRunResult!['error'] ?? 'unknown'}',
+                      style: tt.bodySmall?.copyWith(
+                        color: _dryRunResult!['ok'] == true
+                            ? cs.primary
+                            : cs.error,
+                      ),
+                    )
+                  : Text(
+                      'Validate a backup JSON without committing changes.',
+                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+              trailing: _busyDryRun
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : null,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        AppSecondaryButton(
+          label: _busyDryRun ? 'Validating…' : 'Run dry-run restore',
+          loading: _busyDryRun,
+          enabled: !_anyBusy || _busyDryRun,
+          icon: const Icon(Icons.rule_folder_outlined, size: 18),
+          onPressed: _dryRunRestore,
+        ),
+      ],
+    );
+
+    return Scaffold(
+      backgroundColor: context.adaptiveScaffold,
+      appBar: AppBar(
+        backgroundColor: context.adaptiveAppBarBg,
+        surfaceTintColor: Colors.transparent,
+        title: const Text('Export & Backup'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => context.popOrGo('/settings'),
+        ),
       ),
+      body: isDesktop
+          ? DesktopPageShell(
+              maxContentWidth: HexaResponsive.maxFormWidth,
+              padding: EdgeInsets.zero,
+              child: body,
+            )
+          : body,
+    );
+  }
+}
+
+class _ZoneHeader extends StatelessWidget {
+  const _ZoneHeader(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+      ),
+    );
+  }
+}
+
+class _ExportCard extends StatelessWidget {
+  const _ExportCard({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: context.adaptiveCard,
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: children),
     );
   }
 }

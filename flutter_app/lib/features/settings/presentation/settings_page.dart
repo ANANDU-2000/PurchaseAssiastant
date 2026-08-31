@@ -69,36 +69,109 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         parent: AlwaysScrollableScrollPhysics(),
       ),
       children: [
-          if (isOwner) const BackupMonthlyBanner(),
-          _SectionTitle('Account'),
-          _SettingsCard(
-            children: [
-              ListTile(
-                leading: Icon(Icons.person_outline_rounded, color: cs.primary),
-                title: const Text('Session'),
-                subtitle: Text(
-                  session != null
-                      ? 'Signed in · ${pb?.name ?? ''}'
-                      : 'Not signed in',
-                ),
+        if (isOwner) const BackupMonthlyBanner(),
+
+        // ── Account ──
+        _GroupHeader('Account'),
+        _SettingsCard(
+          children: [
+            ListTile(
+              leading: Icon(Icons.person_outline_rounded, color: cs.primary),
+              title: const Text('Session'),
+              subtitle: Text(
+                session != null
+                    ? 'Signed in · ${pb?.name ?? ''}'
+                    : 'Not signed in',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Center(
+          child: FilledButton.tonalIcon(
+            onPressed: () async {
+              await ref.read(sessionProvider.notifier).logout();
+              if (context.mounted) context.go('/login');
+            },
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('Sign out'),
+          ),
+        ),
+
+        // ── Business ──
+        _GroupHeader('Business'),
+        _BusinessCard(
+          session: session,
+          canManageUsers: canManageUsers,
+          businessProfileReadOnly: isManager,
+        ),
+
+        // ── Notifications ──
+        _GroupHeader('Notifications'),
+        _SettingsCard(
+          children: [
+            SwitchListTile(
+              secondary: Icon(Icons.notifications_active_outlined,
+                  color: cs.primary),
+              title: const Text('Local notifications'),
+              subtitle: const Text(
+                  'Warehouse reminders and follow-ups on this device'),
+              value: notifOptIn,
+              onChanged: (v) => unawaited(_setNotificationsOptIn(v)),
+            ),
+            if (notifOptIn) ...[
+              SwitchListTile(
+                title: const Text('Low stock alerts'),
+                value: notifKinds.contains('low_stock'),
+                onChanged: (v) => ref
+                    .read(notificationKindTogglesProvider.notifier)
+                    .setEnabled('low_stock', v),
+              ),
+              SwitchListTile(
+                title: const Text('Delivery updates'),
+                value: notifKinds.contains('delivery'),
+                onChanged: (v) => ref
+                    .read(notificationKindTogglesProvider.notifier)
+                    .setEnabled('delivery', v),
+              ),
+              SwitchListTile(
+                title: const Text('Stock variance'),
+                value: notifKinds.contains('stock_variance'),
+                onChanged: (v) => ref
+                    .read(notificationKindTogglesProvider.notifier)
+                    .setEnabled('stock_variance', v),
+              ),
+              SwitchListTile(
+                title: const Text('Staff requests & reorder'),
+                value: notifKinds.contains('staff_alert'),
+                onChanged: (v) => ref
+                    .read(notificationKindTogglesProvider.notifier)
+                    .setEnabled('staff_alert', v),
+              ),
+              SwitchListTile(
+                title: const Text('Opening stock reminders'),
+                value: notifKinds.contains('opening_stock'),
+                onChanged: (v) => ref
+                    .read(notificationKindTogglesProvider.notifier)
+                    .setEnabled('opening_stock', v),
+              ),
+              SwitchListTile(
+                title: const Text('Evening physical count'),
+                value: notifKinds.contains('physical_reminder'),
+                onChanged: (v) => ref
+                    .read(notificationKindTogglesProvider.notifier)
+                    .setEnabled('physical_reminder', v),
               ),
             ],
-          ),
-          _SectionTitle('Support'),
+          ],
+        ),
+
+        // ── Workspace ──
+        if (!isStaff) ...[
+          _GroupHeader('Workspace'),
           _SettingsCard(
             children: [
-              _NavTile(
-                icon: Icons.help_outline_rounded,
-                title: 'Help & guide',
-                subtitle: 'Daily stock, purchases, offline, and backup steps',
-                onTap: () => context.push('/settings/help'),
-              ),
-            ],
-          ),
-          if (!isStaff) ...[
-            _SectionTitle('Quick Actions'),
-            _SettingsCard(
-              children: [
+              if (!isStaff) ...[
                 _NavTile(
                   icon: Icons.add_shopping_cart_outlined,
                   title: 'New purchase',
@@ -110,75 +183,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   onTap: () => context.go('/purchase'),
                 ),
               ],
-            ),
-          ],
-          _SectionTitle('Notifications'),
-          _SettingsCard(
-            children: [
-              SwitchListTile(
-                secondary: Icon(Icons.notifications_active_outlined,
-                    color: cs.primary),
-                title: const Text('Local notifications'),
-                subtitle: const Text(
-                    'Warehouse reminders and follow-ups on this device'),
-                value: notifOptIn,
-                onChanged: (v) => unawaited(_setNotificationsOptIn(v)),
-              ),
-              if (notifOptIn) ...[
-                SwitchListTile(
-                  title: const Text('Low stock alerts'),
-                  value: notifKinds.contains('low_stock'),
-                  onChanged: (v) => ref
-                      .read(notificationKindTogglesProvider.notifier)
-                      .setEnabled('low_stock', v),
-                ),
-                SwitchListTile(
-                  title: const Text('Delivery updates'),
-                  value: notifKinds.contains('delivery'),
-                  onChanged: (v) => ref
-                      .read(notificationKindTogglesProvider.notifier)
-                      .setEnabled('delivery', v),
-                ),
-                SwitchListTile(
-                  title: const Text('Stock variance'),
-                  value: notifKinds.contains('stock_variance'),
-                  onChanged: (v) => ref
-                      .read(notificationKindTogglesProvider.notifier)
-                      .setEnabled('stock_variance', v),
-                ),
-                SwitchListTile(
-                  title: const Text('Staff requests & reorder'),
-                  value: notifKinds.contains('staff_alert'),
-                  onChanged: (v) => ref
-                      .read(notificationKindTogglesProvider.notifier)
-                      .setEnabled('staff_alert', v),
-                ),
-                SwitchListTile(
-                  title: const Text('Opening stock reminders'),
-                  value: notifKinds.contains('opening_stock'),
-                  onChanged: (v) => ref
-                      .read(notificationKindTogglesProvider.notifier)
-                      .setEnabled('opening_stock', v),
-                ),
-                SwitchListTile(
-                  title: const Text('Evening physical count'),
-                  value: notifKinds.contains('physical_reminder'),
-                  onChanged: (v) => ref
-                      .read(notificationKindTogglesProvider.notifier)
-                      .setEnabled('physical_reminder', v),
-                ),
-              ],
-            ],
-          ),
-          _SectionTitle('Business'),
-          _BusinessCard(
-            session: session,
-            canManageUsers: canManageUsers,
-            businessProfileReadOnly: isManager,
-          ),
-          _SectionTitle('Operations'),
-          _SettingsCard(
-            children: [
               _NavTile(
                 icon: Icons.playlist_add_check_rounded,
                 title: 'Reorder list',
@@ -211,178 +215,151 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ),
             ],
           ),
-          if (!isStaff) ...[
-            _SectionTitle('Export & Backup'),
-            _SettingsCard(
-              children: [
-                _NavTile(
-                  icon: Icons.cloud_download_outlined,
-                  title: 'Export & Backup',
-                  subtitle:
-                      'Stock Excel, purchases PDF (this month), ZIP trade data',
-                  onTap: () => context.push('/settings/backup'),
-                ),
-              ],
+        ],
+
+        // ── Data ──
+        _GroupHeader('Data'),
+        _SettingsCard(
+          children: [
+            _NavTile(
+              icon: Icons.groups_outlined,
+              title: 'Suppliers & brokers',
+              subtitle: 'Contacts hub, categories, items, people',
+              onTap: () => context.go('/contacts'),
             ),
-          ],
-          if (isOwnerOrAdmin) ...[
-            _SectionTitle('Owner tools'),
-            _SettingsCard(
-              children: [
-                _NavTile(
-                  icon: Icons.vpn_key_outlined,
-                  title: 'API credentials',
-                  subtitle: 'Encrypted WhatsApp and AI provider keys',
-                  onTap: () => context.push('/settings/credentials'),
-                ),
-                _NavTile(
-                  icon: Icons.dashboard_customize_outlined,
-                  title: 'Owner command center',
-                  subtitle: 'Exceptions, stock, backup, staff tasks',
-                  onTap: () => context.push('/settings/owner-dashboard'),
-                ),
-                _NavTile(
-                  icon: Icons.checklist_outlined,
-                  title: 'Staff tasks',
-                  subtitle: 'All assignments and pending work',
-                  onTap: () => context.push('/staff/tasks-board'),
-                ),
-              ],
+            _NavTile(
+              icon: Icons.category_outlined,
+              title: 'Categories & subcategories',
+              subtitle: 'Quick add Rice, Oil, and sub-types for items',
+              onTap: () => context.push('/catalog/taxonomy'),
             ),
-          ],
-          if (!isStaff && !isOwnerOrAdmin) ...[
-            _SectionTitle('Team'),
-            _SettingsCard(
-              children: [
-                _NavTile(
-                  icon: Icons.checklist_outlined,
-                  title: 'Staff tasks',
-                  subtitle: 'Assignments for your team',
-                  onTap: () => context.push('/staff/tasks-board'),
-                ),
-              ],
+            if (!isStaff)
+              _NavTile(
+                icon: Icons.inventory_2_outlined,
+                title: 'Item catalog',
+                subtitle: 'Full category tree and item editor',
+                onTap: () => context.push('/catalog'),
+              ),
+            _NavTile(
+              icon: Icons.tune_rounded,
+              title: 'Set reorder levels',
+              subtitle: 'Thresholds for low-stock alerts',
+              onTap: () => context.push('/catalog/setup-reorder-levels'),
             ),
+            _NavTile(
+              icon: Icons.qr_code_2_outlined,
+              title: 'Missing item codes',
+              subtitle: 'Assign codes and print barcodes',
+              onTap: () => context.push('/catalog/missing-codes'),
+            ),
+            if (!isStaff)
+              _NavTile(
+                icon: Icons.cloud_download_outlined,
+                title: 'Export & Backup',
+                subtitle:
+                    'Stock Excel, purchases PDF, ZIP trade data, auto-backup',
+                onTap: () => context.push('/settings/backup'),
+              ),
           ],
-          _SectionTitle('Data'),
+        ),
+
+        // ── System ──
+        if (isOwnerOrAdmin) ...[
+          _GroupHeader('System'),
           _SettingsCard(
             children: [
               _NavTile(
-                icon: Icons.groups_outlined,
-                title: 'Suppliers & brokers',
-                subtitle: 'Contacts hub, categories, items, people',
-                onTap: () => context.go('/contacts'),
+                icon: Icons.vpn_key_outlined,
+                title: 'API credentials',
+                subtitle: 'Encrypted WhatsApp and AI provider keys',
+                onTap: () => context.push('/settings/credentials'),
               ),
               _NavTile(
-                icon: Icons.category_outlined,
-                title: 'Categories & subcategories',
-                subtitle: 'Quick add Rice, Oil, and sub-types for items',
-                onTap: () => context.push('/catalog/taxonomy'),
-              ),
-              if (!isStaff)
-                _NavTile(
-                  icon: Icons.inventory_2_outlined,
-                  title: 'Item catalog',
-                  subtitle: 'Full category tree and item editor',
-                  onTap: () => context.push('/catalog'),
-                ),
-              _NavTile(
-                icon: Icons.tune_rounded,
-                title: 'Set reorder levels',
-                subtitle: 'Thresholds for low-stock alerts',
-                onTap: () => context.push('/catalog/setup-reorder-levels'),
+                icon: Icons.dashboard_customize_outlined,
+                title: 'Owner command center',
+                subtitle: 'Exceptions, stock, backup, staff tasks',
+                onTap: () => context.push('/settings/owner-dashboard'),
               ),
               _NavTile(
-                icon: Icons.qr_code_2_outlined,
-                title: 'Missing item codes',
-                subtitle: 'Assign codes and print barcodes',
-                onTap: () => context.push('/catalog/missing-codes'),
+                icon: Icons.checklist_outlined,
+                title: 'Staff tasks',
+                subtitle: 'All assignments and pending work',
+                onTap: () => context.push('/staff/tasks-board'),
               ),
-              if (!isOwner)
-                _NavTile(
-                  icon: Icons.folder_zip_outlined,
-                  title: 'Backup',
-                  subtitle: 'Download purchase records for your files',
-                  onTap: () => context.push('/settings/backup'),
-                ),
-              if (isOwner)
-                _NavTile(
-                  icon: Icons.checklist_rtl_outlined,
-                  title: 'Owner tasks',
-                  subtitle: 'Checklist progress and staff completion',
-                  onTap: () => context.push('/operations/owner-tasks'),
-                ),
-            ],
-          ),
-          if (session?.isSuperAdmin == true) ...[
-            _SectionTitle('Admin'),
-            _SettingsCard(
-              children: [
+              if (session?.isSuperAdmin == true)
                 _NavTile(
                   icon: Icons.admin_panel_settings_outlined,
                   title: 'Super admin',
                   onTap: () => context.push('/admin'),
                 ),
-              ],
-            ),
-          ],
-          _SectionTitle('Troubleshooting'),
-          _SettingsCard(
-            children: [
-              ListTile(
-                leading: Icon(Icons.sync_rounded, color: cs.primary),
-                title: const Text('Refresh all stats'),
-                subtitle: const Text(
-                  'Reloads home, reports, contacts KPIs, and purchases from the server.',
-                ),
-                onTap: () {
-                  invalidateBusinessAggregates(ref);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Refreshing numbers...')),
-                  );
-                },
-              ),
-              if (kDebugMode)
-                ListTile(
-                  leading: Icon(Icons.bug_report_outlined, color: cs.error),
-                  title: const Text('Test error sink'),
-                  subtitle: const Text(
-                    'Triggers a test exception to verify the production error sink fires.',
-                  ),
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Throwing test exception…'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                    // Delay so the snackbar renders before the exception.
-                    Future<void>.delayed(const Duration(milliseconds: 500), () {
-                      HexaErrorSink.triggerTestException();
-                    });
-                  },
-                ),
             ],
           ),
-          const SizedBox(height: 28),
-          Center(
-            child: GestureDetector(
-              onLongPress: () => _handleVersionLongPress(session),
-              child: Text(
-                'Version ${AppConfig.packageVersion}',
-                style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+        ],
+        if (!isStaff && !isOwnerOrAdmin) ...[
+          _GroupHeader('System'),
+          _SettingsCard(
+            children: [
+              _NavTile(
+                icon: Icons.checklist_outlined,
+                title: 'Staff tasks',
+                subtitle: 'Assignments for your team',
+                onTap: () => context.push('/staff/tasks-board'),
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton.tonalIcon(
-            onPressed: () async {
-              await ref.read(sessionProvider.notifier).logout();
-              if (context.mounted) context.go('/login');
-            },
-            icon: const Icon(Icons.logout_rounded),
-            label: const Text('Sign out'),
+            ],
           ),
         ],
+
+        // ── Troubleshooting ──
+        _GroupHeader('Troubleshooting'),
+        _SettingsCard(
+          children: [
+            ListTile(
+              leading: Icon(Icons.sync_rounded, color: cs.primary),
+              title: const Text('Refresh all stats'),
+              subtitle: const Text(
+                'Reloads home, reports, contacts KPIs, and purchases from the server.',
+              ),
+              onTap: () {
+                invalidateBusinessAggregates(ref);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Refreshing numbers...')),
+                );
+              },
+            ),
+            if (kDebugMode)
+              ListTile(
+                leading: Icon(Icons.bug_report_outlined, color: cs.error),
+                title: const Text('Test error sink'),
+                subtitle: const Text(
+                  'Triggers a test exception to verify the production error sink fires.',
+                ),
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Throwing test exception…'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  Future<void>.delayed(const Duration(milliseconds: 500), () {
+                    HexaErrorSink.triggerTestException();
+                  });
+                },
+              ),
+          ],
+        ),
+
+        const SizedBox(height: 28),
+        Center(
+          child: GestureDetector(
+            onLongPress: () => _handleVersionLongPress(session),
+            child: Text(
+              'Version ${AppConfig.packageVersion}',
+              style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+            ),
+          ),
+        ),
+        const SizedBox(height: 32),
+      ],
     );
 
     return Scaffold(
@@ -433,18 +410,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 }
 
-/// Desktop settings shortcuts for admin discoverability (UX-010).
+/// Desktop settings sidebar grouped by category (UX-010).
 List<({IconData icon, String label, String route})> settingsSidebarShortcuts({
   required bool showBackup,
   required bool isOwnerOrAdmin,
   required bool canManageUsers,
 }) {
   return [
-    (
-      icon: Icons.help_outline_rounded,
-      label: 'Help guide',
-      route: '/settings/help',
-    ),
     (
       icon: Icons.business_rounded,
       label: 'Business profile',
@@ -474,6 +446,11 @@ List<({IconData icon, String label, String route})> settingsSidebarShortcuts({
         route: '/settings/owner-dashboard',
       ),
     ],
+    (
+      icon: Icons.help_outline_rounded,
+      label: 'Help guide',
+      route: '/settings/help',
+    ),
   ];
 }
 
@@ -501,7 +478,43 @@ class _SettingsSidebar extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(8, 16, 8, 16),
         children: [
-          for (final t in tiles)
+          _SidebarGroupHeader('Business'),
+          for (final t in tiles.where((t) =>
+              t.route == '/settings/business' || t.route == '/settings/users'))
+            _SidebarTile(
+              icon: t.icon,
+              label: t.label,
+              route: t.route,
+              currentRoute: route,
+            ),
+          if (showBackup || isOwnerOrAdmin) ...[
+            const SizedBox(height: 8),
+            _SidebarGroupHeader('Data'),
+            for (final t in tiles.where(
+                (t) => t.route == '/settings/backup'))
+              _SidebarTile(
+                icon: t.icon,
+                label: t.label,
+                route: t.route,
+                currentRoute: route,
+              ),
+          ],
+          if (isOwnerOrAdmin) ...[
+            const SizedBox(height: 8),
+            _SidebarGroupHeader('System'),
+            for (final t in tiles.where((t) =>
+                t.route == '/settings/credentials' ||
+                t.route == '/settings/owner-dashboard'))
+              _SidebarTile(
+                icon: t.icon,
+                label: t.label,
+                route: t.route,
+                currentRoute: route,
+              ),
+          ],
+          const SizedBox(height: 8),
+          _SidebarGroupHeader('Help'),
+          for (final t in tiles.where((t) => t.route == '/settings/help'))
             _SidebarTile(
               icon: t.icon,
               label: t.label,
@@ -509,6 +522,27 @@ class _SettingsSidebar extends StatelessWidget {
               currentRoute: route,
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _SidebarGroupHeader extends StatelessWidget {
+  const _SidebarGroupHeader(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, top: 8, bottom: 4),
+      child: Text(
+        label.toUpperCase(),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
+            ),
       ),
     );
   }
@@ -591,15 +625,15 @@ class _BusinessCard extends StatelessWidget {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text);
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader(this.text);
 
   final String text;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 20, bottom: 8),
+      padding: const EdgeInsets.only(top: 24, bottom: 8),
       child: Text(
         text,
         style: Theme.of(context).textTheme.titleSmall?.copyWith(
