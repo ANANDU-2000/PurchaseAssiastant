@@ -27,6 +27,8 @@ import 'shell_realtime_listener.dart';
 import 'shell_tab_auto_refresh_listener.dart';
 import 'owner_shell_nav.dart';
 import 'web_compact_side_nav.dart';
+import 'global_top_bar.dart';
+import 'sidebar_state_provider.dart';
 
 /// Shell: Home | Stock | Reports | Purchases | Search in one row, then [+] (no overlap).
 class ShellScreen extends ConsumerStatefulWidget {
@@ -108,6 +110,8 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
       });
     }
     final width = MediaQuery.sizeOf(context).width;
+    final isDesktop = width >= kDesktopMin;
+    final showTopBar = isDesktop;
     // Side rail from tablet up. [HexaWebPageFrame] is a pass-through — do not
     // disable the rail on wide screens (that regressed desktop home).
     // width==0 (web first frame): keep bottom bar so chrome is not fully blank.
@@ -159,8 +163,9 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     );
 
     // Hard-capped width — never let side nav expand into [Expanded] body.
-    final labeledRail =
-        MediaQuery.sizeOf(context).width >= kDesktopMin;
+    // On desktop, respect the user's collapse/expand preference.
+    final collapsed = ref.watch(sidebarCollapsedProvider);
+    final labeledRail = isDesktop && !collapsed;
     final railWidth =
         labeledRail ? kShellLabeledRailWidth : kShellCompactRailWidth;
     final rail = showRail
@@ -187,10 +192,24 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
               child: Material(
                 key: const ValueKey<String>('main_shell'),
                 color: Theme.of(context).scaffoldBackgroundColor,
-                child: ResponsiveShellLayout(
-                  rail: rail,
-                  body: shellBody,
-                  railMinWidth: kShellRailMin,
+                child: Column(
+                  children: [
+                    if (showTopBar)
+                      GlobalTopBar(
+                        onToggleSidebar: isDesktop
+                            ? () => ref
+                                .read(sidebarCollapsedProvider.notifier)
+                                .toggle()
+                            : null,
+                      ),
+                    Expanded(
+                      child: ResponsiveShellLayout(
+                        rail: rail,
+                        body: shellBody,
+                        railMinWidth: kShellRailMin,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -215,7 +234,10 @@ class _WebOwnerSideNav extends ConsumerWidget {
     final stockAlertN = providerSkipApi(ref)
         ? 0
         : ref.watch(notificationsUnreadCountProvider);
-    final showLabels = MediaQuery.sizeOf(context).width >= kDesktopMin;
+    final collapsed = ref.watch(sidebarCollapsedProvider);
+    final isDesktop = MediaQuery.sizeOf(context).width >= kDesktopMin;
+    // Labels show when desktop AND not collapsed.
+    final showLabels = isDesktop && !collapsed;
     final session = ref.watch(sessionProvider);
     final businessName =
         session?.primaryBusiness.effectiveDisplayTitle ?? 'Warehouse';
