@@ -9,7 +9,8 @@ Order = priority. Loop always takes the first `[ ]`.
 - [x] A3 perf.spec.ts budgets in one JSON (Home<=3 calls, tabs<=4, no dup GET within 2s, first data<=3s)
 - [x] B1 Home out/need-attention now use the Stock 'active out' definition (cdc99a1)
 - [x] B1b Low-stock ops summary (stock_list.py out_cnt, low_stock_priority out_of_stock_flag) still counts raw cur<=0 -> use the same active-out rule; test
-- [ ] B1c Pending delivery: Home 3 vs pipeline 2 dispatched - find the two definitions, unify, test
+- [x] B1c (code+tests pushed 8af9529; prod verify pending: Render service was suspended by the owner at 15:49 UTC) Pending delivery: Home 3 vs pipeline 2 dispatched - find the two definitions, unify, test
+- [ ] B1e Pre-existing failing test: tests/test_trade_purchases.py::test_staff_cannot_edit_payment_but_can_receive_delivery_without_financials (PATCH payment returns 403 as expected? check what assertion fails) - fails on clean main too
 - [ ] B1d Purchases this month = 0 while pending value is non-zero - check period filter (purchase date vs created) and test
 - [ ] B2 (add 'not_counted' count to alerts summary + Home/Stock chip; prod has 525) Out = tracked, on-hand<=0, not archived; "not counted" is a separate state/chip
 - [ ] B3 One display unit per item via line_qty_in_stock_unit; warehouse card one line per unit; test per conversion
