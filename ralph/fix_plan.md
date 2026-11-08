@@ -3,12 +3,57 @@
 Legend: `[ ]` todo · `[x]` done · `[!]` blocked (see progress.md)
 Order = priority. Loop always takes the first `[ ]`.
 
+## MASTER code-first plan (contract: works at prod migration 068; never needs Render env/deploy/secrets; see MASTER prompt in chat, mirrored here)
+- [x] A1 EXPECTED_ALEMBIC_HEAD derived from alembic files; smoke reports "schema behind by N" as WARNING
+- [ ] A2 QA fails only on real problems; documented console allowlist file (covers WebKit cancelled-XHR noise)
+- [ ] A3 perf.spec.ts budgets in one JSON (Home<=3 calls, tabs<=4, no dup GET within 2s, first data<=3s)
+- [ ] B1 Reproduce + test count mismatches (Home out/need-attention/below-reorder vs Stock; pending delivery; month purchases); single definition per count
+- [ ] B2 Out = tracked, on-hand<=0, not archived; "not counted" is a separate state/chip
+- [ ] B3 One display unit per item via line_qty_in_stock_unit; warehouse card one line per unit; test per conversion
+- [ ] B4 Pending >30d = Stale with Close/Cancel, excluded from Pending value by default
+- [ ] B5 Stock list columns In system / Counted / Difference; "Not counted" + count button
+- [ ] C1 AUTO_COMMIT_STOCK_ON_CONFIRM (default true) commits stock in create/update trade purchase, real stock_updates, no schema change
+- [ ] C2 Lifecycle tests: create/edit/cancel/delete, commit idempotent, physical-count idempotency key
+- [ ] C3 Pending-delivery card wording follows server mode (via bootstrap/me)
+- [ ] D1 Table of the 61 invalidate(stock*Provider) sites in progress.md
+- [ ] D2 StockWriteCoordinator.applyStockWrite for all writes
+- [ ] D3 Delete 5s deferred timers, 2s deferred invalidations, duplicate invalidations
+- [ ] D4 One background refresh trigger (realtime entity/ids or resume with 60s gap)
+- [ ] D5 Measure: one save <= 1 list request
+- [ ] E1 GET /v1/home/summary (one query set, ETag, tests agree with Stock counts)
+- [ ] E2 Home uses only summary; lazy sections; <=3 calls cold
+- [ ] E3 Tabs fetch own data; Search debounce 300ms/cancel/min 2 chars; paginate + virtualize >50
+- [ ] E4 Parallelize startup calls; drop non-first-paint calls
+- [ ] E5 gzip, ETag/304 on read lists, pool sizing; index migrations written but apply step [!]
+- [ ] E6 Notifications: unread from summary, list on bell open, poll >=60s
+- [ ] F1 Design tokens file + Button/Card/Chip/StatusBadge/EmptyState; 16/18px, 48px targets
+- [ ] F2 One sync indicator (Live / Saved data+Retry / Offline)
+- [ ] F3 Quick count sheet: one input, pinned Save, no Reason field, one tap save
+- [ ] F4 Filter chips one scroll row, same style
+- [ ] F5 Bottom nav/FAB no overlap, labels visible
+- [ ] F6 One scroll container; sticky header/col on tablet+desktop; cards on mobile
+- [ ] F7 Skeletons + optimistic updates with rollback
+- [ ] F8 Plain labels, Malayalam-ready layouts
+- [ ] F9 Split purchase_item_entry_sheet / purchase_entry_wizard / purchase_home_page to <=400-line widgets
+- [ ] G1 Delete analyzer-confirmed dead files + unused deps
+- [ ] G2 Archive FINDINGS_*/UI prompts to docs/archive; AGENTS.md <=80 lines
+- [ ] G3 gitleaks pre-commit + CI
+- [ ] G4 Auth/business-scope/rate-limit/CORS/JWT review; pip-audit + pub outdated
+- [ ] G5 Security headers in vercel.json
+- [ ] H1 Android platform (com.hexastack.harisree) with minimal permissions
+- [ ] H2 Plugins work on Android
+- [ ] H3 android-release.yml (signing creation stays [!] human)
+- [ ] H4 /install page + in-app update check
+- [ ] I1 Assistant agent tools (writes need confirm)
+- [ ] I2 Voice push-to-talk ml-IN
+- [ ] I3 Remote MCP /mcp
+- [ ] I4 WhatsApp webhook -> agent
+
 ## P0 — Production up (Vercel → Render → Render Postgres)
 - [ ] QA noise: WebKit (mobile) reports 'XMLHttpRequest ... access control checks' for in-flight requests cancelled by page.goto in the screens test; CORS preflight verified OK via curl. Navigate in-app (tap nav) or filter aborted-navigation XHRs in smoke.spec.ts so the mobile run is green
 - [x] Build script defaults/forces API to https://my-purchases-api.onrender.com; CI dead-host guard flipped (commit "fix(deploy): point web build at Render API")
 - [x] Verify prod login works on desktop/tablet/mobile with QA account (Playwright `ralph/qa`), zero console errors on /login → /home
 - [!] Verify `/health/ready` shows `schema_ok: true` and alembic head = latest file in `backend/alembic/versions`. If not, add BLOCKED note "set AUTO_MIGRATE=1 on Render and redeploy latest main"
-- [ ] `backend/app/routers/health.py:17` EXPECTED_ALEMBIC_HEAD hardcoded to 069 but repo head is 070_ai_whatsapp_ops; derive it from alembic ScriptDirectory (also update scripts/smoke_production_api.py:106 hint)
 - [ ] Remove `render-keepalive.yml` pings if the Render plan is paid Starter (no sleep); keep `db-backup.yml`, verify it targets Render DB via GitHub secret only
 - [ ] Grep repo + git history for leaked secrets (`sk-proj`, `ghp_`, `postgresql://`, `JWT_`). Remove from tree; BLOCKED note listing what to rotate
 

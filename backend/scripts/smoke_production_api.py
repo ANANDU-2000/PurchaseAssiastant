@@ -100,17 +100,15 @@ def main() -> int:
             db_ok = data.get("db") == "ok"
             schema_ok = data.get("schema_ok") is True
             all_ok &= _ok("health/ready db", db_ok, str(data.get("db")))
-            all_ok &= _ok(
-                "health/ready schema",
-                schema_ok,
-                f"version={data.get('alembic_version')} expected_hint=069_owner_ops_tables",
-            )
-            # Soft note when head lags — still FAIL if schema_ok false.
-            ver = str(data.get("alembic_version") or "")
-            if "070" not in ver and schema_ok:
+            ver = str((data.get("schema") or {}).get("alembic_version") or "")
+            exp = data.get("expected_alembic_head")
+            if schema_ok:
+                _ok("health/ready schema", True, f"version={ver}")
+            else:
+                behind = (data.get("schema") or {}).get("schema_behind_by")
                 print(
-                    "[WARN] alembic_version does not contain 070 — "
-                    "run alembic upgrade head on Windows API host"
+                    f"[WARN] schema behind by {behind if behind is not None else '?'}: "
+                    f"db={ver} head={exp} (run alembic upgrade head / AUTO_MIGRATE=1)"
                 )
         except json.JSONDecodeError:
             all_ok &= _ok("health/ready json", False, "invalid JSON")

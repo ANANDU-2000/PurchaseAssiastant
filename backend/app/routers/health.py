@@ -7,14 +7,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse, Response
 
+from app.alembic_head import behind_by, latest_head
 from app.config import Settings, get_settings
 from app.database import get_db
 
 router = APIRouter(tags=["health"])
 logger = logging.getLogger("harisree.health")
 
-# Keep in sync with latest Alembic revision in backend/alembic/versions/.
-EXPECTED_ALEMBIC_HEAD = "069_owner_ops_tables"
 
 
 @router.get("/")
@@ -144,7 +143,8 @@ async def health_ready(db: AsyncSession = Depends(get_db)):
         constraint_def = (chk.scalar() or "").upper()
         schema["staff_activity_v2"] = "STOCK_PHYSICAL_UPDATE" in constraint_def
         ver_str = str(schema.get("alembic_version") or "")
-        schema["schema_ok"] = ver_str == EXPECTED_ALEMBIC_HEAD and bool(
+        schema["schema_behind_by"] = behind_by(ver_str)
+        schema["schema_ok"] = ver_str == latest_head() and bool(
             schema.get("staff_activity_v2")
         )
     except Exception:  # noqa: BLE001
@@ -156,7 +156,7 @@ async def health_ready(db: AsyncSession = Depends(get_db)):
         "db_ms": ms,
         "schema": schema,
         "schema_ok": bool(schema.get("schema_ok")),
-        "expected_alembic_head": EXPECTED_ALEMBIC_HEAD,
+        "expected_alembic_head": latest_head(),
         "stock_sync_ready": bool(
             schema.get("delivery_pipeline") and schema.get("received_qty_column")
         ),
