@@ -2,26 +2,20 @@
 
 ## Frontend (Vercel)
 
-1. **Build:**
-   ```
-   cd flutter_app
-   flutter build web --release
-   ```
-2. **Deploy:** Vercel project `purchase-assiastant` auto-deploys from `main` branch
-   - Build command: `flutter build web --release`
-   - Output directory: `flutter_app/build/web`
-   - `vercel.json` in repo root configures SPA rewrites
-3. **Env vars in Vercel:**
-   - `API_BASE_URL` — Cloudflare Tunnel API (`https://api.harisreeagency.online`)
-4. **Hard refresh after deploy:** Ctrl+Shift+R to bust cached `main.dart.js`
+1. Vercel project `purchase-assiastant` auto-deploys from `main` via `scripts/vercel-flutter-build.sh`.
+2. `API_BASE_URL` = `https://my-purchases-api.onrender.com` (the build script also forces this if the env still holds the old tunnel host).
+3. Hard refresh after deploy (Ctrl+Shift+R) to bust cached `main.dart.js`.
 
-## Backend (Windows Server + Cloudflare Tunnel)
+## Backend (Render, current production)
 
-1. **Public URL:** `https://api.harisreeagency.online` → `http://localhost:8000` via cloudflared
-2. **Service:** NSSM `PurchaseAssistantAPI` on the Windows Server
-3. **Deploy:** `git pull origin main` then `nssm restart PurchaseAssistantAPI`
-4. **Env vars:** in `backend/.env` on the server (Postgres local, CORS includes Vercel domain)
-5. **Health check:** `GET /health` and `GET /health/ready` → 200
+1. **Service:** Render web service `my-purchases-api` -> `https://my-purchases-api.onrender.com`
+2. **DB:** Render Postgres `harisree_db` (Singapore), internal URL in `DATABASE_URL`.
+3. **Migrations:** `AUTO_MIGRATE=1` runs `alembic upgrade head` on boot. `/health/ready` must show `schema_ok: true`.
+4. **Health:** `GET /health/ready` -> 200.
+
+## Backend (client Windows server, FUTURE)
+
+Planned move to the client's own server (Windows Server, NSSM + Cloudflare Tunnel at `api.harisreeagency` .online). Not live. Do not point builds at it until it passes `/health/ready`.
 
 ## Database Migrations
 

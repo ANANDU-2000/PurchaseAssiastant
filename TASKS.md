@@ -78,7 +78,7 @@ Roadmap: [PLAN.md](PLAN.md). Rules: [AGENTS.md](AGENTS.md). Cleanup contract: [d
 | Check | Notes |
 |-------|-------|
 | Canonical web | `https://purchase-assiastant.vercel.app` |
-| API | `api.harisreeagency.online` (Cloudflare Tunnel → Windows FastAPI) |
+| API | `my-purchases-api.onrender.com` (Render web service + Render Postgres) |
 | Typo hosts | Not our app — do not treat as product bugs |
 | PC6 deploy | `git pull` + `alembic upgrade head` on API host separately from laptop DB |
 

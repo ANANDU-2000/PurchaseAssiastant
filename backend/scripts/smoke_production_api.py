@@ -2,7 +2,7 @@
 
 Usage:
   python -m scripts.smoke_production_api
-  API_BASE=https://api.harisreeagency.online python -m scripts.smoke_production_api
+  API_BASE=https://my-purchases-api.onrender.com python -m scripts.smoke_production_api
   CORS_ORIGIN=https://purchase-assiastant.vercel.app python -m scripts.smoke_production_api
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-API_BASE = os.environ.get("API_BASE", "https://api.harisreeagency.online").rstrip("/")
+API_BASE = os.environ.get("API_BASE", "https://my-purchases-api.onrender.com").rstrip("/")
 CORS_ORIGIN = os.environ.get(
     "CORS_ORIGIN", "https://purchase-assiastant.vercel.app"
 ).strip()
@@ -24,7 +24,7 @@ CORS_ORIGIN = os.environ.get(
 
 # Cloudflare Tunnel may 403 bare urllib clients without a browser-like UA.
 _DEFAULT_UA = (
-    "Mozilla/5.0 (compatible; HarisreeSmoke/1.0; +https://api.harisreeagency.online)"
+    "Mozilla/5.0 (compatible; HarisreeSmoke/1.0; +https://my-purchases-api.onrender.com)"
 )
 
 

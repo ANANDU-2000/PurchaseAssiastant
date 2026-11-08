@@ -135,3 +135,12 @@ backend/schema_audit_chunk_*.sql
 
 # Claude Code local config (proxy, tokens, permissions)
 .claude/
+
+# Repomix packed output (generate on demand: npx @yamadashy/repomix — see repomix.config.json)
+repomix-output.txt
+
+# Local production credentials (never commit — rotate anything that has leaked)
+.opencode/secrets.local.md
+ralph/qa/node_modules/
+ralph/qa/test-results/
+ralph/qa/shots/

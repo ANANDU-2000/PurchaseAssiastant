@@ -106,5 +106,5 @@ jobs:
             --no-web-resources-cdn \
             --no-source-maps \
             --no-wasm-dry-run \
-            --dart-define=API_BASE_URL=https://api.harisreeagency.online \
+            --dart-define=API_BASE_URL=https://my-purchases-api.onrender.com \
             --dart-define=GOOGLE_OAUTH_CLIENT_ID=

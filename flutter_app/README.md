@@ -29,7 +29,7 @@ Client reads the backend URL from `--dart-define` (see `lib/core/config/app_conf
 Root [`vercel.json`](../vercel.json) builds and publishes `flutter_app/build/web`.
 
 - **Root Directory** = repository root (`.`)
-- **Production env:** `API_BASE_URL=https://api.harisreeagency.online`, `GOOGLE_OAUTH_CLIENT_ID=<Web client ID>`
+- **Production env:** `API_BASE_URL=https://my-purchases-api.onrender.com`, `GOOGLE_OAUTH_CLIENT_ID=<Web client ID>`
 - Canonical host: [https://purchase-assiastant.vercel.app](https://purchase-assiastant.vercel.app) (spelling **assiastant**)
 
 ## Google Sign-In
