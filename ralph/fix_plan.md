@@ -6,7 +6,8 @@ Order = priority. Loop always takes the first `[ ]`.
 ## P0 — Production up (Vercel → Render → Render Postgres)
 - [x] Build script defaults/forces API to https://my-purchases-api.onrender.com; CI dead-host guard flipped (commit "fix(deploy): point web build at Render API")
 - [x] Verify prod login works on desktop/tablet/mobile with QA account (Playwright `ralph/qa`), zero console errors on /login → /home
-- [ ] Verify `/health/ready` shows `schema_ok: true` and alembic head = latest file in `backend/alembic/versions`. If not, add BLOCKED note "set AUTO_MIGRATE=1 on Render and redeploy latest main"
+- [!] Verify `/health/ready` shows `schema_ok: true` and alembic head = latest file in `backend/alembic/versions`. If not, add BLOCKED note "set AUTO_MIGRATE=1 on Render and redeploy latest main"
+- [ ] `backend/app/routers/health.py:17` EXPECTED_ALEMBIC_HEAD hardcoded to 069 but repo head is 070_ai_whatsapp_ops; derive it from alembic ScriptDirectory (also update scripts/smoke_production_api.py:106 hint)
 - [ ] Remove `render-keepalive.yml` pings if the Render plan is paid Starter (no sleep); keep `db-backup.yml`, verify it targets Render DB via GitHub secret only
 - [ ] Grep repo + git history for leaked secrets (`sk-proj`, `ghp_`, `postgresql://`, `JWT_`). Remove from tree; BLOCKED note listing what to rotate
 
