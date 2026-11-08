@@ -94,7 +94,7 @@ from app.schemas.stock import (
 )
 from app.services import trade_query as tq
 from app.services.staff_view import should_redact_financials
-from app.services.low_stock_priority import compute_low_stock_priority
+from app.services.low_stock_priority import compute_low_stock_priority, is_never_stocked
 from app.services.low_stock_ops_enrichment import (
     derive_lifecycle_stage,
     item_is_disputed,
@@ -883,6 +883,7 @@ async def _fetch_low_stock_candidates(
 
     merged: dict[uuid.UUID, StockListItemOut] = {}
     total_seen = 0
+    seen = 0
     for page in range(1, max_pages + 1):
         out = await _list_stock_page(
             business_id=business_id,
@@ -905,12 +906,17 @@ async def _fetch_low_stock_candidates(
             unit="",
         )
         total_seen = out.total
+        seen += len(out.items)
         for it in out.items:
+            if is_never_stocked(it):
+                continue  # not counted yet; never an attention/out item
             merged[it.id] = it
-        # Stop early once the page is empty.
-        if not out.items or len(merged) >= total_seen:
+        # Stop once the last page of candidates has been read.
+        if not out.items or seen >= total_seen:
             break
-    return total_seen, merged
+    return len(merged), merged
+
+
 async def _enrich_low_stock_ops_rows(
     db: AsyncSession,
     business_id: uuid.UUID,

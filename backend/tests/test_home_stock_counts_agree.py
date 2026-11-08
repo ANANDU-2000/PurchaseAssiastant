@@ -76,3 +76,43 @@ def test_active_out_matches_between_home_and_stock():
     summary = client.get(f"/v1/businesses/{bid}/stock/alerts/summary", headers=h).json()
     assert summary["active_out_of_stock"] == 1
     assert _home_counts(h, bid)["out"] == 1
+
+
+def test_low_stock_ops_ignores_never_stocked_items():
+    """B1b: Low-stock operations header/list must not count never-stocked catalog entries."""
+    h, bid = _owner_headers()
+    sid, cat_id = _setup(h, bid)
+    for i in range(5):
+        _create_piece_item(h, bid, sid, name=f"Never {i}", cat_id=cat_id)
+    low_id = _create_piece_item(h, bid, sid, name="Low Item", cat_id=cat_id)
+    _patch_stock(h, bid, low_id, 8, idem=f"low:{uuid.uuid4().hex}")
+    _set_reorder(h, bid, low_id, 10)
+
+    s = client.get(f"/v1/businesses/{bid}/stock/low-stock/summary", headers=h)
+    assert s.status_code == 200, s.text
+    assert s.json()["out_of_stock"] == 0
+    assert s.json()["total_attention"] == 1
+
+    lst = client.get(f"/v1/businesses/{bid}/stock/low-stock/operations", headers=h)
+    assert lst.status_code == 200, lst.text
+    body = lst.json()
+    assert body["total"] == 1
+    assert body["summary_slice"]["out_of_stock"] == 0
+    assert body["summary_slice"]["total_attention"] == 1
+
+
+def test_low_stock_ops_counts_active_out():
+    h, bid = _owner_headers()
+    sid, cat_id = _setup(h, bid)
+    out_id = _create_piece_item(h, bid, sid, name="Was stocked", cat_id=cat_id)
+    client.post(
+        f"/v1/businesses/{bid}/stock/{out_id}/opening-stock",
+        headers=h,
+        json={"qty": 5, "reason": "Initial", "idempotency_key": f"open:{uuid.uuid4().hex}"},
+    ).raise_for_status()
+    _patch_stock(h, bid, out_id, 0, idem=f"out:{uuid.uuid4().hex}")
+    _create_piece_item(h, bid, sid, name="Never", cat_id=cat_id)
+
+    s = client.get(f"/v1/businesses/{bid}/stock/low-stock/summary", headers=h).json()
+    assert s["out_of_stock"] == 1
+    assert s["total_attention"] == 1

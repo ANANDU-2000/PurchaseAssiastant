@@ -37,6 +37,17 @@ def _to_float(d: Decimal | None) -> float:
         return 0.0
 
 
+def is_never_stocked(item: StockListItemOut) -> bool:
+    """Zero stock and no history (no opening stock, no purchase): not 'out', just not counted yet.
+
+    Mirrors the SQL ``is_active_out`` rule in stock_inventory.compute_stock_alerts_summary.
+    """
+    if _to_float(item.current_stock) > 0.0:
+        return False
+    opening = _to_float(item.opening_stock_qty)
+    return opening <= 0.0 and item.last_purchase_at is None
+
+
 def compute_low_stock_priority(
     item: StockListItemOut,
     *,
