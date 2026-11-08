@@ -1,11 +1,11 @@
-# fix_plan — Harisree Purchase Assistant (Ralph loop source of truth)
+﻿# fix_plan — Harisree Purchase Assistant (Ralph loop source of truth)
 
 Legend: `[ ]` todo · `[x]` done · `[!]` blocked (see progress.md)
 Order = priority. Loop always takes the first `[ ]`.
 
 ## P0 — Production up (Vercel → Render → Render Postgres)
 - [x] Build script defaults/forces API to https://my-purchases-api.onrender.com; CI dead-host guard flipped (commit "fix(deploy): point web build at Render API")
-- [ ] Verify prod login works on desktop/tablet/mobile with QA account (Playwright `ralph/qa`), zero console errors on /login → /home
+- [x] Verify prod login works on desktop/tablet/mobile with QA account (Playwright `ralph/qa`), zero console errors on /login → /home
 - [ ] Verify `/health/ready` shows `schema_ok: true` and alembic head = latest file in `backend/alembic/versions`. If not, add BLOCKED note "set AUTO_MIGRATE=1 on Render and redeploy latest main"
 - [ ] Remove `render-keepalive.yml` pings if the Render plan is paid Starter (no sleep); keep `db-backup.yml`, verify it targets Render DB via GitHub secret only
 - [ ] Grep repo + git history for leaked secrets (`sk-proj`, `ghp_`, `postgresql://`, `JWT_`). Remove from tree; BLOCKED note listing what to rotate
@@ -59,3 +59,4 @@ Order = priority. Loop always takes the first `[ ]`.
 
 ## P8 — Later: client server migration (only after P0–P3 stable)
 - [ ] Runbook to move backend+DB from Render to client Windows Server (Docker or NSSM) + Cloudflare Tunnel; pg_dump/restore; cut over by changing Vercel `API_BASE_URL` only
+

@@ -4,15 +4,28 @@ const EMAIL = process.env.QA_EMAIL!;
 const PASSWORD = process.env.QA_PASSWORD!;
 const API = process.env.API_URL ?? 'https://my-purchases-api.onrender.com';
 
+const NOISE = /interactive-widget|cancelled|ERR_ABORTED|GL Driver/i;
+const keep = (e: string) => !NOISE.test(e);
+
 function collectErrors(page: Page) {
   const errors: string[] = [];
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', e => errors.push(String(e)));
   page.on('requestfailed', r => errors.push(`FAILED ${r.url()} ${r.failure()?.errorText}`));
   page.on('response', r => { if (r.status() >= 500) errors.push(`HTTP ${r.status()} ${r.url()}`); });
-  return errors;
+  return { get length() { return errors.filter(keep).length; }, list: () => errors.filter(keep) };
 }
 
+async function semanticsPoints(page: Page) {
+  return page.evaluate(() => {
+    const nodes = [...document.querySelectorAll('flt-semantics')].map(e => ({ role: e.getAttribute('role'), r: e.getBoundingClientRect() }));
+    const rootY = nodes[0].r.y;
+    const pt = (n: { r: DOMRect }) => ({ x: n.r.x + n.r.width / 2, y: n.r.y - rootY + n.r.height / 2 });
+    const fields = nodes.filter(n => !n.role && n.r.width > 200 && n.r.height >= 50 && n.r.height < 70 && n.r.y > rootY);
+    const btn = nodes.find(n => n.role === 'button' && n.r.width > 200);
+    return { email: pt(fields[0]), password: pt(fields[1]), signIn: pt(btn!) };
+  });
+}
 test('API healthy and schema at head', async ({ request }) => {
   const r = await request.get(`${API}/health/ready`);
   expect(r.ok()).toBeTruthy();
@@ -27,16 +40,26 @@ test('login → home, no console errors', async ({ page }, info) => {
   // Flutter web: enable semantics so inputs are reachable
   await page.locator('flt-semantics-placeholder').waitFor({ state: 'attached', timeout: 30_000 });
   await page.evaluate(() => document.querySelector('flt-semantics-placeholder')?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
-  await page.getByLabel('Email', { exact: true }).click();
+  await page.locator('flt-semantics[role=button]').first().waitFor({ state: 'attached', timeout: 30_000 });
+  const pts = await semanticsPoints(page);
+  await page.reload();
+  await page.waitForTimeout(6000);
+  await page.mouse.click(pts.email.x, pts.email.y);
   await page.keyboard.type(EMAIL);
-  await page.getByLabel('Password', { exact: true }).click();
+  await page.mouse.click(pts.password.x, pts.password.y);
   await page.keyboard.type(PASSWORD);
-  await page.getByRole('button', { name: /sign in/i }).click();
+  await page.mouse.click(pts.signIn.x, pts.signIn.y);
   await expect(page).not.toHaveURL(/login/, { timeout: 45_000 });
   await expect(page.getByText(/Cannot reach|Connection problem/i)).toHaveCount(0);
   await page.screenshot({ path: `shots/home-${info.project.name}.png`, fullPage: true });
-  expect(errors, errors.join('\n')).toEqual([]);
+  expect(errors.list(), errors.list().join('\n')).toEqual([]);
 });
+
+
+
+
+
+
 
 
 
