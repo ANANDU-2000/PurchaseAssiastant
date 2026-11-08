@@ -8,7 +8,7 @@ Order = priority. Loop always takes the first `[ ]`.
 - [x] A2 QA fails only on real problems; documented console allowlist file (covers WebKit cancelled-XHR noise)
 - [x] A3 perf.spec.ts budgets in one JSON (Home<=3 calls, tabs<=4, no dup GET within 2s, first data<=3s)
 - [x] B1 Home out/need-attention now use the Stock 'active out' definition (cdc99a1)
-- [ ] B1b Low-stock ops summary (stock_list.py out_cnt, low_stock_priority out_of_stock_flag) still counts raw cur<=0 -> use the same active-out rule; test
+- [x] B1b Low-stock ops summary (stock_list.py out_cnt, low_stock_priority out_of_stock_flag) still counts raw cur<=0 -> use the same active-out rule; test
 - [ ] B1c Pending delivery: Home 3 vs pipeline 2 dispatched - find the two definitions, unify, test
 - [ ] B1d Purchases this month = 0 while pending value is non-zero - check period filter (purchase date vs created) and test
 - [ ] B2 (add 'not_counted' count to alerts summary + Home/Stock chip; prod has 525) Out = tracked, on-hand<=0, not archived; "not counted" is a separate state/chip
