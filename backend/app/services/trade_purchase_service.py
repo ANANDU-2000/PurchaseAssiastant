@@ -11,7 +11,7 @@ from typing import Any
 
 from time import monotonic
 
-from sqlalchemy import and_, delete, exists, func, not_, or_, select, text
+from sqlalchemy import and_, case, delete, exists, func, literal, not_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -1987,17 +1987,36 @@ async def try_auto_commit_trade_purchase_delivery(
         return None
 
 
+# One definition of "pending delivery" for Home, the pipeline card and trade summary:
+# a live (not deleted/cancelled) bill whose stock has not been committed yet.
+PENDING_DELIVERY_EXCLUDED_BILL_STATUS = ("deleted", "cancelled")
+PENDING_DELIVERY_EXCLUDED_STAGES = ("stock_committed", "cancelled")
+
+
+def pending_delivery_filters():
+    """SQLAlchemy WHERE clauses for undelivered bills (shared by every pending count)."""
+    return (
+        TradePurchase.status.notin_(PENDING_DELIVERY_EXCLUDED_BILL_STATUS),
+        TradePurchase.delivery_status.notin_(PENDING_DELIVERY_EXCLUDED_STAGES),
+    )
+
+
 async def get_trade_purchase_delivery_pipeline(
     db: AsyncSession,
     business_id: uuid.UUID,
 ) -> TradePurchaseDeliveryPipelineOut:
+    # A cancelled bill is "cancelled" whatever stage it was in when cancelled.
+    stage_expr = case(
+        (TradePurchase.status == "cancelled", literal("cancelled")),
+        else_=TradePurchase.delivery_status,
+    )
     res = await db.execute(
-        select(TradePurchase.delivery_status, func.count(TradePurchase.id))
+        select(stage_expr, func.count(TradePurchase.id))
         .where(
             TradePurchase.business_id == business_id,
             TradePurchase.status != "deleted",
         )
-        .group_by(TradePurchase.delivery_status)
+        .group_by(stage_expr)
     )
     counts: dict[str, int] = {}
     for status, cnt in res.all():
@@ -2006,8 +2025,7 @@ async def get_trade_purchase_delivery_pipeline(
     amt_res = await db.execute(
         select(func.coalesce(func.sum(TradePurchase.total_amount), 0)).where(
             TradePurchase.business_id == business_id,
-            TradePurchase.status.notin_(("deleted", "cancelled")),
-            TradePurchase.delivery_status.notin_(("stock_committed", "cancelled")),
+            *pending_delivery_filters(),
         )
     )
     total_pending = _dec(amt_res.scalar_one())

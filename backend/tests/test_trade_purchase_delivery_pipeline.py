@@ -351,3 +351,34 @@ def test_dispatch_and_pipeline_counts():
     )
     assert other.status_code == 200, other.text
     assert pid not in {row["id"] for row in other.json()}
+
+
+def _stage_sum(pipe: dict) -> int:
+    keys = ("pending", "dispatched", "in_transit", "arrived", "staff_verifying", "staff_verified", "partial")
+    return sum(int(pipe.get(k, 0)) for k in keys)
+
+
+def test_pending_delivery_count_is_one_definition_and_ignores_cancelled():
+    """B1c: pipeline stages, home trade-dashboard-snapshot and its pending value must agree.
+
+    Prod: Home showed 3 pending while the pipeline showed 2 (a cancelled bill was counted
+    by one query and not the other).
+    """
+    h, bid = _register_owner()
+    iid, sup = _setup_item(h, bid)
+    _create_purchase(h, bid, iid, sup, qty="11")
+    _create_purchase(h, bid, iid, sup, qty="12")
+    cancelled = _create_purchase(h, bid, iid, sup, qty="13")
+    r = client.post(f"/v1/businesses/{bid}/trade-purchases/{cancelled['id']}/cancel", headers=h)
+    assert r.status_code == 200, r.text
+
+    pipe = client.get(f"/v1/businesses/{bid}/trade-purchases/delivery-pipeline", headers=h).json()
+    snap = client.get(
+        f"/v1/businesses/{bid}/reports/trade-dashboard-snapshot",
+        headers=h,
+        params={"from": "2020-01-01", "to": "2099-01-01"},
+    )
+    assert snap.status_code == 200, snap.text
+    summary = snap.json().get("summary") or snap.json()
+    assert _stage_sum(pipe) == 2
+    assert int(summary["pending_delivery_count"]) == _stage_sum(pipe)

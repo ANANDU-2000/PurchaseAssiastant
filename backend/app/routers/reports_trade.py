@@ -31,6 +31,7 @@ from app.models.contacts import Supplier
 from app.read_cache_generation import trade_read_cache_generation
 from app.services import trade_mapping as trade_map
 from app.services import trade_query as tq
+from app.services import trade_purchase_service as tps
 from app.services.home_operational_bundle import build_home_operational_bundle
 from app.services.stock_inventory import compute_inventory_summary
 
@@ -771,8 +772,7 @@ async def _compute_trade_dashboard_snapshot_payload(
         .select_from(TradePurchase)
         .where(
             TradePurchase.business_id == business_id,
-            TradePurchase.is_delivered.is_(False),
-            TradePurchase.status.notin_(("deleted", "cancelled")),
+            *tps.pending_delivery_filters(),
         )
     )
     sup_q = (
