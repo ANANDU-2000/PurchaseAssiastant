@@ -1,4 +1,4 @@
-﻿import { test, expect, Page } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 
 const EMAIL = process.env.QA_EMAIL!;
 const PASSWORD = process.env.QA_PASSWORD!;
@@ -55,11 +55,34 @@ test('login → home, no console errors', async ({ page }, info) => {
   expect(errors.list(), errors.list().join('\n')).toEqual([]);
 });
 
-
-
-
-
-
-
-
-
+test('screens: shots + overflow + console', async ({ page }, info) => {
+  test.skip(!EMAIL || !PASSWORD, 'set QA_EMAIL / QA_PASSWORD');
+  test.setTimeout(240_000);
+  const errors = collectErrors(page);
+  await page.goto('/login');
+  await page.locator('flt-semantics-placeholder').waitFor({ state: 'attached', timeout: 30_000 });
+  await page.evaluate(() => document.querySelector('flt-semantics-placeholder')?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+  await page.locator('flt-semantics[role=button]').first().waitFor({ state: 'attached', timeout: 30_000 });
+  const pts = await semanticsPoints(page);
+  await page.reload();
+  await page.waitForTimeout(6000);
+  await page.screenshot({ path: `shots/login-${info.project.name}.png` });
+  await page.mouse.click(pts.email.x, pts.email.y);
+  await page.keyboard.type(EMAIL);
+  await page.mouse.click(pts.password.x, pts.password.y);
+  await page.keyboard.type(PASSWORD);
+  await page.mouse.click(pts.signIn.x, pts.signIn.y);
+  await expect(page).not.toHaveURL(/login/, { timeout: 45_000 });
+  const base = new URL(page.url()).origin;
+  const overflow: string[] = [];
+  for (const r of ['dashboard', 'stock', 'purchase', 'reports', 'search', 'settings']) {
+    await page.goto(`${base}/${r}`);
+    await page.waitForTimeout(7000);
+    await page.screenshot({ path: `shots/${r}-${info.project.name}.png` });
+    const w = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+    if (w[0] > w[1]) overflow.push(`${r} ${w[0]}>${w[1]}`);
+    if (/login/.test(page.url())) overflow.push(`${r} redirected to login`);
+  }
+  expect(overflow, overflow.join(', ')).toEqual([]);
+  expect(errors.list(), errors.list().join(', ')).toEqual([]);
+});

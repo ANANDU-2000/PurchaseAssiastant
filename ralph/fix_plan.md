@@ -4,6 +4,7 @@ Legend: `[ ]` todo · `[x]` done · `[!]` blocked (see progress.md)
 Order = priority. Loop always takes the first `[ ]`.
 
 ## P0 — Production up (Vercel → Render → Render Postgres)
+- [ ] QA noise: WebKit (mobile) reports 'XMLHttpRequest ... access control checks' for in-flight requests cancelled by page.goto in the screens test; CORS preflight verified OK via curl. Navigate in-app (tap nav) or filter aborted-navigation XHRs in smoke.spec.ts so the mobile run is green
 - [x] Build script defaults/forces API to https://my-purchases-api.onrender.com; CI dead-host guard flipped (commit "fix(deploy): point web build at Render API")
 - [x] Verify prod login works on desktop/tablet/mobile with QA account (Playwright `ralph/qa`), zero console errors on /login → /home
 - [!] Verify `/health/ready` shows `schema_ok: true` and alembic head = latest file in `backend/alembic/versions`. If not, add BLOCKED note "set AUTO_MIGRATE=1 on Render and redeploy latest main"
@@ -28,6 +29,11 @@ Order = priority. Loop always takes the first `[ ]`.
 - [ ] Re-measure; target: stock list < 1.5s p95 API, first interactive on mobile < 4s on cached load
 
 ## P3 — UI/UX clean-up (desktop 1440, tablet 820, mobile 390)
+- [ ] Home vs Stock mismatch: Home shows Need attention 0 and Pending delivery 0, Stock shows Low 1 and Pending truck 2 (ralph/qa/shots/dashboard-mobile.png, ralph/qa/shots/stock-mobile.png)
+- [ ] Home Warehouse unit line wraps with orphan '·' (353 BAGS · 210 BOXES · / 5223 KG); use one wrapping format (ralph/qa/shots/dashboard-mobile.png)
+- [ ] Home: nested/double cards (Purchases (Month) panel inside card stack), duplicate sync status (header Synced + Cloud Sync Status card) (ralph/qa/shots/dashboard-mobile.png)
+- [ ] Stock: back arrow on a bottom-nav tab root; two chip rows (All/Low/Out and All/Pending truck/Delivered) look alike; row heights and left status bars inconsistent/overlapping (ralph/qa/shots/stock-mobile.png)
+- [ ] Review remaining shots for overflow/layout: ralph/qa/shots/{purchase,reports,search,settings,login}-{mobile,tablet,desktop}.png
 - [ ] Playwright screenshot every route at 3 viewports into `ralph/qa/shots/`; list layout bugs (overflow, clipped cells, wrong scroll container, sticky bars covering inputs, misplaced buttons) as tasks below
 - [ ] Split `purchase_item_entry_sheet.dart` (4.7k lines), `purchase_entry_wizard.dart` (3.3k), `purchase_home_page.dart` (3.2k) into widgets ≤ 400 lines each, no behaviour change, tests green
 - [ ] Purchase entry flow: minimum steps (party → items → review → save), keyboard-first on desktop (Tally style), one scroll container per screen on mobile, save button never hidden by keyboard
