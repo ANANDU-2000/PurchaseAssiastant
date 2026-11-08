@@ -10,3 +10,11 @@ FINDING: create_trade_purchase returns stock_updates=[]; stock only moves on com
 2026-11-08 - /health/ready checked: db ok, alembic_version=068, schema_ok=false, expected head reported 069 but repo head is 070. BLOCKED (human): set AUTO_MIGRATE=1 on Render and redeploy latest main. Task marked [!].
 NEW BUG: health.py EXPECTED_ALEMBIC_HEAD hardcoded (069) is stale vs 070; added as next task.
 2026-11-08 - QA round: added screens test (login/dashboard/stock/purchase/reports/search/settings x 3 viewports), shots saved to ralph/qa/shots/. desktop+tablet pass (tablet flaky), mobile fails only on WebKit cancelled-XHR noise. Logged 1 P0 + 5 P3 tasks from visible UI issues (Home vs Stock count mismatch, unit line wrap, nested cards).
+2026-11-08 - PHASE 0 BASELINE (prod, Chromium 393x852, ~1.6Mbps/150ms latency, 4x CPU; cold load per route, ralph/qa/perf.spec.ts, raw: ralph/qa/shots/perf-baseline.json)
+  screen     fcp_ms  first_data_ms  api_calls  dup_calls  console_errors
+  dashboard   252      4773           14         0          0
+  stock       216      4547           11         0          0
+  purchase    160      5011           11         0          0
+  reports     168      5263           16         0          0
+  search      204      5169           18         0          0
+  Notes: FCP is the HTML shell, not Flutter's first painted UI; first_data_ms (~4.5-5.3s) is the real wait. 11-18 API calls per cold screen, none exact duplicates on cold load. Duplicate/refetch behaviour after a save is Phase 2 and is not measured yet.
