@@ -1,0 +1,7 @@
+{
+  "_doc": "Tighten these over time. Run with PERF_ENFORCE=1 to FAIL on violations; without it violations are printed as [PERF-WARN] so the normal QA run stays green while the app is being optimised.",
+  "profile": "393x852, ~1.6Mbps, 150ms latency, 4x CPU",
+  "max_api_calls": { "dashboard": 3, "stock": 4, "purchase": 4, "reports": 4, "search": 4 },
+  "max_first_data_ms": 3000,
+  "duplicate_get_window_ms": 2000
+}

@@ -1,5 +1,6 @@
 import { test, expect, Page } from '@playwright/test';
 import * as fs from 'fs';
+const budget = JSON.parse(fs.readFileSync(__dirname + '/perf-budget.json', 'utf-8'));
 
 const EMAIL = process.env.QA_EMAIL!;
 const PASSWORD = process.env.QA_PASSWORD!;
@@ -37,8 +38,8 @@ test('perf baseline iPhone16 Fast4G 4xCPU', async ({ page, context }) => {
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
   const out: any[] = [];
   for (const r of ['dashboard', 'stock', 'purchase', 'reports', 'search']) {
-    const calls: string[] = []; const errs: string[] = []; const t0 = { v: 0 }; let firstData = -1;
-    const onReq = (q: any) => { if (q.url().includes('my-purchases-api')) calls.push(`${q.method()} ${q.url().replace(/^https:\/\/[^/]+/, '').replace(/[0-9a-f-]{36}/g, ':id')}`); };
+    const calls: string[] = []; const getTimes: Record<string, number[]> = {}; const errs: string[] = []; const t0 = { v: 0 }; let firstData = -1;
+    const onReq = (q: any) => { if (q.url().includes('my-purchases-api')) { const k = `${q.method()} ${q.url().replace(/^https:\/\/[^/]+/, '')}`; calls.push(k.replace(/[0-9a-f-]{36}/g, ':id')); if (q.method() === 'GET') (getTimes[k] ||= []).push(Date.now()); } };
     const onRes = (s: any) => { if (firstData < 0 && s.url().includes('/v1/businesses/') && s.ok()) firstData = Date.now() - t0.v; };
     const onCons = (m: any) => { if (m.type() === 'error' && keep(m.text())) errs.push(m.text().slice(0, 120)); };
     page.on('request', onReq); page.on('response', onRes); page.on('console', onCons);
@@ -48,9 +49,19 @@ test('perf baseline iPhone16 Fast4G 4xCPU', async ({ page, context }) => {
     await page.waitForTimeout(12_000);
     page.off('request', onReq); page.off('response', onRes); page.off('console', onCons);
     const counts: Record<string, number> = {}; calls.forEach(c => counts[c] = (counts[c] || 0) + 1);
-    const dups = Object.entries(counts).filter(([, n]) => n > 1).map(([k, n]) => `${n}x ${k.slice(0, 70)}`);
+    const dups = Object.entries(getTimes).filter(([, t]) => t.some((x, i) => i > 0 && x - t[i - 1] <= budget.duplicate_get_window_ms)).map(([k, t]) => `${t.length}x ${k.slice(0, 70)}`);
     out.push({ screen: r, fcp_ms: Math.round(Number(fcp)), first_data_ms: firstData, api_calls: calls.length, dup_calls: dups.length, dups, console_errors: errs.length });
   }
-  fs.writeFileSync('shots/perf-baseline.json', JSON.stringify(out, null, 1));
+  const bad: string[] = [];
+  for (const o of out) {
+    const max = budget.max_api_calls[o.screen];
+    if (max !== undefined && o.api_calls > max) bad.push(`${o.screen}: ${o.api_calls} API calls > ${max}`);
+    if (o.first_data_ms < 0 || o.first_data_ms > budget.max_first_data_ms) bad.push(`${o.screen}: first data ${o.first_data_ms}ms > ${budget.max_first_data_ms}`);
+    if (o.dup_calls > 0) bad.push(`${o.screen}: duplicate GET within ${budget.duplicate_get_window_ms}ms: ${o.dups.join('; ')}`);
+  }
+  fs.writeFileSync('shots/perf-latest.json', JSON.stringify(out, null, 1));
+  bad.forEach(b => console.log('[PERF-WARN] ' + b));
+  if (process.env.PERF_ENFORCE === '1') expect(bad, bad.join(', ')).toEqual([]);
+  
   console.log(JSON.stringify(out.map(({ dups, ...x }) => x)));
 });

@@ -5,8 +5,8 @@ Order = priority. Loop always takes the first `[ ]`.
 
 ## MASTER code-first plan (contract: works at prod migration 068; never needs Render env/deploy/secrets; see MASTER prompt in chat, mirrored here)
 - [x] A1 EXPECTED_ALEMBIC_HEAD derived from alembic files; smoke reports "schema behind by N" as WARNING
-- [ ] A2 QA fails only on real problems; documented console allowlist file (covers WebKit cancelled-XHR noise)
-- [ ] A3 perf.spec.ts budgets in one JSON (Home<=3 calls, tabs<=4, no dup GET within 2s, first data<=3s)
+- [x] A2 QA fails only on real problems; documented console allowlist file (covers WebKit cancelled-XHR noise)
+- [x] A3 perf.spec.ts budgets in one JSON (Home<=3 calls, tabs<=4, no dup GET within 2s, first data<=3s)
 - [ ] B1 Reproduce + test count mismatches (Home out/need-attention/below-reorder vs Stock; pending delivery; month purchases); single definition per count
 - [ ] B2 Out = tracked, on-hand<=0, not archived; "not counted" is a separate state/chip
 - [ ] B3 One display unit per item via line_qty_in_stock_unit; warehouse card one line per unit; test per conversion
