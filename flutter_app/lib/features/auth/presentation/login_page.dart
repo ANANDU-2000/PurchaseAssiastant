@@ -459,7 +459,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                     autofillHints: const [AutofillHints.password],
                     errorText: pErr,
                     scrollPadding: HexaResponsive.authFieldScrollPadding(context),
-                    onActionSubmit: _isFormValid ? _signIn : null,
+                    onActionSubmit: _signIn,
                     suffix: IconButton(
                       tooltip: _obscure ? 'Show password' : 'Hide password',
                       onPressed: () => setState(() => _obscure = !_obscure),
@@ -521,9 +521,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                   AppLoadingButton(
                     label: 'Sign In',
                     loading: _loading,
-                    onPressed: _isFormValid
-                        ? _signIn
-                        : () => setState(() => _showValidation = true),
+                    onPressed: _signIn,
                   ),
                   Align(
                     alignment: Alignment.centerLeft,
@@ -730,7 +728,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
               textInputAction: TextInputAction.done,
               autofillHints: const [AutofillHints.password],
               errorText: pErr,
-              onActionSubmit: _isFormValid ? _signIn : null,
+              onActionSubmit: _signIn,
               suffix: _buildPasswordToggle(),
             ),
             if (_inlineAuthError != null) ...[
@@ -920,9 +918,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
     return AppLoadingButton(
       label: 'Sign In',
       loading: _loading,
-      onPressed: _isFormValid
-          ? _signIn
-          : () => setState(() => _showValidation = true),
+      onPressed: _signIn,
     );
   }
 }
