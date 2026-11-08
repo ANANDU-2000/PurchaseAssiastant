@@ -19,11 +19,9 @@ from app.services import trade_purchase_service as tps
 
 
 def _stock_status_counts_from_alerts(stock) -> dict[str, int]:
-    out_count = (
-        int(stock.active_out_of_stock or 0)
-        if int(stock.active_out_of_stock or 0) > 0
-        else int(stock.out_of_stock or 0)
-    )
+    # One definition: same 'active out' number the Stock screen shows. Never fall back
+    # to the raw cur<=0 count, which counts every never-stocked catalog entry as out.
+    out_count = int(stock.active_out_of_stock or 0)
     return {
         "all": int(stock.total_items or 0),
         "low": int(stock.low_stock or 0),
