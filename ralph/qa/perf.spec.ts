@@ -3,7 +3,7 @@ import * as fs from 'fs';
 
 const EMAIL = process.env.QA_EMAIL!;
 const PASSWORD = process.env.QA_PASSWORD!;
-const NOISE = /interactive-widget|cancelled|ERR_ABORTED|GL Driver/i;
+import { keep } from './qa-common';
 
 async function login(page: Page) {
   await page.goto('/login');
@@ -40,7 +40,7 @@ test('perf baseline iPhone16 Fast4G 4xCPU', async ({ page, context }) => {
     const calls: string[] = []; const errs: string[] = []; const t0 = { v: 0 }; let firstData = -1;
     const onReq = (q: any) => { if (q.url().includes('my-purchases-api')) calls.push(`${q.method()} ${q.url().replace(/^https:\/\/[^/]+/, '').replace(/[0-9a-f-]{36}/g, ':id')}`); };
     const onRes = (s: any) => { if (firstData < 0 && s.url().includes('/v1/businesses/') && s.ok()) firstData = Date.now() - t0.v; };
-    const onCons = (m: any) => { if (m.type() === 'error' && !NOISE.test(m.text())) errs.push(m.text().slice(0, 120)); };
+    const onCons = (m: any) => { if (m.type() === 'error' && keep(m.text())) errs.push(m.text().slice(0, 120)); };
     page.on('request', onReq); page.on('response', onRes); page.on('console', onCons);
     t0.v = Date.now();
     await page.goto(`${base}/${r}`, { waitUntil: 'commit' });

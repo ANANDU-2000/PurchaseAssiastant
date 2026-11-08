@@ -1,20 +1,10 @@
 import { test, expect, Page } from '@playwright/test';
+import { collectErrors } from './qa-common';
 
 const EMAIL = process.env.QA_EMAIL!;
 const PASSWORD = process.env.QA_PASSWORD!;
 const API = process.env.API_URL ?? 'https://my-purchases-api.onrender.com';
 
-const NOISE = /interactive-widget|cancelled|ERR_ABORTED|GL Driver/i;
-const keep = (e: string) => !NOISE.test(e);
-
-function collectErrors(page: Page) {
-  const errors: string[] = [];
-  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-  page.on('pageerror', e => errors.push(String(e)));
-  page.on('requestfailed', r => errors.push(`FAILED ${r.url()} ${r.failure()?.errorText}`));
-  page.on('response', r => { if (r.status() >= 500) errors.push(`HTTP ${r.status()} ${r.url()}`); });
-  return { get length() { return errors.filter(keep).length; }, list: () => errors.filter(keep) };
-}
 
 async function semanticsPoints(page: Page) {
   return page.evaluate(() => {
@@ -37,6 +27,16 @@ test('API healthy (schema lag is a warning)', async ({ request }) => {
     test.info().annotations.push({ type: 'WARNING', description: msg });
     console.warn(`[WARN] ${msg}`);
   }
+});
+
+test('CORS preflight allows the app origin', async ({ request }) => {
+  const origin = process.env.APP_URL ?? 'https://purchase-assiastant.vercel.app';
+  const r = await request.fetch(`${API}/v1/me/bootstrap-workspace`, {
+    method: 'OPTIONS',
+    headers: { Origin: origin, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'authorization' },
+  });
+  expect(r.status()).toBeLessThan(300);
+  expect(r.headers()['access-control-allow-origin']).toBe(origin);
 });
 
 test('login → home, no console errors', async ({ page }, info) => {

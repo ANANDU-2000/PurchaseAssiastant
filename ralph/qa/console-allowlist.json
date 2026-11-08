@@ -1,0 +1,10 @@
+{
+  "_doc": "Console/network messages that are harmless and must NOT fail QA. Every entry needs a reason. Anything not listed fails the run. Real CORS breakage is still caught by the 'CORS preflight' test and by screens failing to load data.",
+  "patterns": [
+    { "regex": "interactive-widget", "reason": "Flutter web viewport meta warning in Safari/WebKit" },
+    { "regex": "GL Driver", "reason": "Headless GPU driver noise" },
+    { "regex": "ERR_ABORTED|cancelled", "reason": "Request cancelled by in-test page.goto navigation" },
+    { "regex": "XMLHttpRequest cannot load .* due to access control checks", "reason": "WebKit reports XHRs cancelled by navigation this way; CORS verified by preflight test" },
+    { "regex": "^FAILED .*(ERR_ABORTED|cancelled|NS_BINDING_ABORTED)", "reason": "Aborted in-flight requests on navigation" }
+  ]
+}
