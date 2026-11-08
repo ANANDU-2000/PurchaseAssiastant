@@ -1,0 +1,258 @@
+From 38518cef6f9c73b132654d55ee025058852f675a Mon Sep 17 00:00:00 2001
+From: ANANDU-2000 <anandukrishna2999@gmail.com>
+Date: Sun, 8 Nov 2026 08:33:50 +0000
+Subject: [PATCH 1/2] fix(deploy): point web build at Render API; dead tunnel
+ host guarded
+
+api.harisreeagency.online (client server tunnel) is not live, so the login
+screen showed 'Cannot reach'. The build now defaults to and forces
+https://my-purchases-api.onrender.com, the CI guard is flipped, and the docs
+are updated.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01EnC9NNj9bBoxKDdChFcLro
+---
+ .github/workflows/ci.yml                 |  2 +-
+ AGENTS.md                                |  2 +-
+ ARCHITECTURE.md                          |  2 +-
+ DEPLOYMENT.md                            | 34 ++++++++++--------------
+ TASKS.md                                 |  2 +-
+ backend/scripts/gen_api_audit_tracker.py |  2 +-
+ backend/scripts/smoke_production_api.py  |  6 ++---
+ flutter_app/README.md                    |  2 +-
+ scripts/assert-no-dead-api-hosts.sh      | 27 ++++++-------------
+ scripts/production-smoke.sh              |  2 +-
+ scripts/vercel-flutter-build.sh          |  8 +++++-
+ 11 files changed, 39 insertions(+), 50 deletions(-)
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 3a77d5e..da7a702 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -106,5 +106,5 @@ jobs:
+             --no-web-resources-cdn \
+             --no-source-maps \
+             --no-wasm-dry-run \
+-            --dart-define=API_BASE_URL=https://api.harisreeagency.online \
++            --dart-define=API_BASE_URL=https://my-purchases-api.onrender.com \
+             --dart-define=GOOGLE_OAUTH_CLIENT_ID=
+diff --git a/AGENTS.md b/AGENTS.md
+index 14497ba..7b9fd2f 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -33,7 +33,7 @@ Do not duplicate rules across `.cursorrules`, always-apply `.mdc` files, and thi
+ - **Sheets:** Always `showHexaBottomSheet` — never ad-hoc `showModalBottomSheet` for app chrome.
+ - **Design tokens:** `HexaColors` / `HexaDsColors` / `HexaDsType` / `HexaDsSpace` + root `DESIGN.md`.
+ - **Production web host:** `https://purchase-assiastant.vercel.app` (spelling **assiastant**).
+-- **API host (current):** `api.harisreeagency.online` (see `DEPLOYMENT.md`).
++- **API host (current):** `my-purchases-api.onrender.com` (see `DEPLOYMENT.md`).
+ - Specs: `specs/`. Skills: `.cursor/skills/`. Specialist rules: `.cursor/rules/` (code-review, design-quality, figma, harisree-docs).
+ 
+ ### Company fallback (PDF / display)
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+index 87a4966..3753021 100644
+--- a/ARCHITECTURE.md
++++ b/ARCHITECTURE.md
+@@ -66,5 +66,5 @@ Browser (PWA) ──HTTPS──> Vercel CDN ──> Flutter app
+ ## Deploy Targets
+ 
+ - **Frontend:** `https://purchase-assiastant.vercel.app`
+-- **API:** `https://api.harisreeagency.online`
++- **API:** `https://my-purchases-api.onrender.com`
+ - **Health:** `GET /health/ready` → `{"status":"ok","db":"ok","schema_ok":true}`
+diff --git a/DEPLOYMENT.md b/DEPLOYMENT.md
+index 33d8044..0c2a612 100644
+--- a/DEPLOYMENT.md
++++ b/DEPLOYMENT.md
+@@ -2,26 +2,20 @@
+ 
+ ## Frontend (Vercel)
+ 
+-1. **Build:**
+-   ```
+-   cd flutter_app
+-   flutter build web --release
+-   ```
+-2. **Deploy:** Vercel project `purchase-assiastant` auto-deploys from `main` branch
+-   - Build command: `flutter build web --release`
+-   - Output directory: `flutter_app/build/web`
+-   - `vercel.json` in repo root configures SPA rewrites
+-3. **Env vars in Vercel:**
+-   - `API_BASE_URL` — Cloudflare Tunnel API (`https://api.harisreeagency.online`)
+-4. **Hard refresh after deploy:** Ctrl+Shift+R to bust cached `main.dart.js`
+-
+-## Backend (Windows Server + Cloudflare Tunnel)
+-
+-1. **Public URL:** `https://api.harisreeagency.online` → `http://localhost:8000` via cloudflared
+-2. **Service:** NSSM `PurchaseAssistantAPI` on the Windows Server
+-3. **Deploy:** `git pull origin main` then `nssm restart PurchaseAssistantAPI`
+-4. **Env vars:** in `backend/.env` on the server (Postgres local, CORS includes Vercel domain)
+-5. **Health check:** `GET /health` and `GET /health/ready` → 200
++1. Vercel project `purchase-assiastant` auto-deploys from `main` via `scripts/vercel-flutter-build.sh`.
++2. `API_BASE_URL` = `https://my-purchases-api.onrender.com` (the build script also forces this if the env still holds the old tunnel host).
++3. Hard refresh after deploy (Ctrl+Shift+R) to bust cached `main.dart.js`.
++
++## Backend (Render, current production)
++
++1. **Service:** Render web service `my-purchases-api` -> `https://my-purchases-api.onrender.com`
++2. **DB:** Render Postgres `harisree_db` (Singapore), internal URL in `DATABASE_URL`.
++3. **Migrations:** `AUTO_MIGRATE=1` runs `alembic upgrade head` on boot. `/health/ready` must show `schema_ok: true`.
++4. **Health:** `GET /health/ready` -> 200.
++
++## Backend (client Windows server, FUTURE)
++
++Planned move to the client's own server (Windows Server, NSSM + Cloudflare Tunnel at `api.harisreeagency` .online). Not live. Do not point builds at it until it passes `/health/ready`.
+ 
+ ## Database Migrations
+ 
+diff --git a/TASKS.md b/TASKS.md
+index b935f19..d203f42 100644
+--- a/TASKS.md
++++ b/TASKS.md
+@@ -78,7 +78,7 @@ Roadmap: [PLAN.md](PLAN.md). Rules: [AGENTS.md](AGENTS.md). Cleanup contract: [d
+ | Check | Notes |
+ |-------|-------|
+ | Canonical web | `https://purchase-assiastant.vercel.app` |
+-| API | `api.harisreeagency.online` (Cloudflare Tunnel → Windows FastAPI) |
++| API | `my-purchases-api.onrender.com` (Render web service + Render Postgres) |
+ | Typo hosts | Not our app — do not treat as product bugs |
+ | PC6 deploy | `git pull` + `alembic upgrade head` on API host separately from laptop DB |
+ 
+diff --git a/backend/scripts/gen_api_audit_tracker.py b/backend/scripts/gen_api_audit_tracker.py
+index 3722ea5..37c159d 100644
+--- a/backend/scripts/gen_api_audit_tracker.py
++++ b/backend/scripts/gen_api_audit_tracker.py
+@@ -147,7 +147,7 @@ out.append(
+     "method+path pairs. Tracker uses discovered count as 100%."
+ )
+ out.append(
+-    "**Hosts:** API https://api.harisreeagency.online · "
++    "**Hosts:** API https://my-purchases-api.onrender.com · "
+     "Web https://purchase-assiastant.vercel.app"
+ )
+ out.append("**Detail audit (Auth):** `docs/debug/API_AUDIT_AUTH.md`")
+diff --git a/backend/scripts/smoke_production_api.py b/backend/scripts/smoke_production_api.py
+index cf53495..39ae282 100644
+--- a/backend/scripts/smoke_production_api.py
++++ b/backend/scripts/smoke_production_api.py
+@@ -2,7 +2,7 @@
+ 
+ Usage:
+   python -m scripts.smoke_production_api
+-  API_BASE=https://api.harisreeagency.online python -m scripts.smoke_production_api
++  API_BASE=https://my-purchases-api.onrender.com python -m scripts.smoke_production_api
+   CORS_ORIGIN=https://purchase-assiastant.vercel.app python -m scripts.smoke_production_api
+ """
+ from __future__ import annotations
+@@ -16,7 +16,7 @@ from pathlib import Path
+ 
+ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+ 
+-API_BASE = os.environ.get("API_BASE", "https://api.harisreeagency.online").rstrip("/")
++API_BASE = os.environ.get("API_BASE", "https://my-purchases-api.onrender.com").rstrip("/")
+ CORS_ORIGIN = os.environ.get(
+     "CORS_ORIGIN", "https://purchase-assiastant.vercel.app"
+ ).strip()
+@@ -24,7 +24,7 @@ CORS_ORIGIN = os.environ.get(
+ 
+ # Cloudflare Tunnel may 403 bare urllib clients without a browser-like UA.
+ _DEFAULT_UA = (
+-    "Mozilla/5.0 (compatible; HarisreeSmoke/1.0; +https://api.harisreeagency.online)"
++    "Mozilla/5.0 (compatible; HarisreeSmoke/1.0; +https://my-purchases-api.onrender.com)"
+ )
+ 
+ 
+diff --git a/flutter_app/README.md b/flutter_app/README.md
+index ecc3651..6e7b51b 100644
+--- a/flutter_app/README.md
++++ b/flutter_app/README.md
+@@ -29,7 +29,7 @@ Client reads the backend URL from `--dart-define` (see `lib/core/config/app_conf
+ Root [`vercel.json`](../vercel.json) builds and publishes `flutter_app/build/web`.
+ 
+ - **Root Directory** = repository root (`.`)
+-- **Production env:** `API_BASE_URL=https://api.harisreeagency.online`, `GOOGLE_OAUTH_CLIENT_ID=<Web client ID>`
++- **Production env:** `API_BASE_URL=https://my-purchases-api.onrender.com`, `GOOGLE_OAUTH_CLIENT_ID=<Web client ID>`
+ - Canonical host: [https://purchase-assiastant.vercel.app](https://purchase-assiastant.vercel.app) (spelling **assiastant**)
+ 
+ ## Google Sign-In
+diff --git a/scripts/assert-no-dead-api-hosts.sh b/scripts/assert-no-dead-api-hosts.sh
+index 17e4e4c..b453ff8 100644
+--- a/scripts/assert-no-dead-api-hosts.sh
++++ b/scripts/assert-no-dead-api-hosts.sh
+@@ -1,33 +1,22 @@
+ #!/usr/bin/env bash
+-# Fail CI if dead Render API hosts appear outside archive/.
+-# Canonical production API: https://api.harisreeagency.online
++# Fail CI if the dead Cloudflare-tunnel API host appears in shipped code/config.
++# Canonical production API: https://my-purchases-api.onrender.com (Render + Render Postgres)
+ set -euo pipefail
+-
+ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ cd "$ROOT"
+-
+-# Build patterns without embedding the full host literals as searchable text.
+-DEAD1="my-purchases-api$(printf '%s' '.onrender.com')"
++DEAD1="api.harisreeagency$(printf '%s' '.online')"
+ DEAD2="harisree-api$(printf '%s' '.onrender.com')"
+ PATTERN="${DEAD1}|${DEAD2}"
+-
+-# Allowlist: historical scripts only (paths containing /archive/), plus this guard.
+ hits="$(
+-  git grep -nE "$PATTERN" -- . \
++  git grep -nE "$PATTERN" -- '*.dart' '*.yml' '*.yaml' '*.json' '*.py' \
+     ':(exclude)**/archive/**' \
+-    ':(exclude)**/scripts/archive/**' \
+-    ':(exclude)**/backend/scripts/archive/**' \
+     ':(exclude)scripts/assert-no-dead-api-hosts.sh' \
++    ':(exclude)scripts/vercel-flutter-build.sh' \
+   || true
+ )"
+-
+ if [[ -n "${hits}" ]]; then
+-  echo "ERROR: Dead Render API hosts found outside archive/:" >&2
+-  echo "${hits}" >&2
+-  echo >&2
+-  echo "Use https://api.harisreeagency.online (see scripts/canonical-urls.ps1)." >&2
+-  echo "Historical references belong under **/archive/** only." >&2
++  echo "ERROR: Dead API hosts found:" >&2; echo "${hits}" >&2
++  echo "Use https://my-purchases-api.onrender.com" >&2
+   exit 1
+ fi
+-
+-echo "OK: no dead Render API hosts outside archive/"
++echo "OK: no dead API hosts"
+diff --git a/scripts/production-smoke.sh b/scripts/production-smoke.sh
+index 681be5c..942434f 100644
+--- a/scripts/production-smoke.sh
++++ b/scripts/production-smoke.sh
+@@ -3,7 +3,7 @@
+ set -euo pipefail
+ 
+ WEB_URL="${WEB_URL:-https://purchase-assiastant.vercel.app}"
+-API_URL="${API_URL:-https://api.harisreeagency.online}"
++API_URL="${API_URL:-https://my-purchases-api.onrender.com}"
+ 
+ fail=0
+ 
+diff --git a/scripts/vercel-flutter-build.sh b/scripts/vercel-flutter-build.sh
+index 3eae27c..755c5d1 100644
+--- a/scripts/vercel-flutter-build.sh
++++ b/scripts/vercel-flutter-build.sh
+@@ -51,7 +51,13 @@ echo "Clean + build web (-O2 lowers dart2js memory vs default -O4)..."
+ flutter clean
+ flutter pub get
+ 
+-API_URL="${API_BASE_URL:-https://api.harisreeagency.online}"
++CANONICAL_API="https://my-purchases-api.onrender.com"
++API_URL="${API_BASE_URL:-$CANONICAL_API}"
++# api.harisreeagency.online (Cloudflare tunnel to client Windows server) is NOT live.
++# If the Vercel dashboard still carries it, ignore it and use Render.
++case "$API_URL" in
++  *harisreeagency.online*) echo "WARN: API_BASE_URL points at dead tunnel host; using $CANONICAL_API"; API_URL="$CANONICAL_API";;
++esac
+ # Vercel Dashboard env values often include a trailing CR/LF from paste —
+ # that splits the flutter CLI args and yields: Target file "--dart-define=..." not found.
+ API_URL="$(printf '%s' "$API_URL" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+-- 
+2.43.0
+

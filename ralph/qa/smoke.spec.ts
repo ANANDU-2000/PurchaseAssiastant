@@ -27,12 +27,13 @@ test('login → home, no console errors', async ({ page }, info) => {
   // Flutter web: enable semantics so inputs are reachable
   await page.locator('flt-semantics-placeholder').waitFor({ state: 'attached', timeout: 30_000 });
   await page.evaluate(() => document.querySelector('flt-semantics-placeholder')?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
-  await page.getByLabel(/email/i).fill(EMAIL);
-  await page.getByLabel(/password/i).fill(PASSWORD);
+  await page.getByLabel('Email', { exact: true }).fill(EMAIL);
+  await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
   await page.getByRole('button', { name: /sign in/i }).click();
   await expect(page).not.toHaveURL(/login/, { timeout: 45_000 });
   await expect(page.getByText(/Cannot reach|Connection problem/i)).toHaveCount(0);
   await page.screenshot({ path: `shots/home-${info.project.name}.png`, fullPage: true });
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
 
