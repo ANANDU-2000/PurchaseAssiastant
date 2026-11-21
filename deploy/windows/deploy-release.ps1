@@ -58,8 +58,24 @@ Copy-Item $envFile (Join-Path $rel 'backend\.env') -Force
 & py -3.12 -m venv (Join-Path $rel 'venv')
 if ($LASTEXITCODE -ne 0) { throw 'venv creation failed' }
 $py = Join-Path $rel 'venv\Scripts\python.exe'
-& $py -m pip install --disable-pip-version-check -q -r (Join-Path $rel 'backend\requirements.txt')
+# requirements.txt uses open ranges (>=). Without a constraints file every deploy resolves the newest packages,
+# which is how an upstream SQLAlchemy 2.1 default-driver change would break a production deploy overnight.
+# Use C:\hexa\config\constraints.txt (or backend\constraints.txt in the repo) to pin versions once a lock exists.
+$pipArgs = @('-m', 'pip', 'install', '--disable-pip-version-check', '-q', '-r', (Join-Path $rel 'backend\requirements.txt'))
+foreach ($c in (Join-Path $ConfigDir 'constraints.txt'), (Join-Path $rel 'backend\constraints.txt')) {
+    if (Test-Path $c) { $pipArgs += @('-c', $c); Write-Log "pip constraints: $c"; break }
+}
+& $py @pipArgs
 if ($LASTEXITCODE -ne 0) { throw 'pip install failed; service untouched' }
+& $py -m pip freeze | Set-Content (Join-Path $rel 'requirements.lock')   # exact versions of this release
+
+# Pre-flight: the new code must at least import with the production settings (catches missing drivers and
+# weak/default secrets) BEFORE we touch the database or the running service.
+Push-Location (Join-Path $rel 'backend')
+try {
+    & $py -c "import app.main"
+    if ($LASTEXITCODE -ne 0) { throw 'pre-flight import of app.main failed; service untouched' }
+} finally { Pop-Location }
 
 # 4: pre-deploy backup (abort if it fails)
 try { & "$PSScriptRoot\backup-postgres.ps1" -Label 'pre-deploy' }

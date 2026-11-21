@@ -47,18 +47,29 @@ Do not skip steps; steps 1-2 are owner actions outside this repo.
     and redeploy. Keep the old value noted so you can switch back.
 
 ## Automated deploys (GitHub Actions)
-Workflow `deploy-backend-windows.yml` runs on the server through a self-hosted runner: backup -> migrate -> switch ->
-health check -> automatic rollback. `rollback-backend-windows.yml` is the manual rollback.
+Workflow `deploy-backend-windows.yml` runs on the server through a self-hosted runner: backup -> pre-flight import ->
+migrate -> switch -> health check -> automatic rollback. `rollback-backend-windows.yml` is the manual rollback.
+**Both are manual (`workflow_dispatch`) on purpose.** A merge to `main` does not deploy.
 
 Runner setup (once): GitHub repo > Settings > Actions > Runners > New self-hosted runner (Windows), add labels
-`hexa-prod`, run it as a service. Then:
-- Create the `production` Environment with **required reviewers** (you), so every deploy needs approval.
-- Add repository variables `PUBLIC_API_URL` and, when everything above is ready, `ENABLE_WINDOWS_DEPLOY=true`
-  (the workflows are inert until then, so merging them does nothing).
-- **Make the repository private**, require approval for outside collaborators, and protect `main`.
-- The workflows never run on `pull_request`. Do not add that trigger: the runner would execute untrusted code.
-- The runner account must be able to manage services; treat the server as high value (separate admin account, MFA on
-  GitHub, no browsing on that machine).
+`hexa-prod`, run it as a service. Then set repository variables:
+- `ENABLE_WINDOWS_DEPLOY=true` (until set, both workflows are skipped, so merging them changes nothing)
+- `DEPLOY_ALLOWED_ACTORS=["ANANDU-2000"]` (JSON array; only these GitHub users can run a deploy)
+- `PUBLIC_API_URL=https://api.harisreeagency.online`
+
+### Security model (what protects production, and what does not)
+| Risk | Control in this repo | What you must still do |
+|---|---|---|
+| Someone with write access ships code to the server | Manual trigger only; runs only from `main`; allow-listed actors; own environment `windows-production` | **Another collaborator (`suragms`) currently has write access and `main` is not protected.** Remove their write access or protect `main` before enabling |
+| Hostile pull request runs on the server | No `pull_request` / `pull_request_target` trigger | Keep the repository **private**; a public repo with a self-hosted runner is the classic way to get a server taken over |
+| No human approval | Environment `windows-production` supports required reviewers | **GitHub Free cannot enforce required reviewers or branch protection on private repositories.** Either upgrade to GitHub Pro/Team, or accept that the approval is "only the owner can click Run workflow" (true while you are the only user with write access) |
+| Tampered third-party actions | Actions pinned to commit SHAs | Update the pins deliberately (Dependabot for Actions is a good fit) |
+| Secrets in git or in the workflow | None; secrets live only in `C:\hexa\config` (SYSTEM + Administrators ACL, whole `C:\hexa` tree is locked down) | Never put secrets in repository variables/secrets for this flow |
+| SYSTEM tasks running modifiable code | Scheduled tasks run copies in `C:\hexa\ops` (admin-only) | Re-run `install-server.ps1` after an approved change to the ops scripts |
+| Tunnel token readable by local users | Tunnel runs with `--token-file` (not `service install <token>`, which puts the token in the registry) | Rotate the token if it was ever pasted into a chat/ticket |
+| Dependency drift on deploy | `pip freeze` saved per release; optional `constraints.txt` pinning | Generate and commit a lock/constraints file (requirements use open `>=` ranges) |
+| Runner runs as a powerful account | Required to manage services | Prefer a dedicated local account that is allowed to start/stop only `HexaApi` and write `C:\hexa\releases` instead of a full administrator; no browsing/email on the server; MFA on the GitHub account |
+| Backups hold all business data | Dumps stay in `C:\hexa\backups` (admin-only ACL) | If you enable offsite copy, use an encrypted rclone remote (`crypt`) so the provider cannot read the dumps |
 
 ## Backups and restore
 - `HexaBackupDaily` (02:30): `backup-postgres.ps1` dumps, verifies, checksums, prunes (14 days daily, 60 days Sundays,

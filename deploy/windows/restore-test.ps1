@@ -3,19 +3,25 @@
 .DESCRIPTION
   Never touches the live database. Creates and drops "hexa_restore_test".
   Run monthly (and after any change to the backup process). Exit code 1 = restore or comparison problem.
-  Needs a Postgres role allowed to CREATE DATABASE (set -AdminUser; password via pgpass.conf).
+  Needs a Postgres role allowed to CREATE DATABASE and to read the live database for the count comparison.
+  Use a dedicated least-privilege role (CREATE ROLE hexa_restore LOGIN CREATEDB; GRANT pg_read_all_data TO hexa_restore;)
+  instead of the postgres superuser; its password goes in pgpass.conf (never on the command line).
 #>
 [CmdletBinding()]
 param(
     [string]$DumpFile,
     [string]$DbHost = '127.0.0.1',
     [int]$Port = 5432,
-    [string]$AdminUser = 'postgres',
+    [string]$AdminUser = 'hexa_restore',
     [string]$LiveDatabase = 'hexa',
     [string]$ScratchDatabase = 'hexa_restore_test'
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\config.ps1"
+# The scratch database is DROPPED at the end; make it impossible to point that at the live data.
+if ($ScratchDatabase -eq $LiveDatabase -or $ScratchDatabase -notmatch 'restore_test|scratch') {
+    throw "Refusing to use '$ScratchDatabase' as scratch database (must differ from '$LiveDatabase' and contain 'restore_test' or 'scratch')."
+}
 $env:PGPASSFILE = Join-Path $ConfigDir 'pgpass.conf'
 $psql = Find-PgTool 'psql.exe'; $pgRestore = Find-PgTool 'pg_restore.exe'
 

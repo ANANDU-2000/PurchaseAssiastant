@@ -2,23 +2,21 @@ name: Deploy backend (Windows server)
 
 # Production backend deploy to the company Windows Server through a self-hosted runner.
 #
-# SECURITY MODEL (read before enabling):
-#  * Triggers are ONLY push-to-main and manual dispatch. It must never run on pull_request,
-#    because a self-hosted runner executes the code it is given with the runner account's rights.
-#  * The job uses the `production` GitHub Environment: configure "Required reviewers" on it so every
-#    deploy needs an explicit approval from the owner.
-#  * Keep the repository PRIVATE (a public repo + self-hosted runner invites hostile pull requests) and set
-#    Settings > Actions > General > "Require approval for all outside collaborators".
-#  * Protect `main` (pull request + passing checks) so only reviewed code reaches this workflow.
+# SECURITY MODEL (read before enabling) - see deploy/windows/README.md "Security model":
+#  * MANUAL ONLY (workflow_dispatch). It deliberately does NOT run on push to main: anyone with write access
+#    could otherwise ship code to the production server just by pushing. It must also never run on
+#    pull_request, because a self-hosted runner executes the code it is given with the runner account's rights.
+#  * Only runs from `main`, only for actors listed in repository variable DEPLOY_ALLOWED_ACTORS
+#    (JSON array, e.g. ["ANANDU-2000"]), and only after repository variable ENABLE_WINDOWS_DEPLOY=true.
+#    With either variable unset the job is skipped.
+#  * Uses its OWN environment `windows-production` (not `Production`, which Vercel already uses and has no
+#    protection rules). Add "Required reviewers" to it where your GitHub plan allows (private repositories need
+#    GitHub Pro/Team for that).
+#  * Keep the repository PRIVATE (public repo + self-hosted runner invites hostile pull requests).
+#  * Actions are pinned to commit SHAs (the runner executes them with high privilege).
 #  * Register the runner with labels: self-hosted, windows, hexa-prod.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "backend/**"
-      - "deploy/windows/**"
-      - ".github/workflows/deploy-backend-windows.yml"
   workflow_dispatch:
 
 permissions:
@@ -31,16 +29,20 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to Windows server
-    # Inert until the owner sets repository variable ENABLE_WINDOWS_DEPLOY=true (after the server and runner exist).
-    if: ${{ vars.ENABLE_WINDOWS_DEPLOY == 'true' }}
+    if: >-
+      ${{ vars.ENABLE_WINDOWS_DEPLOY == 'true'
+      && github.ref == 'refs/heads/main'
+      && contains(fromJSON(vars.DEPLOY_ALLOWED_ACTORS || '[]'), github.actor) }}
     runs-on: [self-hosted, windows, hexa-prod]
-    environment: production
+    environment: windows-production
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+          clean: true
+          fetch-depth: 1
       - name: Deploy release (backup, migrate, switch, health check, auto-rollback)
         shell: powershell
         run: |

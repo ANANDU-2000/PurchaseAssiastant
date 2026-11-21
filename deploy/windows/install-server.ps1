@@ -15,7 +15,18 @@ Write-Host '== 1. Folder layout'
 foreach ($d in $HexaRoot,$ReleasesDir,$ConfigDir,$LogsDir,$BackupsDir,$ToolsDir) {
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d | Out-Null; Write-Log "created $d" }
 }
-icacls $ConfigDir /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' | Out-Null
+# Lock down the WHOLE tree, not just config: release folders hold backend\.env (secrets) and backups hold all
+# business data. A folder created under C:\ otherwise inherits read access for every local user.
+icacls $HexaRoot /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' | Out-Null
+
+# Scheduled tasks run as SYSTEM, so they must run scripts from an admin-only location (never from a git or
+# runner checkout that a lower-privileged account can modify). Re-run this script to refresh the copies.
+$OpsDir = Join-Path $HexaRoot 'ops'
+if (-not (Test-Path $OpsDir)) { New-Item -ItemType Directory -Path $OpsDir | Out-Null }
+Copy-Item "$PSScriptRoot\*.ps1" $OpsDir -Force
+Copy-Item "$PSScriptRoot\backend.env.template" $OpsDir -Force
+Get-ChildItem $OpsDir -Filter *.ps1 | Unblock-File
+Write-Log "ops scripts copied to $OpsDir"
 
 Write-Host '== 2. Prerequisites'
 $missing = @()
@@ -64,10 +75,11 @@ if (-not $SkipTasks) {
     $ps = (Get-Command powershell.exe).Source
     $def = @(
         @{ Name='HexaBackupDaily'; Script='backup-postgres.ps1'; Trigger=(New-ScheduledTaskTrigger -Daily -At 02:30) },
-        @{ Name='HexaMonitor';     Script='health-monitor.ps1';  Trigger=(New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)) }
+        # Windows PowerShell 5.1 needs an explicit finite duration for a repeating trigger.
+        @{ Name='HexaMonitor';     Script='health-monitor.ps1';  Trigger=(New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)) }
     )
     foreach ($t in $def) {
-        $action = New-ScheduledTaskAction -Execute $ps -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PSScriptRoot\$($t.Script)`""
+        $action = New-ScheduledTaskAction -Execute $ps -Argument "-NoProfile -ExecutionPolicy RemoteSigned -File `"$OpsDir\$($t.Script)`""
         Register-ScheduledTask -TaskName $t.Name -Action $action -Trigger $t.Trigger -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
         Write-Log "scheduled task $($t.Name) registered"
     }
