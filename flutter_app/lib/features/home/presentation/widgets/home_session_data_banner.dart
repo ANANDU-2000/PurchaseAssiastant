@@ -47,9 +47,9 @@ class HomeSessionDataBanner extends ConsumerWidget {
 
     final String message;
     if (authHint) {
-      message = degraded!;
+      message = degraded;
     } else if (hasFailureBanner) {
-      message = failureBanner!;
+      message = failureBanner;
     } else if (stale) {
       message = 'Showing saved data — pull to refresh when online.';
     } else {

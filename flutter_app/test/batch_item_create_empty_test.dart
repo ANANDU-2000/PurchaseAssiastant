@@ -14,9 +14,9 @@ void main() {
       routes: [
         GoRoute(
           path: '/',
-          builder: (_, __) => Scaffold(
+          builder: (context, __) => Scaffold(
             body: BatchItemCreateCategoriesEmpty(
-              onOpenCatalog: () => _.go('/catalog'),
+              onOpenCatalog: () => context.go('/catalog'),
             ),
           ),
         ),

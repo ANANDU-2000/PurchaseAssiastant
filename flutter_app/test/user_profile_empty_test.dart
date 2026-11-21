@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:harisree_warehouse/features/settings/presentation/user_profile_page.dart';
-import 'package:harisree_warehouse/features/settings/users/user_profile_providers.dart';
 import 'package:harisree_warehouse/shared/widgets/hexa_empty_state.dart';
 
 void main() {

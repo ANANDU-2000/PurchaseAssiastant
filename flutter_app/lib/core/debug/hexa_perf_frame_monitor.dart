@@ -1,5 +1,3 @@
-import 'dart:ui' show FrameTiming;
-
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
@@ -21,7 +19,7 @@ class _HexaPerfFrameMonitorState extends State<HexaPerfFrameMonitor> {
   @override
   void initState() {
     super.initState();
-    if (!agentDebugLogEnabled) return;
+    if (!kHexaAgentDebugLog) return;
     SchedulerBinding.instance.addTimingsCallback(_onTimings);
   }
 

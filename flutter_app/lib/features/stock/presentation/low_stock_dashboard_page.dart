@@ -16,8 +16,8 @@ import '../../../core/providers/server_notifications_provider.dart';
 import '../../../core/providers/home_dashboard_provider.dart'
     show homeLowStockDetailFetchEnabledProvider, lowStockDashboardMountedProvider;
 import '../../../core/providers/low_stock_providers.dart';
-import '../../../core/services/stock_list_pdf.dart' deferred as stockPdf;
-import '../../../core/services/pdf_actions.dart' deferred as pdfActions;
+import '../../../core/services/stock_list_pdf.dart' deferred as stock_pdf;
+import '../../../core/services/pdf_actions.dart' deferred as pdf_actions;
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/hexa_elevated_autocomplete.dart';
 import '../../../shared/widgets/hexa_empty_state.dart';
@@ -275,20 +275,20 @@ class _LowStockDashboardPageState extends ConsumerState<LowStockDashboardPage>
       if (_subcategoryFilter != null && _subcategoryFilter!.isNotEmpty) {
         filterParts.add('Sub: $_subcategoryFilter');
       }
-      await Future.wait([stockPdf.loadLibrary(), pdfActions.loadLibrary()]);
-      final bytes = await stockPdf.buildStockListPdf(
+      await Future.wait([stock_pdf.loadLibrary(), pdf_actions.loadLibrary()]);
+      final bytes = await stock_pdf.buildStockListPdf(
         businessName: session.primaryBusiness.effectiveDisplayTitle,
         rows: items.take(500).toList(),
         filterSummary: 'Low stock · ${filterParts.join(' · ')}',
       );
       final result = kIsWeb
-          ? await pdfActions.savePdfBytes(
+          ? await pdf_actions.savePdfBytes(
               buildBytes: () async => bytes,
               filename: 'harisree_low_stock.pdf',
               subject: 'Harisree low stock list',
               source: 'low_stock_pdf',
             )
-          : await stockPdf.shareStockListPdf(
+          : await stock_pdf.shareStockListPdf(
               bytes: bytes,
               filename: 'harisree_low_stock.pdf',
             );

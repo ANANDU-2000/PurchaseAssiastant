@@ -14,9 +14,9 @@ void main() {
       routes: [
         GoRoute(
           path: '/',
-          builder: (_, __) => Scaffold(
+          builder: (context, __) => Scaffold(
             body: CatalogItemCreateSuppliersEmpty(
-              onOpenContacts: () => _.go('/contacts'),
+              onOpenContacts: () => context.go('/contacts'),
             ),
           ),
         ),
@@ -49,9 +49,9 @@ void main() {
       routes: [
         GoRoute(
           path: '/',
-          builder: (_, __) => Scaffold(
+          builder: (context, __) => Scaffold(
             body: CatalogItemCreateSubcategoriesEmpty(
-              onOpenCatalog: () => _.go('/catalog'),
+              onOpenCatalog: () => context.go('/catalog'),
             ),
           ),
         ),
