@@ -87,8 +87,9 @@ StaleStockConflict? parseStaleStockConflict(Object error) {
 
 /// Stock write with optimistic [stock_version].
 ///
-/// Retries with server version from 409, then on the last attempt may pass
-/// [force] so the API can apply the edit after explicit conflict handling.
+/// Retries with the server version from 409. After the final stale attempt it
+/// throws [StaleStockConflict]; [force] is only ever passed by callers that
+/// have obtained explicit user confirmation.
 typedef StockVersionOperation<T> = Future<T> Function(
   int? lastSeenVersion, {
   bool force,
@@ -133,18 +134,10 @@ Future<T> runWithStockVersionRetry<T>({
         rethrow;
       }
       if (isLast) {
-        try {
-          return await operation(
-            await refreshVersion?.call() ?? stale.currentVersion,
-            force: true,
-          );
-        } catch (e2) {
-          final integrity2 = parseStockIntegrityError(e2);
-          if (integrity2 != null) throw integrity2;
-          final stale2 = parseStaleStockConflict(e2);
-          if (stale2 != null) throw stale2;
-          rethrow;
-        }
+        // Never silently overwrite another user's edit: surface the conflict so
+        // the UI can ask the user (the API only honours `force` after an
+        // explicit user warning).
+        throw stale;
       }
       version = await refreshVersion?.call() ?? stale.currentVersion;
     }
