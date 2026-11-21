@@ -1,0 +1,66 @@
+name: Deploy backend (Windows server)
+
+# Production backend deploy to the company Windows Server through a self-hosted runner.
+#
+# SECURITY MODEL (read before enabling):
+#  * Triggers are ONLY push-to-main and manual dispatch. It must never run on pull_request,
+#    because a self-hosted runner executes the code it is given with the runner account's rights.
+#  * The job uses the `production` GitHub Environment: configure "Required reviewers" on it so every
+#    deploy needs an explicit approval from the owner.
+#  * Keep the repository PRIVATE (a public repo + self-hosted runner invites hostile pull requests) and set
+#    Settings > Actions > General > "Require approval for all outside collaborators".
+#  * Protect `main` (pull request + passing checks) so only reviewed code reaches this workflow.
+#  * Register the runner with labels: self-hosted, windows, hexa-prod.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "deploy/windows/**"
+      - ".github/workflows/deploy-backend-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hexa-backend-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Windows server
+    # Inert until the owner sets repository variable ENABLE_WINDOWS_DEPLOY=true (after the server and runner exist).
+    if: ${{ vars.ENABLE_WINDOWS_DEPLOY == 'true' }}
+    runs-on: [self-hosted, windows, hexa-prod]
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Deploy release (backup, migrate, switch, health check, auto-rollback)
+        shell: powershell
+        run: |
+          & "$env:GITHUB_WORKSPACE\deploy\windows\deploy-release.ps1" -SourceDir "$env:GITHUB_WORKSPACE" -Sha "$env:GITHUB_SHA"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  public-smoke:
+    name: Public smoke test (through Cloudflare)
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Health via public hostname
+        env:
+          API_URL: ${{ vars.PUBLIC_API_URL }}   # repository variable, e.g. https://api.harisreeagency.online
+        run: |
+          test -n "$API_URL" || { echo "Set repository variable PUBLIC_API_URL"; exit 1; }
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$API_URL/health/ready" || true)
+            echo "attempt $i -> $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "Public health check failed"; exit 1

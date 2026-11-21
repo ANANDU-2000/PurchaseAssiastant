@@ -1,0 +1,38 @@
+name: Rollback backend (Windows server)
+
+# Manual only. Switches the service back to an earlier release folder (code only; database is NOT reverted).
+# Uses the same protected `production` environment, so it also needs reviewer approval.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Release folder under C:\\hexa\\releases (12-char commit id). Empty = newest non-live release."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hexa-backend-production
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    if: ${{ vars.ENABLE_WINDOWS_DEPLOY == 'true' }}
+    runs-on: [self-hosted, windows, hexa-prod]
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Roll back
+        shell: powershell
+        env:
+          RELEASE: ${{ inputs.release }}
+        run: |
+          $script = "$env:GITHUB_WORKSPACE\deploy\windows\rollback-release.ps1"
+          if ($env:RELEASE) { & $script -Release $env:RELEASE } else { & $script }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
