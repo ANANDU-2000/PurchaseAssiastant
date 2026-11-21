@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Fail CI if the dead Cloudflare-tunnel API host appears in shipped code/config.
-# Canonical production API: https://my-purchases-api.onrender.com (Render + Render Postgres)
+# Fail CI if a retired API host appears in shipped code/config.
+# The Cloudflare-tunnel host api.harisreeagency.online is the TARGET API after the cut-over, so it is no longer listed.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-DEAD1="api.harisreeagency$(printf '%s' '.online')"
 DEAD2="harisree-api$(printf '%s' '.onrender.com')"
-PATTERN="${DEAD1}|${DEAD2}"
+PATTERN="${DEAD2}"
 hits="$(
   git grep -nE "$PATTERN" -- '*.dart' '*.yml' '*.yaml' '*.json' '*.py' \
     ':(exclude)**/archive/**' \

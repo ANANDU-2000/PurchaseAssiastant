@@ -53,11 +53,9 @@ flutter pub get
 
 CANONICAL_API="https://my-purchases-api.onrender.com"
 API_URL="${API_BASE_URL:-$CANONICAL_API}"
-# api.harisreeagency.online (Cloudflare tunnel to client Windows server) is NOT live.
-# If the Vercel dashboard still carries it, ignore it and use Render.
-case "$API_URL" in
-  *harisreeagency.online*) echo "WARN: API_BASE_URL points at dead tunnel host; using $CANONICAL_API"; API_URL="$CANONICAL_API";;
-esac
+# API cut-over to the Cloudflare-tunnel host (api.harisreeagency.online): the API_BASE_URL project variable is
+# honoured as set. Only merge this change AFTER the API answers /health/ready over HTTPS (see
+# docs/ops/DOMAIN_CLOUDFLARE_VERCEL_RUNBOOK.md); until then keep API_BASE_URL on the Render URL.
 # Vercel Dashboard env values often include a trailing CR/LF from paste —
 # that splits the flutter CLI args and yields: Target file "--dart-define=..." not found.
 API_URL="$(printf '%s' "$API_URL" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
