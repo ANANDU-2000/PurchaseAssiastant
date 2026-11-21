@@ -18,16 +18,17 @@ API `https://api.harisreeagency.online` through a Cloudflare Tunnel to FastAPI o
 ## 2. OWNER - Cloudflare zone (needs the Cloudflare account login)
 1. Add site `harisreeagency.online` (Free plan). Cloudflare imports existing records; **compare with the export from step 1.4 and add anything missing, keeping all MX/TXT records exactly.**
 2. Cloudflare shows two nameservers. At Namecheap set the domain to Custom DNS with exactly those two (needs your approval; it is the only change that moves DNS authority). Wait until the zone shows Active.
-3. Zero Trust > Networks > Tunnels > Create (Cloudflared): name `hexa-api`. Copy the token **only** into `C:\hexa\config\cloudflared.token` on the server. Public hostname: `api.harisreeagency.online` -> `http://localhost:8000`. Cloudflare creates the proxied CNAME for `api` itself.
+3. A tunnel `harisree-backend` ALREADY EXISTS in this Cloudflare account: Healthy, one `windows_amd64` connector (version 2026.7.3) connected for 7 days, published route `api.harisreeagency.online` -> `http://localhost:8000`. Do not create a second tunnel. Confirm which machine runs that connector and whether FastAPI is listening on port 8000 there.
 
-## 3. DNS records after the zone is active
+## 3. DNS records (ALREADY STAGED in the Cloudflare zone on 2026-11-21; they take effect only when the nameservers are switched)
 | Name | Type | Target | Proxy |
 |---|---|---|---|
-| `api` | CNAME | `<tunnel-id>.cfargotunnel.com` (created by the tunnel) | Proxied |
-| `@` | CNAME (flattened) | `cname.vercel-dns.com` | **DNS only** |
-| `www` | CNAME | `cname.vercel-dns.com` | **DNS only** |
-| MX / TXT (SPF, DKIM, DMARC) | as exported | unchanged | - |
-Vercel needs DNS-only records to issue its certificate; do not proxy `@`/`www`.
+| `@` | A | `216.198.79.1` (Vercel's instruction for this project; not the old `cname.vercel-dns.com`) | **DNS only** |
+| `www` | CNAME | `fe321cd2e371209f.vercel-dns-017.com` (project-specific; `www` 307-redirects to the root domain in Vercel) | **DNS only** |
+| `api` | CNAME (shown as "Tunnel") | tunnel `harisree-backend` (`99d59e03-a5b3-4a03-bcd9-751e56b95d49.cfargotunnel.com`) | Proxied |
+| MX / TXT (SPF, DKIM, DMARC) | NOT YET ADDED | whatever exists in the Namecheap DNS panel (export it first) | - |
+Cloudflare nameservers assigned to the zone: `coraline.ns.cloudflare.com` and `rene.ns.cloudflare.com`.
+Vercel needs DNS-only records to issue its certificate; do not proxy `@` / `www`.
 
 ## 4. Server: tunnel and API (prepared in PR #9 `deploy/windows/`)
 Run `install-server.ps1`, fill `backend.env` (CORS below), `deploy-release.ps1`, then `install-cloudflared.ps1`. PostgreSQL stays on localhost; no inbound firewall rule for 5432 or 8000.
@@ -56,8 +57,8 @@ Vercel: promote the previous deployment, or set `API_BASE_URL` back to the Rende
 | Step | Status |
 |---|---|
 | 1 Namecheap hold | BLOCKED (owner) |
-| 2 Cloudflare zone and tunnel | BLOCKED (owner login; no Cloudflare API tool connected) |
-| 3 DNS records | NOT STARTED (depends on 1-2) |
+| 2 Cloudflare zone and tunnel | DONE: zone created (Free, pending), 3 records staged, tunnel already healthy. Waiting for the nameserver switch |
+| 3 DNS records | STAGED in Cloudflare; live only after step 1 and the nameserver switch |
 | 4 Server and tunnel service | BLOCKED (no server access); scripts ready in PR #9 |
 | 5 API verification | NOT STARTED |
 | 6 Vercel domain/env and cut-over PR | PREPARED (this PR, draft, do not merge yet) |
