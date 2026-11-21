@@ -70,7 +70,7 @@ Local gates (run from the relevant worktree):
 | Backend tests | `cd backend && python -m pytest -q` (Python 3.12 venv; 3.14 lacks wheels for some deps) |
 | Graph refresh | `graphify update .` |
 
-Vercel previews are an assumption of the Vercel Git integration for this project — **UNVERIFIED** (not checked in the dashboard).
+Vercel preview deployments are confirmed: PR #8 shows a passing "Vercel" check linking to project `purchase-assiastant` under team `anandukrishnapa2000-gmailcoms-projects`. The claude.ai Vercel connector is not yet connected to that team.
 
 ## 5. TestSprite E2E plan (no credits spent yet)
 

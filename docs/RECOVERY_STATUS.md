@@ -13,7 +13,7 @@ Last updated 2026-11-21. "Verified" = exercised in a real session. Nothing here 
 | TestSprite MCP | **Blocked** | Env var `TESTSPRITE_API_KEY` is set at user scope but absent from the running session's process; tools not inspected; 0 credits used. Owner rotates key, sets new value, restarts Claude Code. |
 | Cloudflare Workers MCP (claude.ai) | Partial | Workers/KV/D1/R2/Hyperdrive only; 0 workers. Cannot see zones, DNS, tunnels. |
 | Cloudflare API MCP | **Added, needs sign-in** | Registered at user scope (`cloudflare-api` → `https://mcp.cloudflare.com/mcp`); status "Needs authentication". OAuth must be completed by the owner in an interactive session (`/mcp`). Zone/DNS/Tunnel checks are pending on this. |
-| Vercel (claude.ai connector) | **Wrong account** | Signed in as the SBSOL account; projects `proimprint-videomaker`, `proimprint-ai`, `sbsol-ai-tracker`; no `purchase-assiastant`. Reconnect with the Harisree-owning account. |
+| Vercel (claude.ai connector) | **Wrong account** | Signed in as the SBSOL account; projects `proimprint-videomaker`, `proimprint-ai`, `sbsol-ai-tracker`; no `purchase-assiastant`. The real project is `purchase-assiastant` under the Vercel team `anandukrishnapa2000-gmailcoms-projects` (seen in the PR #8 "Vercel" check URL; a third account, neither SBSOL nor the git/Namecheap one). Reconnect the connector to that account. Git-integration preview deployments are confirmed working (PR #8 shows a passing Vercel check). |
 | Render (claude.ai connector) | **Wrong account** | Workspace "ANANDU SBSOL TESTING"; ProImprint services; suspended `proai_catalog` DB; no `my-purchases-api` / `harisree_db`. Reconnect with the Harisree-owning account. Project-local `render-harisree` MCP (`RENDER_API_KEY`) is unverified; a direct API call with that key was blocked by the permission classifier and not retried. |
 | PRO_AGENT connector | Ignored | Unrelated; HTTP 503. |
 | Ralph Loop | Installed, idle, **not safe to start as-is** | See §3. |
@@ -27,6 +27,14 @@ Last updated 2026-11-21. "Verified" = exercised in a real session. Nothing here 
 | `ralph/local` (main checkout) | Untouched; 726 dirty files preserved |
 
 Tests: backend pytest 327 passed; `flutter analyze` clean; full Flutter suite had ~6 failures in files being rewritten by the other session — re-run once that session is stopped.
+
+### PR status (2026-11-21)
+
+| PR | State |
+|---|---|
+| #8 `fix/ci-recovery` | Open, mergeable, merge state CLEAN, all 8 checks pass on head `35aef97` (backend pytest, backend on PostgreSQL, Flutter analyze/test, SSOT smoke, web build, dead-host guard, Vercel). 84 files: 26 Alembic edits (24 are SQLite-only early returns, PostgreSQL behaviour unchanged; 043 now executes its two `CREATE INDEX IF NOT EXISTS` statements one by one), Flutter/backend tests, 13 Flutter lib and 5 backend app files (incl. no-auto-force stock retry and a password-policy fix with tests). Ready for owner review; **not merged**. |
+| #9 `feat/windows-deploy` | Draft; waits for #8 to merge, then rebase (needs approval). |
+| #10 `docs/ai-environment` | Docs-only (four files), opened for review. |
 
 ## 3. Ralph Loop — controlled execution plan
 
