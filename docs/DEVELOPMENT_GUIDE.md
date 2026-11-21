@@ -11,7 +11,12 @@ Status as of 2026-11-21. "Verified" means exercised in a real session; everythin
 | Graphify MCP | Verified | JSON-RPC handshake lists 12 tools; needs `graphifyy[sql,mcp]` extras |
 | TestSprite MCP | Registered; connects when `TESTSPRITE_API_KEY` is in the process env | Tools not yet inspected; **0 credits used** |
 | GitHub CLI | **Not authenticated** | `gh auth login` required |
-| Vercel / Render / Cloudflare / Namecheap MCP | Reachable (claude.ai connectors); Vercel tool fetch intermittently times out | Read-only use only; nothing deployed or changed |
+| Namecheap MCP | **Verified, correct account** | Registrant is the owner; `harisreeagency.online` registered, expires 2027-08-07, nameservers = Cloudflare (`rene` / `coraline`). Namecheap cannot edit DNS (zone is on Cloudflare). |
+| Cloudflare MCP (Workers Bindings, deprecated) | Connected, **cannot verify zone/DNS/tunnel** | Only Workers/KV/D1/R2/Hyperdrive tools; `workers_list` returned 0. Zone status needs the Cloudflare API MCP (`https://mcp.cloudflare.com/mcp`). |
+| Vercel MCP (claude.ai connector) | Connected, **wrong account** | Signed in as the SBSOL account; projects are `proimprint-*` and `sbsol-ai-tracker`. No `purchase-assiastant` project. Do not use for this app until reconnected to the right account. |
+| Render MCP (claude.ai connector) | Connected, **wrong account** | Workspace "ANANDU SBSOL TESTING": ProImprint services and a suspended `proai_catalog` DB. No `my-purchases-api` or `harisree_db`. The project's own `.mcp.json` (`render-harisree`, `RENDER_API_KEY`) is the intended path and is **not yet verified**. |
+| Browser (Claude in Chrome) | Verified | Tab group created in this session |
+| Ralph Loop | Present, idle | `ralph/` + `loop_auto.sh`; no loop process running. The script runs with `--dangerously-skip-permissions`: start only in its own worktree, never alongside another agent. |
 | Windows Server deploy | Draft only (PR #9, unrun) | |
 
 Secrets rule: never paste keys into chat or files. GitHub → `gh auth login` (browser). TestSprite → user env var `TESTSPRITE_API_KEY`; MCP config references `${TESTSPRITE_API_KEY}`. A key that has been pasted in a conversation must be rotated.
@@ -124,4 +129,4 @@ Controls: no paid TestSprite or LLM run without an estimate and approval; keep G
 2. Rotate the exposed GitHub token and TestSprite key; set the new env var; open a fresh session.
 3. Quiesce the second session in `fix-ci-recovery`, then re-run full Flutter tests (6 failures were seen, in files being edited).
 4. PR #8/#9 CI logs review.
-5. Decisions listed in `AI_ARCHITECTURE_REPORT.md` §7.
+5. Decisions listed in `AI_ARCHITECTURE.md` §7.
