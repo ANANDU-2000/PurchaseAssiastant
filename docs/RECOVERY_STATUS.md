@@ -23,7 +23,7 @@ Last updated 2026-11-21. "Verified" = exercised in a real session. Nothing here 
 | Branch / worktree | Commits |
 |---|---|
 | `fix/ci-recovery` (`hexa-worktrees/fix-ci-recovery`) | `3cdabea` stale-stock no-auto-force fix + stale scan-card test fix. Another session was concurrently editing Flutter tests in this worktree; its uncommitted changes were left untouched. |
-| `docs/ai-environment` (`hexa-worktrees/ai-docs`) | `646941b`, `d74d868`, `f7c29b0`, plus this file |
+| `docs/ai-environment` (`hexa-worktrees/ai-docs`) | Documentation only (four files under `docs/`), based on `main`; delivered as a docs-only PR |
 | `ralph/local` (main checkout) | Untouched; 726 dirty files preserved |
 
 Tests: backend pytest 327 passed; `flutter analyze` clean; full Flutter suite had ~6 failures in files being rewritten by the other session — re-run once that session is stopped.
