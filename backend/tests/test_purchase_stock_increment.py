@@ -155,7 +155,9 @@ def test_delivery_confirmation_is_idempotent_on_repeat_call():
         headers=h,
         json={},
     ).raise_for_status()
-    client.post(
+    # Full verification auto-commits stock when item units are ready, so the stock
+    # movement is reported on the verify response (exactly once).
+    verified = client.post(
         f"/v1/businesses/{bid}/trade-purchases/{pid}/verify",
         headers=h,
         json={
@@ -168,14 +170,19 @@ def test_delivery_confirmation_is_idempotent_on_repeat_call():
                 }
             ],
         },
-    ).raise_for_status()
+    )
+    assert verified.status_code == 200, verified.text
+    assert verified.json()["is_delivered"] is True
+    assert len(verified.json().get("stock_updates") or []) == 1
+
+    # An explicit commit afterwards is an idempotent no-op.
     delivered_first = client.post(
         f"/v1/businesses/{bid}/trade-purchases/{pid}/commit-stock",
         headers=h,
     )
     assert delivered_first.status_code == 200, delivered_first.text
     assert delivered_first.json()["is_delivered"] is True
-    assert len(delivered_first.json().get("stock_updates") or []) == 1
+    assert (delivered_first.json().get("stock_updates") or []) == []
 
     delivered_repeat = client.post(
         f"/v1/businesses/{bid}/trade-purchases/{pid}/commit-stock",

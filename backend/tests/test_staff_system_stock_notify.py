@@ -32,7 +32,8 @@ def test_staff_system_stock_edit_notifies_owners():
             )
             emit.assert_awaited_once()
             kwargs = emit.await_args.kwargs
-            assert kwargs["kind"] == "stock_correction"
+            assert kwargs["kind"] == "staff_system_stock_edit"
+            assert kwargs["category"] == "staff"
             assert kwargs["owner_only"] is True
             assert "krishna" in kwargs["body"]
 

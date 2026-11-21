@@ -28,7 +28,10 @@ def test_stock_list_has_private_cache_control():
     h, bid = _owner_headers()
     r = client.get(f"/v1/businesses/{bid}/stock/list", headers=h, params={"page": 1, "per_page": 1})
     assert r.status_code == 200, r.text
-    assert r.headers.get("cache-control") == "private, max-age=30"
+    # Stock list uses ETag revalidation (max-age=0 + 304) so edits show immediately;
+    # the 30s TTL applies to the in-process server cache, not the browser cache.
+    assert r.headers.get("cache-control") == "private, max-age=0"
+    assert r.headers.get("etag")
 
 
 def test_home_overview_has_private_cache_control():

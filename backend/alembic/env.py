@@ -42,10 +42,16 @@ def _sync_url() -> str:
         return "sqlite:///./hexa_dev.db"
 
     url = (os.environ.get("DATABASE_URL") or "postgresql://user:password@localhost:5432/hexa").strip()
+    # Name the sync driver explicitly: requirements install psycopg2, but SQLAlchemy 2.1+ changed the
+    # default driver for a bare "postgresql://" URL to psycopg (v3), which is not installed.
     if url.startswith("postgresql+asyncpg://"):
-        url = "postgresql://" + url.removeprefix("postgresql+asyncpg://")
+        url = "postgresql+psycopg2://" + url.removeprefix("postgresql+asyncpg://")
     elif url.startswith("postgres+asyncpg://"):
-        url = "postgresql://" + url.removeprefix("postgres+asyncpg://")
+        url = "postgresql+psycopg2://" + url.removeprefix("postgres+asyncpg://")
+    elif url.startswith("postgresql://"):
+        url = "postgresql+psycopg2://" + url.removeprefix("postgresql://")
+    elif url.startswith("postgres://"):
+        url = "postgresql+psycopg2://" + url.removeprefix("postgres://")
     elif "sqlite+aiosqlite" in url:
         url = url.replace("sqlite+aiosqlite", "sqlite", 1)
     return url

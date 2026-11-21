@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:harisree_warehouse/core/providers/stock_opening_providers.dart';
-import 'package:harisree_warehouse/core/widgets/friendly_load_error.dart';
 import 'package:harisree_warehouse/features/stock/presentation/opening_stock_setup_page.dart';
 import 'package:harisree_warehouse/shared/widgets/hexa_empty_state.dart';
 
@@ -44,7 +43,7 @@ void main() {
     );
   });
 
-  testWidgets('opening stock error shows FriendlyLoadError', (tester) async {
+  testWidgets('opening stock error shows the load error with retry', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -61,7 +60,8 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.byType(FriendlyLoadError), findsOneWidget);
+    expect(find.byType(OpeningStockSetupLoadError), findsOneWidget);
     expect(find.text('Could not load opening stock'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
   });
 }

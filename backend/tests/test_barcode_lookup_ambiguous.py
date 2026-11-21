@@ -1,4 +1,9 @@
-"""Ambiguous barcode lookup returns 409 (do not silently pick one)."""
+"""Ambiguous code lookup returns 409 (do not silently pick one).
+
+On PostgreSQL a unique partial index (business_id, barcode) already makes duplicate active barcodes
+impossible, so the reachable ambiguity is a shared *item_code* (no unique index). The lookup applies
+the same 409 rule to both, so the test builds the ambiguity through item_code, which works on any DB.
+"""
 
 import asyncio
 import uuid
@@ -42,7 +47,7 @@ def _type_id(h, bid):
     return types.json()[0]["id"]
 
 
-async def _force_shared_barcode(
+async def _force_shared_item_code(
     business_id: uuid.UUID, item_ids: list[uuid.UUID], shared: str
 ) -> None:
     async with async_session_factory() as db:
@@ -56,7 +61,7 @@ async def _force_shared_barcode(
         ).scalars().all()
         assert len(rows) == 2
         for row in rows:
-            row.barcode = shared
+            row.item_code = shared
         await db.commit()
 
 
@@ -96,7 +101,7 @@ def test_barcode_lookup_ambiguous_409():
     id_b = uuid.UUID(b.json()["id"])
     bid_uuid = uuid.UUID(bid)
 
-    asyncio.run(_force_shared_barcode(bid_uuid, [id_a, id_b], shared))
+    asyncio.run(_force_shared_item_code(bid_uuid, [id_a, id_b], shared))
 
     stock_router._barcode_lookup_cache.clear()
     lookup = client.get(

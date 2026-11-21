@@ -16,6 +16,9 @@ _SQL = Path(__file__).resolve().parents[2] / "sql" / "046_report_saved_views.sql
 
 
 def upgrade() -> None:
+    # PostgreSQL-only DDL/DML; the SQLite CI smoke (HEXA_USE_SQLITE=1) skips it.
+    if op.get_bind().dialect.name == "sqlite":
+        return
     op.execute(_SQL.read_text(encoding="utf-8"))
 
 

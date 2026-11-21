@@ -540,6 +540,18 @@ async def create_supplier(
         if bid not in dedup_brokers:
             dedup_brokers.append(bid)
 
+    # Validate brokers BEFORE inserting the supplier: suppliers.broker_id is a real foreign key on
+    # PostgreSQL, so an unknown id would otherwise fail the INSERT (409) instead of this 400.
+    for bid in dedup_brokers:
+        ok = await db.scalar(
+            select(Broker.id).where(Broker.id == bid, Broker.business_id == business_id)
+        )
+        if ok is None:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail=f"Broker not in this business: {bid}",
+            )
+
     prefs_json: str | None = None
     if body.preferences is not None:
         prefs_json = body.preferences.model_dump_json()
@@ -565,14 +577,6 @@ async def create_supplier(
     await db.flush()
 
     for bid in dedup_brokers:
-        ok = await db.scalar(
-            select(Broker.id).where(Broker.id == bid, Broker.business_id == business_id)
-        )
-        if ok is None:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                detail=f"Broker not in this business: {bid}",
-            )
         db.add(BrokerSupplierLink(broker_id=bid, supplier_id=s.id))
 
     await db.commit()

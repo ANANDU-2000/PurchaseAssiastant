@@ -3195,6 +3195,14 @@ async def delete_catalog_item(
                 status.HTTP_400_BAD_REQUEST,
                 detail="Cannot delete a catalog item whose variants are linked to legacy purchase entry lines",
             )
+    # supplier_item_defaults.catalog_item_id has no ON DELETE rule: PostgreSQL rejects the item delete
+    # (surfaced as a 409) while per-supplier purchase memory still points at it.
+    await db.execute(
+        delete(SupplierItemDefault).where(
+            SupplierItemDefault.business_id == business_id,
+            SupplierItemDefault.catalog_item_id == item_id,
+        )
+    )
     await db.delete(i)
     await db.commit()
     _invalidate_catalog_read_caches(business_id)
