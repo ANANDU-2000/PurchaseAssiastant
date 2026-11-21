@@ -10,13 +10,13 @@ Last updated 2026-11-21. "Verified" = exercised in a real session. Nothing here 
 | Browser (Claude in Chrome) | Verified | Tab group created. |
 | Namecheap | Verified, correct account | `harisreeagency.online` registered to 2027-08-07; registrant is the owner; nameservers `rene.ns.cloudflare.com`, `coraline.ns.cloudflare.com`. DNS cannot be edited at Namecheap (zone is on Cloudflare). |
 | GitHub CLI | **Verified** | Browser device-flow login as `ANANDU-2000` (keyring, HTTPS; scopes `repo`, `read:org`, `gist`). Repo permission: ADMIN. PR #8 latest CI run: success. PR #9 CI: failing in "Alembic migrations (SQLite smoke)" (`sqlite3.ProgrammingError: You can only execute one statement at a time`) — same failure PR #8 fixed; PR #9 likely needs the #8 fixes (rebase after #8 merges, with approval). Previously exposed PAT must still be revoked by the owner. |
-| TestSprite MCP | **Blocked** | Env var `TESTSPRITE_API_KEY` is set at user scope but absent from the running session's process; tools not inspected; 0 credits used. Owner rotates key, sets new value, restarts Claude Code. |
+| TestSprite MCP | **Verified** (handshake in a child process fed from the user-level env var) | Server `testsprite-mcp-server` 0.0.48, 8 tools: `bootstrap`, `generate_code_summary`, `generate_standardized_prd`, `generate_frontend_test_plan`, `generate_backend_test_plan`, `generate_code_and_execute`, `open_test_result_dashboard`, `check_account_info`. Account: **Free plan, 150 credits, 0 consumed**. Per-test credit cost is not published by the tools; measure with one test before any batch. Note: the running Claude Code session itself still lacks the variable, so its in-session MCP shows "missing env" until Claude Code is restarted. The key was pasted into chat earlier and should be rotated. |
 | Cloudflare Workers MCP (claude.ai) | Partial | Workers/KV/D1/R2/Hyperdrive only; 0 workers. Cannot see zones, DNS, tunnels. |
 | Cloudflare API MCP | **Added, needs sign-in** | Registered at user scope (`cloudflare-api` → `https://mcp.cloudflare.com/mcp`); status "Needs authentication". OAuth must be completed by the owner in an interactive session (`/mcp`). Zone/DNS/Tunnel checks are pending on this. |
 | Vercel (claude.ai connector) | **Wrong account** | Signed in as the SBSOL account; projects `proimprint-videomaker`, `proimprint-ai`, `sbsol-ai-tracker`; no `purchase-assiastant`. The real project is `purchase-assiastant` under the Vercel team `anandukrishnapa2000-gmailcoms-projects` (seen in the PR #8 "Vercel" check URL; a third account, neither SBSOL nor the git/Namecheap one). Reconnect the connector to that account. Git-integration preview deployments are confirmed working (PR #8 shows a passing Vercel check). |
 | Render (claude.ai connector) | **Wrong account** | Workspace "ANANDU SBSOL TESTING"; ProImprint services; suspended `proai_catalog` DB; no `my-purchases-api` / `harisree_db`. Reconnect with the Harisree-owning account. Project-local `render-harisree` MCP (`RENDER_API_KEY`) is unverified; a direct API call with that key was blocked by the permission classifier and not retried. |
 | PRO_AGENT connector | Ignored | Unrelated; HTTP 503. |
-| Ralph Loop | Installed, idle, **not safe to start as-is** | See §3. |
+| Ralph Loop | Controlled runner built, **not started** | Original `loop_auto.sh` is unsafe (see §3). A guard-railed replacement exists in worktree `hexa-worktrees/ralph-controlled` (branch `ralph/controlled`, 2 local commits, not pushed). All guards tested; `claude` was never launched. |
 
 ## 2. Code state (nothing pushed)
 
@@ -49,7 +49,10 @@ Tests: backend pytest 327 passed; `flutter analyze` clean; full Flutter suite ha
 3. QA targets production, with real credentials in `ralph/qa/.env`.
 4. It would run in the main checkout that holds the 726 uncommitted files.
 
-### Required guard-rails (to implement in a copy, e.g. `ralph/loop_controlled.sh`; do not edit the original)
+### Implemented: `ralph/loop_controlled.sh` + `ralph/PROMPT_CONTROLLED.md` (worktree `ralph-controlled`)
+The original prompt `PROMPT_AUTO.md` also instructs "push main, wait for Vercel + Render deploy, re-run prod QA", so a separate prompt was written too. Guards verified by running the script with inputs that must be refused: rounds above the cap of 5, non-numeric rounds, any `onrender.com` / `vercel.app` / `harisreeagency.online` target, a non-`ralph/*` branch, and a dirty tree. The main-checkout and `ralph/local` refusals are implemented but were not exercised (a test would have meant placing files in the protected checkout). A `.gitattributes` (`*.sh text eol=lf`) was added on that branch because `core.autocrlf=true` checks `loop_auto.sh` out with CRLF, which breaks bash.
+
+### Guard-rails (specification)
 | Control | Setting |
 |---|---|
 | Isolation | One dedicated worktree + branch per loop: `git worktree add ../hexa-worktrees/ralph-<task> -b ralph/<task> origin/main`. Never the main checkout or another agent's worktree. |
