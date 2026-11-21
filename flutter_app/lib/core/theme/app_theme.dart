@@ -1,3 +1,7 @@
+// Cupertino is re-exported by material.dart on Flutter 3.41 (the pinned version),
+// but newer Flutter stops doing that; keep the explicit import so upgrades don't break.
+// ignore: unnecessary_import
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../design_system/hexa_glass_theme.dart';
