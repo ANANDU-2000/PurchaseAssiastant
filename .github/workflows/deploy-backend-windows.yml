@@ -56,7 +56,7 @@ jobs:
     steps:
       - name: Health via public hostname
         env:
-          API_URL: ${{ vars.PUBLIC_API_URL }}   # repository variable, e.g. https://api.harisreeagency.online
+          API_URL: ${{ vars.PUBLIC_API_URL }}   # repository variable: the public HTTPS API origin (set once the tunnel is live)
         run: |
           test -n "$API_URL" || { echo "Set repository variable PUBLIC_API_URL"; exit 1; }
           for i in 1 2 3 4 5 6; do
