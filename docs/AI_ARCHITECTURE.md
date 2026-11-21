@@ -84,6 +84,7 @@ Stock write contract: clients send `stock_version`; mismatch → 409 `STALE_STOC
 3. **Scan card supplier.** An old test expected the supplier name on the barcode scan card; the card never rendered it. Decide whether that is a wanted feature.
 4. **PR #8 / #9 CI is red.** Backend pytest passes locally (327), so remaining CI failures need a fresh log review once the recovery worktree is quiescent.
 5. **Graph noise.** Markdown planning files (`ralph/`, `uiux context/`, `AGENTS.md`) appear as high-degree nodes ("ORDERED UX TASKS…" has 152 edges). Add a `.graphifyignore` for them to keep code analysis clean (proposal; not applied).
+6. **Hosting accounts not confirmed.** The claude.ai Vercel and Render connectors are authorised to a different (SBSOL / ProImprint) account that holds none of this app's resources. The production Vercel project (`purchase-assiastant`) and Render service/DB (`my-purchases-api`, `harisree_db`) were therefore **not** found or verified. Domain `harisreeagency.online` is at Namecheap with Cloudflare nameservers.
 
 ## 8. Known limits of this report
 
