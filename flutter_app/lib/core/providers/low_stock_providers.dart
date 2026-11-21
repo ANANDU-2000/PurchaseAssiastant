@@ -176,7 +176,7 @@ final lowStockItemTimelineProvider = FutureProvider.autoDispose
   final session = ref.watch(sessionProvider);
   if (session == null) return <String, dynamic>{};
   try {
-    return ref.read(hexaApiProvider).getStockItemActivity(
+    return await ref.read(hexaApiProvider).getStockItemActivity(
           businessId: session.primaryBusiness.id,
           itemId: itemId,
         );

@@ -50,12 +50,30 @@ void main() {
     });
 
     test('physicalCellLabel formats counted qty', () {
+      // KG keeps decimals ...
+      expect(
+        StockRowMetrics.physicalCellLabel(const {
+          'current_stock': 10,
+          'stock_unit': 'kg',
+          'physical_stock_qty': 8.5,
+        }),
+        '8.5',
+      );
+      // ... while bag / piece (default when no unit) are discrete and shown as whole numbers.
+      expect(
+        StockRowMetrics.physicalCellLabel(const {
+          'current_stock': 10,
+          'stock_unit': 'bag',
+          'physical_stock_qty': 8.5,
+        }),
+        '9',
+      );
       expect(
         StockRowMetrics.physicalCellLabel(const {
           'current_stock': 10,
           'physical_stock_qty': 8.5,
         }),
-        '8.5',
+        '9',
       );
     });
 

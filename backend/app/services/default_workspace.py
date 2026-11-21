@@ -45,10 +45,16 @@ def sync_database_url_for_seed(settings: Settings) -> str:
         return "sqlite:///" + raw.split("sqlite+aiosqlite:///")[-1]
     if raw.startswith("sqlite:"):
         return raw
+    # Name the sync driver explicitly (psycopg2 is what requirements install). SQLAlchemy 2.1+ makes a
+    # bare "postgresql://" URL default to psycopg v3, which is not installed -> bootstrap-workspace 500.
     if "+asyncpg" in raw:
-        raw = raw.replace("postgresql+asyncpg://", "postgresql://").replace("postgres+asyncpg://", "postgres://")
+        raw = raw.replace("postgresql+asyncpg://", "postgresql+psycopg2://").replace(
+            "postgres+asyncpg://", "postgresql+psycopg2://"
+        )
     elif raw.startswith("postgres://"):
-        raw = "postgresql://" + raw.removeprefix("postgres://")
+        raw = "postgresql+psycopg2://" + raw.removeprefix("postgres://")
+    elif raw.startswith("postgresql://"):
+        raw = "postgresql+psycopg2://" + raw.removeprefix("postgresql://")
     return raw
 
 

@@ -129,7 +129,8 @@ def test_category_and_item_crud():
     assert r.status_code == 204
 
 
-def test_catalog_item_requires_default_suppliers():
+def test_catalog_item_default_suppliers_optional_single_but_required_in_batch():
+    """Single create allows no default supplier; POST /catalog-items/batch still requires one per row."""
     h, bid = _auth_and_business()
     r = client.post(
         f"/v1/businesses/{bid}/item-categories",
@@ -138,9 +139,30 @@ def test_catalog_item_requires_default_suppliers():
     )
     assert r.status_code == 201, r.text
     cid = r.json()["id"]
+
     r = client.post(
         f"/v1/businesses/{bid}/catalog-items",
         json={"category_id": cid, "name": "X", "default_unit": "kg"},
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["default_supplier_ids"] == []
+
+    tid = client.get(
+        f"/v1/businesses/{bid}/item-categories/{cid}/category-types", headers=h
+    ).json()[0]["id"]
+    r = client.post(
+        f"/v1/businesses/{bid}/catalog-items/batch",
+        json={
+            "items": [
+                {
+                    "name": "Y",
+                    "type_id": tid,
+                    "default_unit": "kg",
+                    "default_supplier_ids": [],
+                }
+            ]
+        },
         headers=h,
     )
     assert r.status_code == 422, r.text

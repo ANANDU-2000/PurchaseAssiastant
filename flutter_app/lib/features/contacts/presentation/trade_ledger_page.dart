@@ -18,9 +18,9 @@ import '../../../core/providers/business_write_event.dart';
 import '../../../core/providers/catalog_providers.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/services/pdf_action_result.dart';
-import '../../../core/services/broker_statement_pdf.dart' deferred as brokerPdf;
-import '../../../core/services/item_statement_pdf.dart' deferred as itemPdf;
-import '../../../core/services/supplier_statement_pdf.dart' deferred as supplierPdf;
+import '../../../core/services/broker_statement_pdf.dart' deferred as broker_pdf;
+import '../../../core/services/item_statement_pdf.dart' deferred as item_pdf;
+import '../../../core/services/supplier_statement_pdf.dart' deferred as supplier_pdf;
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/utils/line_display.dart';
 import '../../../core/utils/unit_utils.dart';
@@ -307,13 +307,13 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
     try {
       PdfActionResult? result;
       await Future.wait([
-        supplierPdf.loadLibrary(),
-        brokerPdf.loadLibrary(),
-        itemPdf.loadLibrary(),
+        supplier_pdf.loadLibrary(),
+        broker_pdf.loadLibrary(),
+        item_pdf.loadLibrary(),
       ]);
       if (widget.kind == TradeLedgerKind.supplier) {
         final first = data.first;
-        result = await supplierPdf.shareSupplierStatementPdf(
+        result = await supplier_pdf.shareSupplierStatementPdf(
           business: biz,
           supplierName: first.supplierName ?? 'Supplier',
           supplierAddress: first.supplierAddress,
@@ -325,7 +325,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
         );
       } else if (widget.kind == TradeLedgerKind.broker) {
         final first = data.first;
-        result = await brokerPdf.shareBrokerStatementPdf(
+        result = await broker_pdf.shareBrokerStatementPdf(
           business: biz,
           brokerName: first.brokerName ?? 'Broker',
           brokerPhone: first.brokerPhone,
@@ -339,7 +339,7 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
           data: (m) => m['name']?.toString() ?? 'Item',
           orElse: () => 'Item',
         );
-        result = await itemPdf.shareItemStatementPdf(
+        result = await item_pdf.shareItemStatementPdf(
           business: biz,
           itemName: name,
           purchases: data,
@@ -370,8 +370,8 @@ class _TradeLedgerPageState extends ConsumerState<TradeLedgerPage> {
     final biz = ref.read(invoiceBusinessProfileProvider);
     final first = data.first;
     try {
-      await brokerPdf.loadLibrary();
-      await brokerPdf.shareBrokerStatementPdfForChat(
+      await broker_pdf.loadLibrary();
+      await broker_pdf.shareBrokerStatementPdfForChat(
         business: biz,
         brokerName: first.brokerName ?? 'Broker',
         brokerPhone: first.brokerPhone,

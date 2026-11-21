@@ -69,10 +69,39 @@ def test_delivered_kg_purchase_increments_bags_not_kg():
     assert stock.status_code == 200, stock.text
     assert Decimal(str(stock.json()["current_stock"])) == Decimal("0")
 
-    delivered = client.patch(
+    # PATCH /delivery can no longer add stock; stock moves through arrive -> verify -> commit-stock.
+    legacy = client.patch(
         f"/v1/businesses/{bid}/trade-purchases/{pid}/delivery",
         headers=h,
         json={"is_delivered": True},
+    )
+    assert legacy.status_code == 400, legacy.text
+    assert "commit-stock" in legacy.text
+
+    line_id = purchase.json()["lines"][0]["id"]
+    client.post(
+        f"/v1/businesses/{bid}/trade-purchases/{pid}/arrive",
+        headers=h,
+        json={},
+    ).raise_for_status()
+    verified = client.post(
+        f"/v1/businesses/{bid}/trade-purchases/{pid}/verify",
+        headers=h,
+        json={
+            "lines": [
+                {
+                    "line_id": line_id,
+                    "received_qty": "5000",
+                    "damaged_qty": "0",
+                    "return_qty": "0",
+                }
+            ],
+        },
+    )
+    assert verified.status_code == 200, verified.text
+    delivered = client.post(
+        f"/v1/businesses/{bid}/trade-purchases/{pid}/commit-stock",
+        headers=h,
     )
     assert delivered.status_code == 200, delivered.text
 

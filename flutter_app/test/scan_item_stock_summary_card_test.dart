@@ -26,9 +26,10 @@ void main() {
       ),
     );
 
-    expect(find.text('Current Stock'), findsOneWidget);
-    expect(find.text('Physical Count'), findsOneWidget);
+    expect(find.text('System'), findsOneWidget);
+    expect(find.text('Physical'), findsOneWidget);
     expect(find.text('Last Purchase'), findsOneWidget);
-    expect(find.textContaining('Acme'), findsOneWidget);
+    // Supplier is not rendered on this card (never was); asserting what it does show.
+    expect(find.text('Rice'), findsOneWidget);
   });
 }

@@ -947,7 +947,8 @@ def test_staff_cannot_edit_payment_but_can_receive_delivery_without_financials()
     )
     assert verify.status_code == 200, verify.text
     body = verify.json()
-    assert body["delivery_status"] in ("staff_verified", "partial")
+    # Full receipt on an item with ready units auto-commits stock server-side.
+    assert body["delivery_status"] == "stock_committed"
     assert "total_amount" not in body
     assert "landing_cost" not in body["lines"][0]
 

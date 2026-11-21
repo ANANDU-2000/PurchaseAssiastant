@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,9 +12,21 @@ import 'package:harisree_warehouse/features/stock/presentation/widgets/stock_ope
 import 'package:harisree_warehouse/features/stock/presentation/widgets/stock_warehouse_row.dart';
 import 'package:harisree_warehouse/features/stock/presentation/widgets/stock_warehouse_table_header.dart';
 
+/// Text anti-aliasing differs between operating systems (Windows dev machines vs the Linux CI
+/// runner differ by ~1% of pixels), so each platform keeps its own baseline images.
+String _golden(String file) => 'goldens/${Platform.operatingSystem}/$file';
+
 /// Golden harness for the desktop operational stock page.
 /// Mirrors StockPage._buildListBody desktop split: left table + right detail.
 void main() {
+  // The row renders relative times ("2d ago") from DateTime.now(). Fixed calendar dates made the
+  // golden drift ("2d ago" -> "3mo ago"), so fixture times are relative to now (+1h margin keeps the
+  // whole-day count stable regardless of the time the test runs).
+  String daysAgoIso(int days) => DateTime.now()
+      .toUtc()
+      .subtract(Duration(days: days, hours: 1))
+      .toIso8601String();
+
   final rows = <Map<String, dynamic>>[
     {
       'id': 'a1',
@@ -22,7 +36,7 @@ void main() {
       'current_stock': 42.0,
       'physical_stock_qty': 40.0,
       'physical_stock_counted_by': 'krishna',
-      'physical_stock_counted_at': '2026-08-09T10:00:00Z',
+      'physical_stock_counted_at': daysAgoIso(1),
       'stock_status': 'healthy',
       'stock_unit': 'bag',
     },
@@ -58,7 +72,7 @@ void main() {
       'physical_stock_qty': null,
       'stock_status': 'healthy',
       'stock_unit': 'bag',
-      'last_purchase_at': '2026-08-08T10:00:00Z',
+      'last_purchase_at': daysAgoIso(3),
       'last_purchase_delivered': true,
     },
     {
@@ -196,7 +210,7 @@ void main() {
     await pumpStockDesktop(tester, const Size(1440, 900));
     await expectLater(
       find.byType(Scaffold),
-      matchesGoldenFile('goldens/stock_desktop_1440.png'),
+      matchesGoldenFile(_golden('stock_desktop_1440.png')),
     );
   });
 
@@ -204,7 +218,7 @@ void main() {
     await pumpStockDesktop(tester, const Size(1280, 800));
     await expectLater(
       find.byType(Scaffold),
-      matchesGoldenFile('goldens/stock_desktop_1280.png'),
+      matchesGoldenFile(_golden('stock_desktop_1280.png')),
     );
   });
 }

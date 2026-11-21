@@ -108,6 +108,7 @@ def test_staff_trade_purchase_list_omits_financial_fields():
     owner_list = client.get(
         f"/v1/businesses/{bid}/trade-purchases",
         headers=owner_h,
+        params={"include_lines": "true"},
     )
     assert owner_list.status_code == 200, owner_list.text
     owner_body = owner_list.json()
@@ -119,6 +120,7 @@ def test_staff_trade_purchase_list_omits_financial_fields():
     staff_list = client.get(
         f"/v1/businesses/{bid}/trade-purchases",
         headers=staff_h,
+        params={"include_lines": "true"},
     )
     assert staff_list.status_code == 200, staff_list.text
     staff_body = staff_list.json()

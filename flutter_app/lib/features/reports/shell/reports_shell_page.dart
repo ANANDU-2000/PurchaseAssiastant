@@ -21,7 +21,7 @@ import '../../../core/providers/reports_shell_providers.dart';
 import '../../../core/reporting/trade_report_aggregate.dart';
 import '../../../core/router/post_auth_route.dart';
 import '../../../core/router/shell_navigation.dart';
-import '../../../core/services/reports_pdf.dart' deferred as reportsPdf;
+import '../../../core/services/reports_pdf.dart' deferred as reports_pdf;
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/utils/unit_utils.dart';
 import '../presentation/analytics_report_helpers.dart';
@@ -419,8 +419,8 @@ class _ReportsShellPageState extends ConsumerState<ReportsShellPage> {
     if (ok != true || !mounted) return;
     setState(() => _exportingPdf = true);
     try {
-      await reportsPdf.loadLibrary();
-      final result = await reportsPdf.layoutTradeStatementSsotPdf(
+      await reports_pdf.loadLibrary();
+      final result = await reports_pdf.layoutTradeStatementSsotPdf(
         business: biz,
         from: range.from,
         to: range.to,

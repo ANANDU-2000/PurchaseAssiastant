@@ -339,7 +339,7 @@ void main() {
       find.descendant(
         of: find.byType(HexaResponsiveSheetViewport),
         matching: find.byWidgetPredicate(
-          (w) => w is ListView && (w as ListView).shrinkWrap,
+          (w) => w is ListView && w.shrinkWrap,
         ),
       ),
       findsOneWidget,
