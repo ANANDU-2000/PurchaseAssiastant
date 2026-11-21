@@ -303,3 +303,41 @@ def test_other_write_paths_reject_foreign_ids(a: Tenant, b: Tenant):
     # and company A's purchase is still unpaid / unchanged
     mine = client.get(f"{a.base}/trade-purchases/{a.purchase_id}", headers=a.h).json()
     assert float(mine.get("paid_amount") or 0) == 0
+
+
+# Exports, backup/restore, live updates and owner tools must be unreachable for another company's token.
+_SURFACE_GETS = [
+    "/exports/stock-inventory.xlsx", "/exports/purchases-month.pdf", "/exports/backup/export", "/exports/backup/logs",
+    "/realtime/events", "/realtime/recent", "/damage-reports/pending-count", "/stock-audits", "/stock-audits/active",
+    "/activity-log", "/staff/tasks", "/staff/performance-summary", "/owner/dashboard", "/owner/whatsapp-deliveries",
+    "/settings/credentials", "/operations/usage/today", "/operations/snapshots", "/reports/home-overview",
+    "/reports/trade-items", "/stock/barcode/index",
+]
+_SURFACE_POSTS = [
+    "/exports/backup", "/exports/backup/run", "/exports/restore/dry-run", "/exports/restore/commit",
+    "/notifications/mark-all-read",
+]
+
+
+@pytest.mark.parametrize("path", _SURFACE_GETS)
+def test_exports_realtime_and_owner_tools_reject_foreign_company(a: Tenant, b: Tenant, path: str):
+    r = client.get(a.base + path, headers=b.h)
+    assert r.status_code == 403, f"GET {path}: {r.status_code}"
+
+
+@pytest.mark.parametrize("path", _SURFACE_POSTS)
+def test_backup_restore_and_bulk_actions_reject_foreign_company(a: Tenant, b: Tenant, path: str):
+    r = client.post(a.base + path, headers=b.h, json={})
+    assert r.status_code == 403, f"POST {path}: {r.status_code}"
+
+
+def test_public_item_page_exposes_no_prices_or_suppliers_and_needs_the_token(a: Tenant):
+    """Public QR pages are open by design; they may show stock facts only, behind an unguessable token."""
+    tok = client.get(f"{a.base}/catalog-items/{a.item_id}", headers=a.h).json()["public_token"]
+    assert len(tok) >= 32
+    d = client.get(f"/public/items/{tok}.json").json()
+    risky = [k for k in d if any(w in k.lower() for w in
+             ("price", "rate", "cost", "supplier", "broker", "profit", "landing", "selling", "phone", "gst"))]
+    assert not risky, f"public page exposes sensitive fields: {risky}"
+    assert a.supplier_id not in str(d)  # no supplier reference of any kind
+    assert client.get("/public/items/" + "0" * 32 + ".json").status_code == 404
