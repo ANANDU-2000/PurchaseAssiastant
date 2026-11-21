@@ -459,25 +459,15 @@ class HexaApi extends HexaApiBase with HexaApiAuthMethods, HexaApiNotificationsM
   static const int lowStockOperationsMaxPerPage = 200;
 
   HexaApi({
-    String? baseUrl,
-    Future<bool> Function()? onUnauthorizedRefresh,
-    Future<void> Function(String reason)? onTerminalAuthFailure,
-    Future<String?> Function()? resolveAccessToken,
-    void Function(bool degraded, String? hint)? onConnectivityBanner,
-    bool Function()? authSessionExpired,
-    bool Function()? onBusiness401,
-    void Function()? onSuspendForAuthFailure,
-    bool Function()? blockBusinessApi,
-  }) : super(
-          baseUrl: baseUrl,
-          onUnauthorizedRefresh: onUnauthorizedRefresh,
-          onTerminalAuthFailure: onTerminalAuthFailure,
-          resolveAccessToken: resolveAccessToken,
-          onConnectivityBanner: onConnectivityBanner,
-          authSessionExpired: authSessionExpired,
-          onBusiness401: onBusiness401,
-          onSuspendForAuthFailure: onSuspendForAuthFailure,
-          blockBusinessApi: blockBusinessApi,
-        );
+    super.baseUrl,
+    super.onUnauthorizedRefresh,
+    super.onTerminalAuthFailure,
+    super.resolveAccessToken,
+    super.onConnectivityBanner,
+    super.authSessionExpired,
+    super.onBusiness401,
+    super.onSuspendForAuthFailure,
+    super.blockBusinessApi,
+  });
 }
 

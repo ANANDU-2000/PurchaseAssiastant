@@ -18,8 +18,8 @@ import '../../../core/providers/api_read_snapshots.dart'
     show bustStockAuditRecentSnapshot, bustStockPhysicalCountsRecentSnapshot;
 import '../../../core/models/session.dart';
 import '../../../core/providers/stock_list_exceptions.dart';
-import '../../../core/services/stock_list_pdf.dart' deferred as stockPdf;
-import '../../../core/services/pdf_actions.dart' deferred as pdfActions;
+import '../../../core/services/stock_list_pdf.dart' deferred as stock_pdf;
+import '../../../core/services/pdf_actions.dart' deferred as pdf_actions;
 import '../../../core/json_coerce.dart';
 import '../../../core/providers/business_write_event.dart';
 import '../../../core/providers/home_dashboard_provider.dart';
@@ -523,21 +523,21 @@ class _StockPageState extends ConsumerState<StockPage>
           const SnackBar(content: Text('Preparing stock PDF…')),
         );
       }
-      await Future.wait([stockPdf.loadLibrary(), pdfActions.loadLibrary()]);
-      final bytes = await stockPdf.buildStockListPdf(
+      await Future.wait([stock_pdf.loadLibrary(), pdf_actions.loadLibrary()]);
+      final bytes = await stock_pdf.buildStockListPdf(
         businessName: session.primaryBusiness.effectiveDisplayTitle,
         rows: items.take(500).toList(),
         filterSummary: summary.isEmpty ? null : summary,
       );
       if (!mounted) return;
       final result = kIsWeb
-          ? await pdfActions.savePdfBytes(
+          ? await pdf_actions.savePdfBytes(
               buildBytes: () async => bytes,
               filename: 'harisree_stock_statement.pdf',
               subject: 'Harisree stock statement',
               source: 'stock_list_pdf',
             )
-          : await stockPdf.shareStockListPdf(
+          : await stock_pdf.shareStockListPdf(
               bytes: bytes,
               filename: 'harisree_stock_statement.pdf',
             );

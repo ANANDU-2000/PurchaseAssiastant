@@ -68,14 +68,18 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('Reports'), findsOneWidget);
-    expect(find.text('Overview'), findsOneWidget);
-    expect(find.text('Items'), findsOneWidget);
-    expect(find.text('Purchases'), findsOneWidget);
-    expect(find.text('Stock'), findsOneWidget);
+    // "Items" / "Stock" / "Purchases" also appear as KPI labels on the Overview tab, so assert
+    // the four primary tabs inside the TabBar itself.
+    expect(_primaryTab('Overview'), findsOneWidget);
+    expect(_primaryTab('Items'), findsOneWidget);
+    expect(_primaryTab('Purchases'), findsOneWidget);
+    expect(_primaryTab('Stock'), findsOneWidget);
+    expect(find.descendant(of: find.byType(TabBar), matching: find.byType(Tab)), findsNWidgets(4));
     expect(find.text('Activity'), findsNothing);
     expect(find.text('More'), findsNothing);
     expect(find.byType(TextField), findsOneWidget);
     expect(find.text('Could not load the app'), findsNothing);
+    await _unmountAndDrainTimers(tester);
   });
 
   testWidgets('ReportsPage desktop body lays out without blank overflow',
@@ -131,12 +135,23 @@ void main() {
     expect(tester.takeException(), isNull);
 
     // Switch to Items — must fill Expanded pane (no MediaQuery-fraction SizedBox).
-    await tester.tap(find.text('Items'));
+    await tester.tap(_primaryTab('Items'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(tester.takeException(), isNull);
+    await _unmountAndDrainTimers(tester);
   });
 }
+
+/// Unmount the page, then let short-lived provider timers (they outlive the widget tree by up to
+/// ~30s) fire so the framework's "no pending timers" invariant holds.
+Future<void> _unmountAndDrainTimers(WidgetTester tester) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump(const Duration(minutes: 1));
+}
+
+Finder _primaryTab(String label) =>
+    find.descendant(of: find.byType(TabBar), matching: find.text(label));
 
 class _FakeSessionNotifier extends SessionNotifier {
   @override

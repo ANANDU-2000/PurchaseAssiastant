@@ -9,6 +9,9 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # PostgreSQL-only DDL/DML; the SQLite CI smoke (HEXA_USE_SQLITE=1) skips it.
+    if op.get_bind().dialect.name == "sqlite":
+        return
     op.execute(
         """
         ALTER TABLE trade_purchase_lines

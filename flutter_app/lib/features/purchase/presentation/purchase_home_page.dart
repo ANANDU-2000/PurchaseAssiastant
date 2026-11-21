@@ -34,7 +34,7 @@ import '../../../core/purchase/purchase_stock_commit_flow.dart';
 import '../../../core/providers/trade_purchases_provider.dart';
 import '../providers/trade_purchase_detail_provider.dart';
 import '../state/purchase_local_wip_draft_provider.dart';
-import '../../../core/services/purchase_pdf.dart' deferred as purchasePdf;
+import '../../../core/services/purchase_pdf.dart' deferred as purchase_pdf;
 import '../../../core/theme/hexa_colors.dart';
 import '../../../core/widgets/friendly_load_error.dart'
     show kFriendlyLoadNetworkSubtitle;
@@ -1743,8 +1743,8 @@ class _PurchaseHomePageState extends ConsumerState<PurchaseHomePage> {
             final biz = ref.read(invoiceBusinessProfileProvider);
             Future<void> doShare() async {
               try {
-                await purchasePdf.loadLibrary();
-                final result = await purchasePdf.sharePurchasePdf(p, biz);
+                await purchase_pdf.loadLibrary();
+                final result = await purchase_pdf.sharePurchasePdf(p, biz);
                 if (!context.mounted) return;
                 if (result.ok) {
                   showTopSnack(context, result.message);
@@ -2590,8 +2590,8 @@ class _PurchaseHistoryFullscreenSearchPageState
                   final biz = ref.read(invoiceBusinessProfileProvider);
                   Future<void> doShare() async {
                     try {
-                      await purchasePdf.loadLibrary();
-                      final result = await purchasePdf.sharePurchasePdf(p, biz);
+                      await purchase_pdf.loadLibrary();
+                      final result = await purchase_pdf.sharePurchasePdf(p, biz);
                       if (!context.mounted) return;
                       if (result.ok) {
                         showTopSnack(context, result.message);

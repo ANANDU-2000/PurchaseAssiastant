@@ -208,14 +208,21 @@ END $$;
 -- Ensure barcode uniqueness index exists without creating a duplicate physical index.
 DO $$
 BEGIN
+  -- pg_indexes.indexdef deparses the predicate as "WHERE ((barcode IS NOT NULL) AND ...)", so the
+  -- text match below does not recognise our own index on re-run; also check it by name.
   IF NOT EXISTS (
     SELECT 1
     FROM pg_indexes
     WHERE schemaname = 'public'
       AND tablename = 'catalog_items'
-      AND indexdef ILIKE '%(business_id, barcode)%'
-      AND indexdef ILIKE '%WHERE barcode IS NOT NULL%'
-      AND indexdef ILIKE '%deleted_at IS NULL%'
+      AND (
+        indexname = 'idx_catalog_items_barcode_business'
+        OR (
+          indexdef ILIKE '%(business_id, barcode)%'
+          AND indexdef ILIKE '%barcode IS NOT NULL%'
+          AND indexdef ILIKE '%deleted_at IS NULL%'
+        )
+      )
   ) THEN
     CREATE UNIQUE INDEX idx_catalog_items_barcode_business
       ON catalog_items(business_id, barcode)

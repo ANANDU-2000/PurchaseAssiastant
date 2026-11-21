@@ -1,6 +1,4 @@
-import 'dart:convert';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
+import 'package:dio/dio.dart';
 
 void agentDebugLogImpl({
   required String hypothesisId,
@@ -20,15 +18,18 @@ void agentDebugLogImpl({
       'data': data,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     };
-    html.HttpRequest.request(
-      'http://127.0.0.1:7388/ingest/8ef5481a-9163-494f-9f26-ab47a81c6701',
-      method: 'POST',
-      requestHeaders: {
-        'Content-Type': 'application/json',
-        'X-Debug-Session-Id': '9910c7',
-      },
-      sendData: jsonEncode(payload),
-    ).catchError((_) => html.HttpRequest());
+    Dio()
+        .post<void>(
+          'http://127.0.0.1:7388/ingest/8ef5481a-9163-494f-9f26-ab47a81c6701',
+          data: payload,
+          options: Options(
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Debug-Session-Id': '9910c7',
+            },
+          ),
+        )
+        .catchError((Object _) => Response<void>(requestOptions: RequestOptions()));
   } catch (_) {}
   // #endregion
 }

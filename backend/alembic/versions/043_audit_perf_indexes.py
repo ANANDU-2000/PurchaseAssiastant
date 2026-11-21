@@ -20,7 +20,14 @@ _SQL = Path(__file__).resolve().parents[2] / "sql" / "043_audit_perf_indexes.sql
 
 
 def upgrade() -> None:
-    op.execute(_SQL.read_text(encoding="utf-8"))
+    # SQLite (CI smoke) executes one statement per call; Postgres accepts either.
+    # Split the file so the same migration runs on both.
+    for stmt in _SQL.read_text(encoding="utf-8").split(";"):
+        body = "\n".join(
+            line for line in stmt.splitlines() if not line.strip().startswith("--")
+        ).strip()
+        if body:
+            op.execute(body + ";")
 
 
 def downgrade() -> None:

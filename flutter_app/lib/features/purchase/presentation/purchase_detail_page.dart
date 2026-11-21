@@ -27,7 +27,7 @@ import '../../../core/utils/delivery_offline_actions.dart';
 import '../../../core/router/navigation_ext.dart';
 import '../../../core/router/post_auth_route.dart';
 import '../../../core/services/pdf_action_result.dart';
-import '../../../core/services/purchase_export_service.dart' deferred as purchaseExport;
+import '../../../core/services/purchase_export_service.dart' deferred as purchase_export;
 import '../../../core/design_system/hexa_responsive.dart';
 import '../../../core/services/purchase_invoice_pdf_layout.dart'
     show tradeCalcRequestFromTradePurchase;
@@ -1418,8 +1418,8 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
     Future<void> sharePdf() => _runExport(
           context,
           action: () async {
-            await purchaseExport.loadLibrary();
-            return purchaseExport.exportSharePurchase(
+            await purchase_export.loadLibrary();
+            return purchase_export.exportSharePurchase(
               p,
               biz,
               api: api,
@@ -1431,8 +1431,8 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
     Future<void> printPdf() => _runExport(
           context,
           action: () async {
-            await purchaseExport.loadLibrary();
-            return purchaseExport.exportPrintPurchase(
+            await purchase_export.loadLibrary();
+            return purchase_export.exportPrintPurchase(
               p,
               biz,
               api: api,
@@ -1444,8 +1444,8 @@ class PurchaseDetailBodyState extends ConsumerState<PurchaseDetailBody> {
     Future<void> downloadPdf() => _runExport(
           context,
           action: () async {
-            await purchaseExport.loadLibrary();
-            return purchaseExport.exportDownloadPurchase(
+            await purchase_export.loadLibrary();
+            return purchase_export.exportDownloadPurchase(
               p,
               biz,
               api: api,
