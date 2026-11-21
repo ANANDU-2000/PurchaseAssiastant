@@ -64,6 +64,9 @@ The original prompt `PROMPT_AUTO.md` also instructs "push main, wait for Vercel 
 | Review | Human reads `ralph/progress.md` and the diff after each run; pushes manually. |
 | Cost | Each round is a Claude run (plan usage); QA specs that call LLM providers cost provider tokens — exclude them. |
 
+### Local test environment and first-run timing
+The runner prepends the backend test venv (`hexa-worktrees/.venv-recovery`, Python 3.12) to `PATH`; backend pytest runs in the Ralph worktree (verified). **Do not start the first round yet:** `ralph/fix_plan.md` on `main` is dated 2026-11-08 and its first open task (B1e, `test_staff_cannot_edit_payment_but_can_receive_delivery_without_financials`) fails on `main` but is already fixed by PR #8. Merge PR #8, rebase `ralph/controlled` onto the new `main`, refresh `fix_plan.md`, then run one round (`MAX=1`).
+
 ### Start conditions
 All of: GitHub authenticated; correct Vercel/Render accounts connected; staging/local target defined; other sessions closed; guard-railed script reviewed by the owner.
 
