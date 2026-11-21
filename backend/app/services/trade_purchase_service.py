@@ -371,6 +371,50 @@ def _collect_trade_purchase_validation_errors(
     return errs
 
 
+async def _collect_foreign_reference_errors(
+    db: AsyncSession,
+    business_id: uuid.UUID,
+    body: Any,
+) -> list[dict[str, Any]]:
+    """Tenant isolation: supplier, broker and catalog items must belong to THIS business.
+
+    Without this check a company could attach another company's supplier / item ids to its own purchase
+    (and then commit stock against the other company's catalog). Only ids that are present are checked.
+    """
+    errs: list[dict[str, Any]] = []
+    sup_id = getattr(body, "supplier_id", None)
+    if sup_id is not None:
+        ok = await db.scalar(
+            select(Supplier.id).where(Supplier.id == sup_id, Supplier.business_id == business_id)
+        )
+        if ok is None:
+            errs.append({"loc": ["body", "supplier_id"], "msg": "supplier not found in this business"})
+    br_id = getattr(body, "broker_id", None)
+    if br_id is not None:
+        ok = await db.scalar(
+            select(Broker.id).where(Broker.id == br_id, Broker.business_id == business_id)
+        )
+        if ok is None:
+            errs.append({"loc": ["body", "broker_id"], "msg": "broker not found in this business"})
+    item_ids = {li.catalog_item_id for li in (getattr(body, "lines", None) or []) if li.catalog_item_id}
+    if item_ids:
+        found = set(
+            (
+                await db.execute(
+                    select(CatalogItem.id).where(
+                        CatalogItem.id.in_(item_ids), CatalogItem.business_id == business_id
+                    )
+                )
+            ).scalars()
+        )
+        for idx, li in enumerate(body.lines):
+            if li.catalog_item_id and li.catalog_item_id not in found:
+                errs.append(
+                    {"loc": ["body", "lines", idx, "catalog_item_id"], "msg": "item not found in this business"}
+                )
+    return errs
+
+
 async def _collect_line_unit_profile_errors(
     db: AsyncSession,
     business_id: uuid.UUID,
@@ -1308,6 +1352,7 @@ async def create_trade_purchase(
     body: TradePurchaseCreateRequest,
 ) -> TradePurchaseOut:
     errs = _collect_trade_purchase_validation_errors(body)
+    errs = errs + await _collect_foreign_reference_errors(db, business_id, body)
     unit_errs = await _collect_line_unit_profile_errors(db, business_id, body.lines)
     errs = errs + unit_errs
     if errs:
@@ -1452,6 +1497,7 @@ async def update_trade_purchase(
     body: TradePurchaseUpdateRequest,
 ) -> TradePurchaseOut | None:
     errs = _collect_trade_purchase_validation_errors(body)
+    errs = errs + await _collect_foreign_reference_errors(db, business_id, body)
     unit_errs = await _collect_line_unit_profile_errors(db, business_id, body.lines)
     errs = errs + unit_errs
     if errs:
